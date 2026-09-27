@@ -5,6 +5,7 @@
 //! Logs go to stderr. Closing stdin shuts the connection down cleanly.
 #![recursion_limit = "512"]
 
+mod avatars;
 mod extract;
 mod protocol;
 mod store;
@@ -27,17 +28,20 @@ type Db = Arc<Mutex<Store>>;
 
 /// Everything the event handlers share.
 #[derive(Clone)]
-struct Ctx {
+pub(crate) struct Ctx {
     tx: Tx,
     db: Db,
+    pub(crate) data_dir: PathBuf,
     /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
     chats_dirty: Arc<Notify>,
     /// Chats waiting for an on-demand history reply from the phone -> anchor (ts, message id).
     pending_history: Arc<Mutex<HashMap<String, (i64, String)>>>,
+    /// Profile-picture fetch queue (see avatars.rs).
+    pub(crate) avatars: mpsc::UnboundedSender<avatars::Request>,
 }
 
 impl Ctx {
-    fn send(&self, event: Out) {
+    pub(crate) fn send(&self, event: Out) {
         let _ = self.tx.send(event);
     }
 
@@ -45,7 +49,7 @@ impl Ctx {
         self.send(Out::Status { state, detail });
     }
 
-    fn db(&self) -> std::sync::MutexGuard<'_, Store> {
+    pub(crate) fn db(&self) -> std::sync::MutexGuard<'_, Store> {
         self.db.lock().unwrap_or_else(|p| p.into_inner())
     }
 }
@@ -104,11 +108,14 @@ async fn run(dir: PathBuf) {
             return;
         }
     };
+    let (avatar_tx, avatar_rx) = mpsc::unbounded_channel();
     let ctx = Ctx {
         tx,
         db: Arc::new(Mutex::new(store)),
+        data_dir: dir.clone(),
         chats_dirty: Arc::new(Notify::new()),
         pending_history: Arc::default(),
+        avatars: avatar_tx,
     };
     ctx.status("starting", None);
 
@@ -116,6 +123,9 @@ async fn run(dir: PathBuf) {
     let cached = ctx.db().chats();
     if !cached.is_empty() {
         ctx.send(Out::Chats { chats: cached });
+    }
+    if let Some((_, path, _)) = ctx.db().avatar(avatars::SELF_ID).filter(|(_, p, _)| !p.is_empty()) {
+        ctx.send(Out::Avatar { chat_id: avatars::SELF_ID.into(), path: Some(path) });
     }
 
     spawn_snapshot_debouncer(ctx.clone());
@@ -150,9 +160,9 @@ async fn run(dir: PathBuf) {
         })
         .on_event({
             let ctx = ctx.clone();
-            move |event, _client| {
+            move |event, client| {
                 let ctx = ctx.clone();
-                async move { on_event(&ctx, event).await }
+                async move { on_event(&ctx, &client, event).await }
             }
         })
         .build()
@@ -168,6 +178,7 @@ async fn run(dir: PathBuf) {
 
     let handle = bot.spawn();
     let client = handle.client();
+    avatars::spawn(ctx.clone(), Arc::clone(&client), avatar_rx);
 
     // Commands from the UI until it closes stdin.
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
@@ -222,25 +233,36 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         }
         Command::Logout => {
             client.logout().await;
-            ctx.db().clear();
-            ctx.send(Out::Chats { chats: Vec::new() });
-            ctx.status("loggedOut", None);
+            forget_everything(ctx);
         }
     }
 }
 
-async fn on_event(ctx: &Ctx, event: Arc<Event>) {
+/// Logged out: the local copy of chats, names and pictures goes too.
+fn forget_everything(ctx: &Ctx) {
+    ctx.db().clear();
+    avatars::clear_cache(ctx);
+    ctx.send(Out::Chats { chats: Vec::new() });
+    ctx.send(Out::Avatar { chat_id: avatars::SELF_ID.into(), path: None });
+    ctx.status("loggedOut", None);
+}
+
+async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
     match &*event {
         Event::Connected(_) => {
             ctx.status("connected", None);
             ctx.chats_dirty.notify_one();
+            avatars::queue_stale(ctx);
         }
         Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
         Event::Disconnected(_) => ctx.status("connecting", None),
-        Event::LoggedOut(_) => {
-            ctx.db().clear();
-            ctx.send(Out::Chats { chats: Vec::new() });
-            ctx.status("loggedOut", None);
+        Event::LoggedOut(_) => forget_everything(ctx),
+        Event::PictureUpdate(update) => {
+            let jid = update.jid.to_non_ad();
+            let own = client.persistence_manager().get_device_snapshot();
+            let is_self = [&own.pn, &own.lid].into_iter().flatten().any(|me| me.user == jid.user && me.server == jid.server);
+            let chat_id = if is_self { avatars::SELF_ID.to_string() } else { ctx.db().canonical(&jid.to_string()) };
+            let _ = ctx.avatars.send(avatars::Request { chat_id, force: true });
         }
         Event::HistorySync(lazy) => {
             let lazy = (**lazy).clone();
@@ -253,6 +275,8 @@ async fn on_event(ctx: &Ctx, event: Arc<Event>) {
                     info!("history chunk: {} conversations (progress {progress:?}, on-demand {on_demand})", chats.len());
                     if on_demand {
                         answer_pending_history(ctx, &chats);
+                    } else {
+                        avatars::queue_stale(ctx);   // new chats from the sync
                     }
                 }
                 Ok(Err(e)) => error!("history sync decode failed: {e}"),
@@ -316,7 +340,9 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         if !source.is_from_me {
             db.set_push_name(&sender, &info.push_name);
         }
-        db.ensure_chat(&chat_id, source.is_group);
+        if db.ensure_chat(&chat_id, source.is_group) {
+            let _ = ctx.avatars.send(avatars::Request { chat_id: chat_id.clone(), force: false });
+        }
         let stored = StoredMessage {
             id: info.id.to_string(),
             from_me: source.is_from_me,

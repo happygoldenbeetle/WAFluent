@@ -27,6 +27,9 @@ pub enum Event {
     /// Reply to `loadOlder`: messages older than the anchor, oldest first.
     /// `complete` = the phone has nothing older; stop asking.
     OlderMessages { chat_id: String, messages: Vec<MessageDto>, complete: bool },
+    /// A profile picture was downloaded, changed or removed (`path` = None).
+    /// `chat_id` is "self" for your own picture.
+    Avatar { chat_id: String, path: Option<String> },
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -48,6 +51,9 @@ pub struct ChatDto {
     /// For groups: who sent the last message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_sender: Option<String>,
+    /// Cached profile picture (JPEG path), when there is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]

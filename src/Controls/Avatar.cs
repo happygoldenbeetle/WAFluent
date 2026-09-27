@@ -3,6 +3,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.UI;
 
@@ -44,9 +45,16 @@ public sealed partial class Avatar : UserControl
     public static readonly DependencyProperty ShowRingProperty = DependencyProperty.Register(
         nameof(ShowRing), typeof(bool), typeof(Avatar), new PropertyMetadata(false, (d, _) => ((Avatar)d).Update()));
 
+    /// <summary>Profile picture file; the initials show until it loads (or if it can't).</summary>
+    public static readonly DependencyProperty SourceProperty = DependencyProperty.Register(
+        nameof(Source), typeof(string), typeof(Avatar), new PropertyMetadata(null, (d, _) => ((Avatar)d).UpdatePhoto()));
+
     public string DisplayName { get => (string)GetValue(DisplayNameProperty); set => SetValue(DisplayNameProperty, value); }
     public double Size { get => (double)GetValue(SizeProperty); set => SetValue(SizeProperty, value); }
     public bool ShowRing { get => (bool)GetValue(ShowRingProperty); set => SetValue(ShowRingProperty, value); }
+    public string? Source { get => (string?)GetValue(SourceProperty); set => SetValue(SourceProperty, value); }
+
+    private readonly Ellipse _photo = new() { Visibility = Visibility.Collapsed };
 
     public Avatar()
     {
@@ -54,22 +62,39 @@ public sealed partial class Avatar : UserControl
         root.Children.Add(_ring);
         root.Children.Add(_circle);
         root.Children.Add(_initials);
+        root.Children.Add(_photo);
         Content = root;
         IsTabStop = false;
         Update();
     }
+
+    private double Inner => ShowRing ? Size - 8 : Size;   // with a ring, the picture shrinks to leave a gap
 
     private void Update()
     {
         Width = Height = Size;
         _ring.Width = _ring.Height = Size;
         _ring.Visibility = ShowRing ? Visibility.Visible : Visibility.Collapsed;
-        // With a ring, the picture shrinks to leave a thin gap inside it.
-        var inner = ShowRing ? Size - 8 : Size;
-        _circle.Width = _circle.Height = inner;
-        _initials.FontSize = Math.Round(inner * 0.36);
+        _circle.Width = _circle.Height = _photo.Width = _photo.Height = Inner;
+        _initials.FontSize = Math.Round(Inner * 0.36);
         _initials.Text = Initials(DisplayName ?? "");
         _circle.Fill = new SolidColorBrush(Palette[StableHash(DisplayName ?? "") % Palette.Length]);
+        UpdatePhoto();
+    }
+
+    private void UpdatePhoto()
+    {
+        if (string.IsNullOrEmpty(Source) || !File.Exists(Source))
+        {
+            _photo.Visibility = Visibility.Collapsed;
+            _photo.Fill = null;
+            return;
+        }
+        // Decode near display size (x2.5 covers 250% scaling) instead of the full 640 px.
+        var image = new BitmapImage { DecodePixelWidth = (int)Math.Ceiling(Inner * 2.5), UriSource = new Uri(Source) };
+        image.ImageFailed += (_, _) => _photo.Visibility = Visibility.Collapsed;
+        _photo.Fill = new ImageBrush { ImageSource = image, Stretch = Stretch.UniformToFill };
+        _photo.Visibility = Visibility.Visible;
     }
 
     private static string Initials(string name)

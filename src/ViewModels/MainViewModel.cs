@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
 using WhatsAppNative.Services;
@@ -46,6 +47,26 @@ public sealed class MainViewModel : Observable
         core.MessagesReceived += OnMessages;
         core.MessageReceived += OnMessage;
         core.OlderMessagesReceived += OnOlderMessages;
+        core.AvatarReceived += OnAvatar;
+    }
+
+    // ───────────── Profile pictures ─────────────
+
+    private static readonly Uri ProfilePlaceholder = new("ms-appx:///Assets/ProfilePlaceholder.png");
+    private ImageSource _profileIcon = new BitmapImage(ProfilePlaceholder);
+
+    /// <summary>Your own picture, round-cropped for the rail (placeholder until known).</summary>
+    public ImageSource ProfileIcon { get => _profileIcon; private set => Set(ref _profileIcon, value); }
+
+    private async void OnAvatar(string chatId, string? path)
+    {
+        if (chatId == "self")
+        {
+            ProfileIcon = path is null ? new BitmapImage(ProfilePlaceholder)
+                                       : await CircleImage.CreateAsync(path) ?? new BitmapImage(ProfilePlaceholder);
+            return;
+        }
+        if (_byId.TryGetValue(chatId, out var chat)) chat.AvatarPath = path;
     }
 
     // ───────────── Connection state (live mode) ─────────────
@@ -188,6 +209,7 @@ public sealed class MainViewModel : Observable
         }
 
         chat.Name = dto.Name;
+        chat.AvatarPath = dto.Avatar;
         chat.IsPinned = dto.Pinned;
         chat.LastActivity = Format.FromUnix(dto.LastTs);
         chat.Time = Format.ListTime(chat.LastActivity);

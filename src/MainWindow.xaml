@@ -19,7 +19,8 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Size="48" ShowRing="{x:Bind HasStatus}" />
+                    <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
+                                     Size="48" ShowRing="{x:Bind HasStatus}" />
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -253,7 +254,7 @@
                         <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">24</x:Double>
                     </NavigationViewItem.Resources>
                     <NavigationViewItem.Icon>
-                        <ImageIcon Source="ms-appx:///Assets/ProfilePlaceholder.png" />
+                        <ImageIcon Source="{x:Bind ViewModel.ProfileIcon, Mode=OneWay}" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
@@ -339,7 +340,9 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" Size="36" VerticalAlignment="Center" />
+                        <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
+                                         Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}"
+                                         Size="36" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.Status, Mode=OneWay}" FontSize="12"

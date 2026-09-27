@@ -17,7 +17,7 @@ WhatsAppNative.exe (WinUI 3, C#)  ⇄  JSON lines over stdin/stdout  ⇄  core\w
 - **`core/`** is a small Rust program built on [whatsapp-rust](https://crates.io/crates/whatsapp-rust). It handles pairing, encryption and the connection, and keeps a local SQLite store of chats and messages (WhatsApp only sends history once, right after linking). The protocol is documented in `core/src/protocol.rs`.
 - **`src/`** is the WinUI app. It starts the core, shows the QR/link screen until chats are available, then the chat list and conversations.
 
-Data lives in `%LOCALAPPDATA%\WAFluent`: `whatsapp.db` (session keys), `wafluent.db` (chats/messages), `core.log`.
+Data lives in `%LOCALAPPDATA%\WAFluent`: `whatsapp.db` (session keys), `wafluent.db` (chats/messages), `avatars\` (profile pictures, re-checked daily), `core.log`.
 **Settings → Log out** unlinks the device and deletes the local chats.
 
 ## Build
@@ -43,6 +43,7 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 | `core/src/main.rs` | Connection, event handling, history-sync ingestion |
 | `core/src/store.rs` | SQLite chat/message/contact-name store |
 | `core/src/extract.rs` | WhatsApp message → text/media label |
+| `core/src/avatars.rs` | Profile-picture fetch queue and disk cache |
 | `src/Services/CoreClient.cs` | Starts the core and translates its events |
 | `src/MainWindow.xaml` | Rail, chat list, conversation pane, link screen |
 | `src/CallWindow.xaml` | In-call window (mockup) |

@@ -45,6 +45,7 @@ public sealed partial class CallWindow : Window
         WindowHelper.SetMinimumSize(this, 400, 460);
 
         CallerAvatar.DisplayName = chat.Name;
+        CallerAvatar.Source = chat.AvatarPath;
         CallerName.Text = chat.Name;
         CameraToggle.IsChecked = video;
         CallStatus.Text = video ? "Video calling…" : "Calling…";

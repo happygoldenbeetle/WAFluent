@@ -13,6 +13,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Must stay on the libsqlite3-sys line whatsapp-rust bundles (0.37 -> rusqlite 0.39).
 rusqlite = "0.39"
+# Same major as whatsapp-rust's HTTP client; used to download profile pictures.
+ureq = "3"
 log = "0.4"
 env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
 

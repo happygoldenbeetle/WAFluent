@@ -63,6 +63,13 @@ CREATE TABLE IF NOT EXISTS names(
     push_name TEXT NOT NULL DEFAULT '',
     full_name TEXT NOT NULL DEFAULT ''
 );
+-- Profile pictures cached on disk. path = '' means the chat has no (visible) picture.
+CREATE TABLE IF NOT EXISTS avatars(
+    jid        TEXT PRIMARY KEY,
+    picture_id TEXT NOT NULL DEFAULT '',
+    path       TEXT NOT NULL DEFAULT '',
+    checked_at INTEGER NOT NULL DEFAULT 0
+);
 -- A chat can be addressed by phone-number JID or by LID; both map to one chat id.
 CREATE TABLE IF NOT EXISTS aliases(
     alt     TEXT PRIMARY KEY,
@@ -72,10 +79,12 @@ CREATE TABLE IF NOT EXISTS aliases(
 
 const CHAT_SELECT: &str = "
 SELECT c.id, c.name, c.is_group, c.unread, c.pinned, c.archived, c.mute_end, c.last_ts,
-       m.kind, m.text, m.file_name, m.from_me, m.status, m.sender, m.push_name
+       m.kind, m.text, m.file_name, m.from_me, m.status, m.sender, m.push_name,
+       a.path
 FROM chats c
 LEFT JOIN messages m ON m.rowid = (
     SELECT rowid FROM messages WHERE chat_id = c.id ORDER BY ts DESC, rowid DESC LIMIT 1)
+LEFT JOIN avatars a ON a.jid = c.id
 ";
 
 impl Store {
@@ -131,11 +140,12 @@ impl Store {
         );
     }
 
-    pub fn ensure_chat(&self, id: &str, is_group: bool) {
-        let _ = self.db.execute(
-            "INSERT OR IGNORE INTO chats(id, is_group) VALUES(?1, ?2)",
-            params![id, is_group],
-        );
+    /// Returns true if the chat is new.
+    pub fn ensure_chat(&self, id: &str, is_group: bool) -> bool {
+        self.db
+            .execute("INSERT OR IGNORE INTO chats(id, is_group) VALUES(?1, ?2)", params![id, is_group])
+            .unwrap_or(0)
+            > 0
     }
 
     /// Returns true if the message was new.
@@ -190,7 +200,40 @@ impl Store {
 
     /// Forget everything (after logging out).
     pub fn clear(&self) {
-        let _ = self.db.execute_batch("DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases;");
+        let _ = self.db.execute_batch(
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars;",
+        );
+    }
+
+    /// (picture_id, path, checked_at) for a cached profile picture.
+    pub fn avatar(&self, jid: &str) -> Option<(String, String, i64)> {
+        self.db
+            .query_row("SELECT picture_id, path, checked_at FROM avatars WHERE jid = ?1", [jid], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    pub fn set_avatar(&self, jid: &str, picture_id: &str, path: &str, checked_at: i64) {
+        let _ = self.db.execute(
+            "INSERT INTO avatars(jid, picture_id, path, checked_at) VALUES(?1, ?2, ?3, ?4)
+             ON CONFLICT(jid) DO UPDATE SET picture_id = excluded.picture_id, path = excluded.path, checked_at = excluded.checked_at",
+            params![jid, picture_id, path, checked_at],
+        );
+    }
+
+    /// Chats whose picture was never fetched or was last checked before `older_than`, most recent first.
+    pub fn chats_needing_avatar(&self, older_than: i64) -> Vec<String> {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT c.id FROM chats c LEFT JOIN avatars a ON a.jid = c.id
+             WHERE c.last_ts > 0 AND (a.jid IS NULL OR a.checked_at < ?1)
+             ORDER BY c.pinned DESC, c.last_ts DESC",
+        ) else {
+            return Vec::new();
+        };
+        stmt.query_map([older_than], |r| r.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
     }
 
     // ───────────── Reads ─────────────
@@ -226,11 +269,12 @@ impl Store {
                 r.get::<_, Option<u8>>(12)?,
                 r.get::<_, Option<String>>(13)?,
                 r.get::<_, Option<String>>(14)?,
+                r.get::<_, Option<String>>(15)?,
             ))
         });
         let Ok(rows) = rows else { return Vec::new() };
         rows.flatten()
-            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name)| {
+            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name, avatar)| {
                 let kind = kind.unwrap_or_default();
                 let from_me = from_me.unwrap_or(false);
                 let last_sender = match (&sender, is_group && !from_me) {
@@ -251,6 +295,7 @@ impl Store {
                     archived,
                     last_ts,
                     last_sender,
+                    avatar: avatar.filter(|p| !p.is_empty()),
                 }
             })
             .collect()
@@ -364,7 +409,7 @@ impl Store {
     }
 }
 
-fn unix_now() -> i64 {
+pub fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

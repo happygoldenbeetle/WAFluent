@@ -64,6 +64,10 @@ public sealed class Chat : Observable
     private int _unread;
     private bool _isPinned;
     private Delivery _lastDelivery;
+    private string? _avatarPath;
+
+    /// <summary>Cached profile picture on disk; initials are shown while null.</summary>
+    public string? AvatarPath { get => _avatarPath; set => Set(ref _avatarPath, value); }
 
     /// <summary>WhatsApp JID for live chats; empty for sample data.</summary>
     public string Id { get; init; } = "";

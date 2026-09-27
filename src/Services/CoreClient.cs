@@ -7,7 +7,8 @@ namespace WhatsAppNative.Services;
 
 public sealed record ChatDto(
     string Id, string Name, bool IsGroup, int Unread, bool Pinned, bool Archived, bool Muted,
-    long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender);
+    long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender,
+    string? Avatar);
 
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
@@ -35,6 +36,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string, IReadOnlyList<MessageDto>>? MessagesReceived;
     public event Action<string, MessageDto>? MessageReceived;
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
+    public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
 
     public static string DataDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent");
@@ -137,6 +139,11 @@ public sealed class CoreClient : IDisposable
                 var older = root.GetProperty("messages").Deserialize<List<MessageDto>>(Json) ?? [];
                 var complete = root.GetProperty("complete").GetBoolean();
                 Post(() => OlderMessagesReceived?.Invoke(olderChat, older, complete));
+                break;
+            case "avatar":
+                var avatarChat = root.GetProperty("chatId").GetString() ?? "";
+                var avatarPath = root.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+                Post(() => AvatarReceived?.Invoke(avatarChat, avatarPath));
                 break;
             case "message":
                 var target = root.GetProperty("chatId").GetString() ?? "";
