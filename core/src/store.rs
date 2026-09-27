@@ -283,6 +283,49 @@ impl Store {
         out
     }
 
+    /// Up to `limit` messages older than the anchor message, oldest first.
+    pub fn messages_before(&self, chat_id: &str, before_ts: i64, before_id: &str, limit: u32) -> Vec<MessageDto> {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status
+             FROM messages
+             WHERE chat_id = ?1
+               AND (ts < ?2 OR (ts = ?2 AND rowid < IFNULL((SELECT rowid FROM messages WHERE chat_id = ?1 AND id = ?3), -1)))
+             ORDER BY ts DESC, rowid DESC LIMIT ?4",
+        ) else {
+            return Vec::new();
+        };
+        let rows = stmt.query_map(params![chat_id, before_ts, before_id, limit], |r| {
+            Ok(StoredMessage {
+                id: r.get(0)?,
+                from_me: r.get(1)?,
+                sender: r.get(2)?,
+                push_name: r.get(3)?,
+                ts: r.get(4)?,
+                kind: r.get(5)?,
+                text: r.get(6)?,
+                file_name: r.get(7)?,
+                status: r.get(8)?,
+            })
+        });
+        let Ok(rows) = rows else { return Vec::new() };
+        let mut out: Vec<MessageDto> = rows.flatten().map(|m| self.to_dto(m)).collect();
+        out.reverse();
+        out
+    }
+
+    /// Oldest stored message of a chat: (id, from_me, ts) — the anchor for asking the phone.
+    pub fn oldest(&self, chat_id: &str) -> Option<(String, bool, i64)> {
+        self.db
+            .query_row(
+                "SELECT id, from_me, ts FROM messages WHERE chat_id = ?1 ORDER BY ts ASC, rowid ASC LIMIT 1",
+                [chat_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     pub fn to_dto(&self, m: StoredMessage) -> MessageDto {
         let sender_name = if m.from_me { String::new() } else { self.person_name(&m.sender, &m.push_name) };
         MessageDto {

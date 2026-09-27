@@ -9,6 +9,7 @@ mod extract;
 mod protocol;
 mod store;
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -31,6 +32,8 @@ struct Ctx {
     db: Db,
     /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
     chats_dirty: Arc<Notify>,
+    /// Chats waiting for an on-demand history reply from the phone -> anchor (ts, message id).
+    pending_history: Arc<Mutex<HashMap<String, (i64, String)>>>,
 }
 
 impl Ctx {
@@ -101,7 +104,12 @@ async fn run(dir: PathBuf) {
             return;
         }
     };
-    let ctx = Ctx { tx, db: Arc::new(Mutex::new(store)), chats_dirty: Arc::new(Notify::new()) };
+    let ctx = Ctx {
+        tx,
+        db: Arc::new(Mutex::new(store)),
+        chats_dirty: Arc::new(Notify::new()),
+        pending_history: Arc::default(),
+    };
     ctx.status("starting", None);
 
     // Show what we already have while connecting.
@@ -199,6 +207,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let messages = ctx.db().messages(&chat_id, limit.unwrap_or(300));
             ctx.send(Out::Messages { chat_id, messages });
         }
+        Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
+            load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
+        }
         Command::MarkRead { chat_id } => {
             let chat = {
                 let db = ctx.db();
@@ -235,9 +246,15 @@ async fn on_event(ctx: &Ctx, event: Arc<Event>) {
             let lazy = (**lazy).clone();
             let db = Arc::clone(&ctx.db);
             let progress = lazy.progress();
+            let on_demand = lazy.sync_type() == wa::history_sync::HistorySyncType::ON_DEMAND as i32;
             let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
             match result {
-                Ok(Ok(count)) => info!("history chunk: {count} conversations (progress {progress:?})"),
+                Ok(Ok(chats)) => {
+                    info!("history chunk: {} conversations (progress {progress:?}, on-demand {on_demand})", chats.len());
+                    if on_demand {
+                        answer_pending_history(ctx, &chats);
+                    }
+                }
                 Ok(Err(e)) => error!("history sync decode failed: {e}"),
                 Err(e) => error!("history sync task failed: {e}"),
             }
@@ -332,15 +349,57 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     }
 }
 
-/// Decodes one history-sync chunk into the store. Returns conversations seen.
-fn ingest_history(lazy: &whatsapp_rust::wacore::types::events::LazyHistorySync, db: &Mutex<Store>) -> Result<usize, String> {
+/// Serves older messages from the store, or asks the phone for them when the
+/// store has nothing older (the reply arrives later as an ON_DEMAND history sync).
+async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts: i64, before_id: String, limit: u32) {
+    let local = ctx.db().messages_before(&chat_id, before_ts, &before_id, limit);
+    if !local.is_empty() {
+        ctx.send(Out::OlderMessages { chat_id, messages: local, complete: false });
+        return;
+    }
+
+    let oldest = ctx.db().oldest(&chat_id);
+    let (Some((oldest_id, from_me, ts)), Ok(jid)) = (oldest, chat_id.parse::<Jid>()) else {
+        ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: true });
+        return;
+    };
+
+    ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), (ts, oldest_id.clone()));
+    if let Err(e) = client.fetch_message_history(&jid, &oldest_id, from_me, ts * 1000, 50).await {
+        warn!("on-demand history request failed for {chat_id}: {e}");
+        ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
+        // Not `complete`: the phone may just be offline; the UI can retry later.
+        ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: false });
+    }
+}
+
+/// An ON_DEMAND chunk arrived: hand each waiting chat whatever is now older than its anchor.
+fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashSet<String>) {
+    let answered: Vec<(String, (i64, String))> = {
+        let mut pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
+        let ids: Vec<String> = pending.keys().filter(|id| chats_in_chunk.contains(*id)).cloned().collect();
+        ids.into_iter().filter_map(|id| pending.remove(&id).map(|anchor| (id, anchor))).collect()
+    };
+    for (chat_id, (ts, id)) in answered {
+        let messages = ctx.db().messages_before(&chat_id, ts, &id, 200);
+        let complete = messages.is_empty();
+        ctx.send(Out::OlderMessages { chat_id, messages, complete });
+    }
+}
+
+/// Decodes one history-sync chunk into the store. Returns the chat ids it covered.
+fn ingest_history(
+    lazy: &whatsapp_rust::wacore::types::events::LazyHistorySync,
+    db: &Mutex<Store>,
+) -> Result<HashSet<String>, String> {
     let mut stream = lazy.stream();
     let mut store = db.lock().unwrap_or_else(|p| p.into_inner());
     store.batch(|s| {
-        let mut count = 0;
+        let mut chats = HashSet::new();
         while let Some(conv) = stream.next_conversation().map_err(|e| e.to_string())? {
-            ingest_conversation(s, &conv);
-            count += 1;
+            if let Some(chat_id) = ingest_conversation(s, &conv) {
+                chats.insert(chat_id);
+            }
         }
         let rest = stream.remainder().map_err(|e| e.to_string())?;
         for p in &rest.pushnames {
@@ -354,13 +413,13 @@ fn ingest_history(lazy: &whatsapp_rust::wacore::types::events::LazyHistorySync, 
                 if s.chat(lid).is_some() { s.add_alias(pn, lid) } else { s.add_alias(lid, pn) }
             }
         }
-        Ok(count)
+        Ok(chats)
     })
 }
 
-fn ingest_conversation(s: &Store, conv: &wa::Conversation) {
+fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
     if is_hidden_chat(&conv.id) {
-        return;
+        return None;
     }
     let is_group = conv.id.ends_with("@g.us");
     let chat_id = s.canonical(&conv.id);
@@ -410,6 +469,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) {
             },
         );
     }
+    Some(chat_id)
 }
 
 /// WebMessageInfo.Status -> 1 sent, 2 delivered, 3 read.

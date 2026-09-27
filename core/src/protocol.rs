@@ -24,6 +24,9 @@ pub enum Event {
     Messages { chat_id: String, messages: Vec<MessageDto> },
     /// A live message for an existing or new chat.
     Message { chat_id: String, message: MessageDto },
+    /// Reply to `loadOlder`: messages older than the anchor, oldest first.
+    /// `complete` = the phone has nothing older; stop asking.
+    OlderMessages { chat_id: String, messages: Vec<MessageDto>, complete: bool },
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -70,6 +73,9 @@ pub struct MessageDto {
 #[serde(tag = "cmd", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Command {
     LoadMessages { chat_id: String, limit: Option<u32> },
+    /// Messages before (`before_ts`, `before_id`): served from the local store,
+    /// or requested from the phone (history sync on demand) when the store has none.
+    LoadOlder { chat_id: String, before_ts: i64, before_id: String, limit: Option<u32> },
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,

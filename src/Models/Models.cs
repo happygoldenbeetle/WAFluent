@@ -31,6 +31,7 @@ public sealed class Message
     public string Text { get; init; } = "";
     public string Time { get; init; } = "";
     public DateTime Timestamp { get; init; }
+    public long UnixTs { get; init; }
     public Delivery Delivery { get; init; }
     public string Reaction { get; init; } = "";
 
@@ -75,6 +76,13 @@ public sealed class Chat : Observable
 
     /// <summary>True once this chat's history has been fetched from the core.</summary>
     public bool MessagesLoaded { get; set; }
+
+    /// <summary>Nothing older exists on this device or the phone.</summary>
+    public bool HistoryComplete { get; set; }
+
+    private bool _loadingOlder;
+    /// <summary>Waiting for older messages (spinner at the top of the conversation).</summary>
+    public bool LoadingOlder { get => _loadingOlder; set => Set(ref _loadingOlder, value); }
 
     public ObservableCollection<Message> Messages { get; } = new();
 

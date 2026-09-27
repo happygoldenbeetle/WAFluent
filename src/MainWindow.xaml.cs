@@ -185,8 +185,19 @@ public sealed partial class MainWindow : Window
 
     // ───────────── Helpers ─────────────
 
+    private DateTime _ignoreScrollUntil;
+
+    /// <summary>Near the top of the conversation: fetch older messages.</summary>
+    private void MessagesScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (DateTime.Now < _ignoreScrollUntil) return;   // our own jump to the bottom
+        if (MessagesScroller.ScrollableHeight > 0 && MessagesScroller.VerticalOffset < 400)
+            ViewModel.LoadOlder(ViewModel.SelectedChat);
+    }
+
     private void ScrollToBottom()
     {
+        _ignoreScrollUntil = DateTime.Now.AddMilliseconds(800);
         // Wait for the repeater to measure the new items, then jump to the end.
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {

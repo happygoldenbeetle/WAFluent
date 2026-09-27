@@ -363,14 +363,23 @@
                     </Grid>
 
                     <ScrollViewer x:Name="MessagesScroller" Grid.Row="1" Padding="28,8,28,12"
-                                  Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                        <ItemsRepeater x:Name="Messages"
-                                       ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
-                                       ItemTemplate="{StaticResource MessageTemplates}">
-                            <ItemsRepeater.Layout>
-                                <StackLayout Spacing="6" />
-                            </ItemsRepeater.Layout>
-                        </ItemsRepeater>
+                                  Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                  ViewChanged="MessagesScroller_ViewChanged">
+                        <StackPanel>
+                            <!-- Older messages on their way (from this PC or the phone). -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,4,0,8"
+                                        Visibility="{x:Bind ViewModel.SelectedChat.LoadingOlder, Mode=OneWay}">
+                                <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.SelectedChat.LoadingOlder, Mode=OneWay}" />
+                                <TextBlock Text="Loading older messages…" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
+                            </StackPanel>
+                            <ItemsRepeater x:Name="Messages"
+                                           ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
+                                           ItemTemplate="{StaticResource MessageTemplates}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Spacing="6" />
+                                </ItemsRepeater.Layout>
+                            </ItemsRepeater>
+                        </StackPanel>
                     </ScrollViewer>
 
                     <!-- Composer: docked bar; the mic becomes Send once there is text. -->

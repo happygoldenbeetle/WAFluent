@@ -45,6 +45,7 @@ public sealed class MainViewModel : Observable
         core.ChatReceived += dto => { Upsert(dto); Reorder(); SyncVisible(); };
         core.MessagesReceived += OnMessages;
         core.MessageReceived += OnMessage;
+        core.OlderMessagesReceived += OnOlderMessages;
     }
 
     // ───────────── Connection state (live mode) ─────────────
@@ -240,6 +241,62 @@ public sealed class MainViewModel : Observable
         foreach (var dto in messages) Append(chat, Format.ToMessage(dto, chat.IsGroup));
         chat.MessagesLoaded = true;
         if (chat == _selectedChat) ConversationChanged?.Invoke();
+
+        // A newly linked device only gets a message or two for most chats; fetch more right away.
+        if (messages.Count < 25) LoadOlder(chat);
+    }
+
+    /// <summary>
+    /// Asks the core for messages older than the oldest one shown. The core answers from its
+    /// store, or asks the phone (which can take a few seconds, or never come if it's offline).
+    /// </summary>
+    public async void LoadOlder(Chat? chat)
+    {
+        if (_core is null || chat is null || !chat.MessagesLoaded || chat.LoadingOlder || chat.HistoryComplete) return;
+        var oldest = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider);
+        if (oldest is null) return;
+
+        chat.LoadingOlder = true;
+        _core.LoadOlder(chat.Id, oldest.UnixTs, oldest.Id);
+
+        await Task.Delay(TimeSpan.FromSeconds(25));
+        if (chat.LoadingOlder && chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider) == oldest)
+            chat.LoadingOlder = false;   // no answer; allow another try on the next scroll
+    }
+
+    private void OnOlderMessages(string chatId, IReadOnlyList<MessageDto> messages, bool complete)
+    {
+        if (!_byId.TryGetValue(chatId, out var chat)) return;
+        chat.LoadingOlder = false;
+        if (complete) chat.HistoryComplete = true;
+
+        var known = chat.Messages.Select(m => m.Id).ToHashSet();
+        var older = messages.Where(d => !known.Contains(d.Id)).Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
+        if (older.Count == 0) return;
+        Prepend(chat, older);
+
+        // Keep filling until there's enough to scroll through.
+        if (!complete && chat.Messages.Count(m => m.Kind != MessageKind.DateDivider) < 25) LoadOlder(chat);
+    }
+
+    /// <summary>Inserts older messages (oldest first) above the current ones, fixing up day dividers.</summary>
+    private static void Prepend(Chat chat, List<Message> older)
+    {
+        var block = new List<Message>();
+        foreach (var m in older)
+        {
+            var last = block.LastOrDefault(x => x.Kind != MessageKind.DateDivider);
+            if (last is null || last.Timestamp.Date != m.Timestamp.Date)
+                block.Add(new Message { Kind = MessageKind.DateDivider, Text = Format.DayLabel(m.Timestamp), Timestamp = m.Timestamp });
+            block.Add(m);
+        }
+
+        // The existing first divider is redundant if the older block ends on the same day.
+        if (chat.Messages.FirstOrDefault() is { Kind: MessageKind.DateDivider } first
+            && first.Timestamp.Date == older[^1].Timestamp.Date)
+            chat.Messages.RemoveAt(0);
+
+        for (var i = 0; i < block.Count; i++) chat.Messages.Insert(i, block[i]);
     }
 
     private void OnMessage(string chatId, MessageDto dto)

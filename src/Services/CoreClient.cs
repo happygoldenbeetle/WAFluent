@@ -34,6 +34,7 @@ public sealed class CoreClient : IDisposable
     public event Action<ChatDto>? ChatReceived;                      // one chat changed
     public event Action<string, IReadOnlyList<MessageDto>>? MessagesReceived;
     public event Action<string, MessageDto>? MessageReceived;
+    public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
 
     public static string DataDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent");
@@ -72,6 +73,10 @@ public sealed class CoreClient : IDisposable
     // ───────────── Commands ─────────────
 
     public void LoadMessages(string chatId, int limit = 300) => Send(new { cmd = "loadMessages", chatId, limit });
+
+    /// <summary>Messages before the given one: from the local store, else requested from the phone.</summary>
+    public void LoadOlder(string chatId, long beforeTs, string beforeId, int limit = 100) =>
+        Send(new { cmd = "loadOlder", chatId, beforeTs, beforeId, limit });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
 
@@ -126,6 +131,12 @@ public sealed class CoreClient : IDisposable
                 var chatId = root.GetProperty("chatId").GetString() ?? "";
                 var messages = root.GetProperty("messages").Deserialize<List<MessageDto>>(Json) ?? [];
                 Post(() => MessagesReceived?.Invoke(chatId, messages));
+                break;
+            case "olderMessages":
+                var olderChat = root.GetProperty("chatId").GetString() ?? "";
+                var older = root.GetProperty("messages").Deserialize<List<MessageDto>>(Json) ?? [];
+                var complete = root.GetProperty("complete").GetBoolean();
+                Post(() => OlderMessagesReceived?.Invoke(olderChat, older, complete));
                 break;
             case "message":
                 var target = root.GetProperty("chatId").GetString() ?? "";
