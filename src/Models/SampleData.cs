@@ -3,60 +3,64 @@ namespace WhatsAppNative.Models;
 /// <summary>Placeholder chats for building the UI before the WhatsApp backend exists.</summary>
 public static class SampleData
 {
-    private const string WallpaperPath = @"C:\Windows\Web\Wallpaper\Windows\img0.jpg";
+    private const string VideoGlyph = "\uE714";
+    private const string PhotoGlyph = "\uEB9F";
 
-    private static Message In(string text, string time) => new() { Text = text, Time = time };
+    private static string? LocalImage(params string[] candidates) => candidates.FirstOrDefault(File.Exists);
+
+    private static Message In(string text, string time, string reaction = "") =>
+        new() { Text = text, Time = time, Reaction = reaction };
 
     private static Message Out(string text, string time, Delivery d = Delivery.Read) =>
         new() { Text = text, Time = time, IsOutgoing = true, Delivery = d };
 
     private static Message Day(string label) => new() { Kind = MessageKind.DateDivider, Text = label };
 
-    public static List<Chat> Create()
+    private static Chat With(this Chat chat, params Message[] messages)
     {
-        var emma = new Chat { Name = "Emma Warren", Status = "Online", Preview = "😍 Yes that's my fave too", Time = "8:32 AM", LastDelivery = Delivery.Read };
-        foreach (var m in new[]
-        {
-            Day("Yesterday"),
-            In("Hey! Did you finish the wallpaper pack?", "5:41 PM"),
-            Out("Almost, just exporting the last few", "5:43 PM"),
-            In("Can't wait to see them 🙌", "5:44 PM"),
-            Out("Here are all the backgrounds. Let me know your favourite!", "6:04 PM"),
-            new Message { Kind = MessageKind.File, IsOutgoing = true, FileName = "Backgrounds.zip", FileDetails = "23.5 MB · Compressed (zipped) Folder", Time = "6:04 PM", Delivery = Delivery.Read },
-            Day("Today"),
-            new Message { Kind = MessageKind.Image, ImagePath = File.Exists(WallpaperPath) ? WallpaperPath : null, Text = "This is beautiful", Time = "8:15 AM" },
-            Out("😍 Yes that's my fave too", "8:32 AM"),
-        }) emma.Messages.Add(m);
-
-        var keira = new Chat { Name = "Keira Harrison", Status = "last seen today at 3:48 PM", Preview = "Yes OK!", Time = "3:48 PM", Unread = 1 };
-        foreach (var m in new[] { Day("Today"), Out("Lunch at 1 tomorrow?", "3:40 PM"), In("Yes OK!", "3:48 PM") }) keira.Messages.Add(m);
-
-        var kurt = new Chat { Name = "Kurt Thomas", Status = "Online", Preview = "Developer, Developers, developers, developers!", Time = "2:54 PM", Unread = 4 };
-        foreach (var m in new[]
-        {
-            Day("Today"), Out("How was the conference?", "2:40 PM"),
-            In("Loud.", "2:52 PM"), In("Very loud.", "2:52 PM"), In("Someone was chanting on stage", "2:53 PM"),
-            In("Developer, Developers, developers, developers!", "2:54 PM"),
-        }) kurt.Messages.Add(m);
-
-        var eha = new Chat { Name = "Eha Meri", Status = "last seen today at 10:04 AM", Preview = "Call me when you can you have a minute", Time = "10:04 AM", Unread = 1 };
-        foreach (var m in new[] { Day("Today"), In("Call me when you can you have a minute", "10:04 AM") }) eha.Messages.Add(m);
-
-        var ninja = new Chat { Name = "Ninjacat", Status = "last seen recently", Preview = "Are you there?", Time = "12:32 AM" };
-        foreach (var m in new[] { Day("Today"), In("Are you there?", "12:32 AM") }) ninja.Messages.Add(m);
-
-        var lloyd = new Chat { Name = "Lloyd Berry", Status = "typing…", IsTyping = true, Preview = "typing…", Time = "05/11" };
-        foreach (var m in new[] { Day("05/11"), In("Got the tickets 🎟️", "7:12 PM"), Out("Legend", "7:15 PM") }) lloyd.Messages.Add(m);
-
-        var jihoon = new Chat { Name = "Jihoon Seo", Status = "last seen 05/11", Preview = "Big jump!", PreviewGlyph = "\uE714", Time = "05/11", LastDelivery = Delivery.Read };
-        foreach (var m in new[] { Day("05/11"), In("Did you see my video?", "4:02 PM"), Out("Big jump!", "4:10 PM") }) jihoon.Messages.Add(m);
-
-        var design = new Chat { Name = "Design Team", Status = "Keira, Kurt, Emma, You", Preview = "Kurt: Pushed the new icons", Time = "05/10" };
-        foreach (var m in new[] { Day("05/10"), In("Standup moved to 10", "9:01 AM"), In("Pushed the new icons", "11:20 AM") }) design.Messages.Add(m);
-
-        var mom = new Chat { Name = "Mom", Status = "last seen 05/09", Preview = "Will do!", Time = "05/09", LastDelivery = Delivery.Delivered };
-        foreach (var m in new[] { Day("05/09"), In("Call me when you land ❤️", "6:30 AM"), Out("Will do!", "6:31 AM", Delivery.Delivered) }) mom.Messages.Add(m);
-
-        return [keira, kurt, eha, emma, ninja, lloyd, jihoon, design, mom];
+        foreach (var m in messages) chat.Messages.Add(m);
+        return chat;
     }
+
+    public static List<Chat> Create() =>
+    [
+        new Chat { Name = "Maya Kasuma", Status = "last seen today at 14:54", Preview = "Yes! OK", Time = "14:54", IsPinned = true }
+            .With(Day("Today"), Out("Coffee after the review?", "14:50"), In("Yes! OK", "14:54")),
+
+        new Chat { Name = "Jason Ballmer", Status = "online", Preview = "Video", PreviewGlyph = VideoGlyph, Time = "15:26", Unread = 3 }
+            .With(Day("Today"), In("Check this out", "15:25"), In("You have to see the ending", "15:25"), In("🎥 Video", "15:26")),
+
+        new Chat { Name = "Alice Whitman", Status = "online", Preview = "Wow! Have great time. Enjoy.", Time = "15:12", LastDelivery = Delivery.Read }
+            .With(
+                Day("Yesterday"),
+                In("Did you get a chance to pull everything together?", "17:40"),
+                Out("Here are all the files. Let me know once you've had a look.", "18:02"),
+                new Message { Kind = MessageKind.File, IsOutgoing = true, FileName = "All-files.zip", FileDetails = "23.5 MB · Compressed (zipped) Folder", Time = "18:02", Delivery = Delivery.Read },
+                In("OK! 👍", "14:04"),
+                Day("Today"),
+                new Message
+                {
+                    Kind = MessageKind.Image, Text = "So beautiful here!", Time = "15:06", Reaction = "❤️",
+                    ImagePath = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"),
+                },
+                Out("Wow! Have great time. Enjoy.", "15:12")),
+
+        new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", Preview = "Rebecca: @Chris R?", Time = "14:43", Unread = 1, HasMention = true }
+            .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),
+
+        new Chat { Name = "Stasa Benko", Status = "last seen today at 13:56", Preview = "Aww no problem.", Time = "13:56", Unread = 2 }
+            .With(Day("Today"), Out("Sorry, can't make it tonight 😞", "13:50"), In("Aww", "13:55"), In("Aww no problem.", "13:56")),
+
+        new Chat { Name = "Family Foodies", Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = PhotoGlyph, Time = "11:21", LastDelivery = Delivery.Read }
+            .With(Day("Today"), In("Who made the lasagna??", "11:02"), Out("📷 Dinner last night", "11:21")),
+
+        new Chat { Name = "Mark Rogers", Status = "typing…", IsTyping = true, Preview = "typing…", Time = "10:56" }
+            .With(Day("Today"), In("Are we still on for Friday?", "10:50"), Out("Yep!", "10:55")),
+
+        new Chat { Name = "Dawn Jones", Status = "last seen today at 08:32", Preview = "Yes that's my fave too!", Time = "8:32", LastDelivery = Delivery.Read }
+            .With(Day("Today"), In("The blue one is so good", "8:30"), Out("Yes that's my fave too!", "8:32")),
+
+        new Chat { Name = "Tony Woodley", Status = "last seen yesterday at 21:10", Preview = "See you tomorrow", Time = "Yesterday" }
+            .With(Day("Yesterday"), In("See you tomorrow", "21:10")),
+    ];
 }

@@ -12,16 +12,16 @@
         <Grid.Resources>
             <!-- ───────────── Chat list item ───────────── -->
             <DataTemplate x:Key="ChatItemTemplate" x:DataType="models:Chat">
-                <Grid Padding="0,10" ColumnSpacing="12">
+                <Grid Padding="0,9" ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Avatar DisplayName="{x:Bind Name}" Size="48" />
+                    <controls:Avatar DisplayName="{x:Bind Name}" Size="44" />
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -38,67 +38,44 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                        Visibility="{x:Bind helpers:Ui.Collapsed(IsTyping)}" />
-                            <TextBlock Grid.Column="2" Text="typing…" FontSize="13"
+                            <TextBlock Grid.Column="2" Text="typing…" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(IsTyping)}" />
                         </Grid>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="6">
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="5">
                         <Grid HorizontalAlignment="Right">
                             <TextBlock Text="{x:Bind Time, Mode=OneWay}" FontSize="12"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Collapsed(HasUnread), Mode=OneWay}" />
-                            <TextBlock Text="{x:Bind Time, Mode=OneWay}" FontSize="12" FontWeight="SemiBold"
+                            <TextBlock Text="{x:Bind Time, Mode=OneWay}" FontSize="12"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
-                        <Grid Height="16">
-                            <InfoBadge HorizontalAlignment="Right" Value="{x:Bind Unread, Mode=OneWay}"
+                        <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
+                            <FontIcon Glyph="&#xE718;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      Visibility="{x:Bind IsPinned}" />
+                            <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       Visibility="{x:Bind HasMention}" />
+                            <InfoBadge Value="{x:Bind Unread, Mode=OneWay}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
-                        </Grid>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </DataTemplate>
 
-            <!-- ───────────── Message templates ───────────── -->
+            <!-- ───────────── Message templates ─────────────
+                 Each root aligns left/right and can carry a reaction pill under the bubble. -->
             <helpers:MessageTemplateSelector x:Key="MessageTemplates">
                 <helpers:MessageTemplateSelector.Text>
                     <DataTemplate x:DataType="models:Message">
-                        <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}">
-                            <Grid>
-                                <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
-                                <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14">
-                                    <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
-                                </TextBlock>
-                                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
-                                            Orientation="Horizontal" Spacing="3">
-                                    <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
-                                </StackPanel>
-                            </Grid>
-                        </controls:Bubble>
-                    </DataTemplate>
-                </helpers:MessageTemplateSelector.Text>
-
-                <helpers:MessageTemplateSelector.Image>
-                    <DataTemplate x:DataType="models:Message">
-                        <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
-                            <StackPanel Width="320">
-                                <Border Height="200" CornerRadius="6" Background="{ThemeResource FileCardBrush}">
-                                    <Grid>
-                                        <FontIcon Glyph="&#xEB9F;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}"
-                                                  Visibility="{x:Bind helpers:Ui.IsNull(ImagePath)}" />
-                                        <Border CornerRadius="6">
-                                            <Border.Background>
-                                                <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(ImagePath)}" Stretch="UniformToFill" />
-                                            </Border.Background>
-                                        </Border>
-                                    </Grid>
-                                </Border>
-                                <Grid Padding="5,6,5,2">
-                                    <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14"
-                                               Visibility="{x:Bind HasText}">
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}">
+                                <Grid>
+                                    <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
+                                    <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14">
                                         <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                     </TextBlock>
                                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
@@ -107,213 +84,318 @@
                                         <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                     </StackPanel>
                                 </Grid>
-                            </StackPanel>
-                        </controls:Bubble>
+                            </controls:Bubble>
+                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
+                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Text>
+
+                <helpers:MessageTemplateSelector.Image>
+                    <DataTemplate x:DataType="models:Message">
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
+                                <StackPanel Width="300">
+                                    <Border Height="190" CornerRadius="6" Background="{ThemeResource FileCardBrush}">
+                                        <Grid>
+                                            <FontIcon Glyph="&#xEB9F;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}"
+                                                      Visibility="{x:Bind helpers:Ui.IsNull(ImagePath)}" />
+                                            <Border CornerRadius="6">
+                                                <Border.Background>
+                                                    <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(ImagePath)}" Stretch="UniformToFill" />
+                                                </Border.Background>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                    <Grid Padding="5,6,5,2">
+                                        <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14"
+                                                   Visibility="{x:Bind HasText}">
+                                            <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
+                                        </TextBlock>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
+                                                    Orientation="Horizontal" Spacing="3">
+                                            <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
+                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </controls:Bubble>
+                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
+                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            </Border>
+                        </StackPanel>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Image>
 
                 <helpers:MessageTemplateSelector.File>
                     <DataTemplate x:DataType="models:Message">
-                        <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
-                            <StackPanel Width="350" Spacing="4">
-                                <Border Background="{ThemeResource FileCardBrush}" CornerRadius="6" Padding="10,12,10,10">
-                                    <StackPanel Spacing="12">
-                                        <Grid ColumnSpacing="12">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{x:Bind helpers:Ui.FileIcon(FileName)}" FontSize="30" VerticalAlignment="Center" />
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock Text="{x:Bind FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{x:Bind FileDetails}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </Grid>
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Content="Open" Style="{StaticResource BubbleActionButtonStyle}" />
-                                            <Button Grid.Column="1" Content="Save As…" Style="{StaticResource BubbleActionButtonStyle}" />
-                                        </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
+                                <StackPanel Width="330" Spacing="4">
+                                    <Border Background="{ThemeResource FileCardBrush}" CornerRadius="6" Padding="10,12,10,10">
+                                        <StackPanel Spacing="12">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{x:Bind helpers:Ui.FileIcon(FileName)}" FontSize="28" VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{x:Bind FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{x:Bind FileDetails}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Grid ColumnSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Content="Open" Style="{StaticResource BubbleActionButtonStyle}" />
+                                                <Button Grid.Column="1" Content="Save As…" Style="{StaticResource BubbleActionButtonStyle}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
+                                        <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
+                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                     </StackPanel>
-                                </Border>
-                                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
-                                    <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                 </StackPanel>
-                            </StackPanel>
-                        </controls:Bubble>
+                            </controls:Bubble>
+                        </StackPanel>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.File>
 
                 <helpers:MessageTemplateSelector.DateDivider>
                     <DataTemplate x:DataType="models:Message">
-                        <Border HorizontalAlignment="Center" Margin="0,10" Padding="12,5"
-                                Background="{ThemeResource DatePillBrush}" CornerRadius="6"
-                                BorderBrush="{ThemeResource BubbleShadowBrush}" BorderThickness="0,0,0,1">
-                            <TextBlock Text="{x:Bind Text}" FontSize="12.5" Foreground="{ThemeResource BubbleTextBrush}" />
+                        <Border HorizontalAlignment="Center" Margin="0,10" Padding="12,4"
+                                Background="{ThemeResource DatePillBrush}" CornerRadius="6">
+                            <TextBlock Text="{x:Bind Text}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
                         </Border>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.DateDivider>
             </helpers:MessageTemplateSelector>
         </Grid.Resources>
 
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <!-- ═════════════ Sidebar (Mica shows through) ═════════════ -->
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="48" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-            <Grid Grid.Row="1" Margin="20,6,12,6">
-                <TextBlock Text="Chats" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" />
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2">
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New chat" AutomationProperties.Name="New chat">
-                        <FontIcon Glyph="&#xE710;" FontSize="16" />
-                    </Button>
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Settings" AutomationProperties.Name="Settings">
-                        <FontIcon Glyph="&#xE713;" FontSize="16" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-
-            <AutoSuggestBox Grid.Row="2" Margin="16,4,16,8"
-                            PlaceholderText="Search or start new chat"
-                            QueryIcon="Find"
-                            AutomationProperties.Name="Search chats"
-                            TextChanged="Search_TextChanged" />
-
-            <SelectorBar x:Name="Tabs" Grid.Row="3" HorizontalAlignment="Center" SelectionChanged="Tabs_SelectionChanged">
-                <SelectorBarItem Text="Chats" Tag="Chats" IsSelected="True" />
-                <SelectorBarItem Text="Statuses" Tag="Statuses" />
-                <SelectorBarItem Text="Calls" Tag="Calls" />
-            </SelectorBar>
-
-            <ListView x:Name="ChatList" Grid.Row="4" Margin="4,4,4,0"
-                      ItemsSource="{x:Bind ViewModel.Chats}"
-                      ItemTemplate="{StaticResource ChatItemTemplate}"
-                      SingleSelectionFollowsFocus="False"
-                      SelectionChanged="ChatList_SelectionChanged" />
-
-            <StackPanel x:Name="TabPlaceholder" Grid.Row="4" Visibility="Collapsed"
-                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                <FontIcon x:Name="TabPlaceholderIcon" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
-                <TextBlock x:Name="TabPlaceholderText" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-            </StackPanel>
-        </Grid>
-
-        <!-- ═════════════ Conversation pane ═════════════ -->
-        <Grid Grid.Column="1" Background="{ThemeResource ChatPaneBackgroundBrush}"
-              BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <Border Grid.Row="1" Grid.RowSpan="2" Background="{ThemeResource WallpaperBrush}" />
-
-            <!-- Header: the top 48px sits under the caption buttons. -->
-            <Grid Background="{ThemeResource ChatHeaderBackgroundBrush}" Padding="20,48,14,10"
-                  BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,0,0,1"
-                  Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" />
-                    <TextBlock Text="{x:Bind ViewModel.SelectedChat.Status, Mode=OneWay}" FontSize="12"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="4">
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call">
-                        <FontIcon Glyph="&#xE714;" FontSize="16" />
-                    </Button>
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Voice call" AutomationProperties.Name="Voice call">
-                        <FontIcon Glyph="&#xE717;" FontSize="16" />
-                    </Button>
-                    <Rectangle Width="1" Height="20" Margin="8,0" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Search" AutomationProperties.Name="Search in chat">
-                        <FontIcon Glyph="&#xE721;" FontSize="16" />
-                    </Button>
-                    <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" Size="30"
-                                     Margin="8,0,0,0" VerticalAlignment="Center" />
-                </StackPanel>
-            </Grid>
-
-            <ScrollViewer x:Name="MessagesScroller" Grid.Row="1" Padding="56,8,56,8"
-                          Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                <ItemsRepeater x:Name="Messages"
-                               ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
-                               ItemTemplate="{StaticResource MessageTemplates}">
-                    <ItemsRepeater.Layout>
-                        <StackLayout Spacing="6" />
-                    </ItemsRepeater.Layout>
-                </ItemsRepeater>
-            </ScrollViewer>
-
-            <!-- Composer -->
-            <Border Grid.Row="2" Margin="20,6,20,16" Padding="6,4" CornerRadius="8"
-                    Background="{ThemeResource ComposerBrush}"
-                    BorderBrush="{ThemeResource BubbleShadowBrush}" BorderThickness="0,0,0,1"
-                    Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                <Grid ColumnSpacing="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
-                            Click="Emoji_Click">
-                        <FontIcon Glyph="&#xE76E;" FontSize="17" />
-                    </Button>
-                    <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
-                        <FontIcon Glyph="&#xE723;" FontSize="17" />
-                    </Button>
-                    <TextBox x:Name="ComposerBox" Grid.Column="2" PlaceholderText="Type a message"
-                             AutomationProperties.Name="Message"
-                             VerticalAlignment="Center" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
-                             BorderThickness="0" Background="Transparent" Padding="6,6,6,6"
-                             PreviewKeyDown="ComposerBox_PreviewKeyDown">
-                        <TextBox.Resources>
-                            <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
-                            <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
-                            <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
-                        </TextBox.Resources>
-                    </TextBox>
-                    <Button Grid.Column="3" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send"
-                            Click="Send_Click">
-                        <FontIcon Glyph="&#xE724;" FontSize="17" />
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- Nothing selected -->
-            <StackPanel Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
-                        Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
-                <Image Source="ms-appx:///Assets/AppIcon.png" Width="72" />
-                <TextBlock Text="WhatsApp Native" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
-            </StackPanel>
-        </Grid>
-
-        <!-- ═════════════ Title bar (drag region across the top) ═════════════ -->
-        <Grid x:Name="AppTitleBar" Grid.ColumnSpan="2" Height="48" VerticalAlignment="Top" Background="Transparent">
-            <StackPanel Orientation="Horizontal" Spacing="10" Margin="16,0,0,0" VerticalAlignment="Center">
-                <Image Source="ms-appx:///Assets/AppIcon.png" Width="18" Height="18" />
+        <!-- ═════════════ Title bar ═════════════ -->
+        <Grid x:Name="AppTitleBar" Background="Transparent">
+            <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0,0,0" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/AppIcon.png" Width="16" Height="16" />
                 <TextBlock Text="WhatsApp Native" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
+
+        <!-- ═════════════ Navigation rail + content ═════════════ -->
+        <NavigationView x:Name="Nav" Grid.Row="1"
+                        PaneDisplayMode="LeftCompact"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        IsTitleBarAutoPaddingEnabled="False"
+                        OpenPaneLength="240"
+                        SelectionChanged="Nav_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Chats" Tag="Chats" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8BD;" />
+                    </NavigationViewItem.Icon>
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge Value="{x:Bind ViewModel.UnreadChats, Mode=OneWay}"
+                                   Visibility="{x:Bind helpers:Ui.Positive(ViewModel.UnreadChats), Mode=OneWay}" />
+                    </NavigationViewItem.InfoBadge>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Calls" Tag="Calls">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE717;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Status" Tag="Status">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xEA3A;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="Starred messages" Tag="Starred">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE734;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Archived chats" Tag="Archived">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7B8;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Settings" Tag="Settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <!-- Profile photo; the placeholder is swapped for the real picture once linked. -->
+                <NavigationViewItem Content="Profile" Tag="Profile">
+                    <NavigationViewItem.Resources>
+                        <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">24</x:Double>
+                    </NavigationViewItem.Resources>
+                    <NavigationViewItem.Icon>
+                        <ImageIcon Source="ms-appx:///Assets/ProfilePlaceholder.png" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="340" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ───────────── Chat list pane ───────────── -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="16,10,8,8">
+                        <TextBlock x:Name="ListTitle" Text="Chats" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel x:Name="ListActions" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New chat" AutomationProperties.Name="New chat">
+                                <FontIcon Glyph="&#xE70F;" FontSize="15" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Filter" AutomationProperties.Name="Filter chats">
+                                <FontIcon Glyph="&#xE71C;" FontSize="15" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <AutoSuggestBox x:Name="SearchBox" Grid.Row="1" Margin="16,0,16,8"
+                                    PlaceholderText="Search or start a new chat"
+                                    QueryIcon="Find"
+                                    AutomationProperties.Name="Search chats"
+                                    TextChanged="Search_TextChanged" />
+
+                    <ListView x:Name="ChatList" Grid.Row="2" Margin="4,0,4,0"
+                              ItemsSource="{x:Bind ViewModel.Chats}"
+                              ItemTemplate="{StaticResource ChatItemTemplate}"
+                              SingleSelectionFollowsFocus="False"
+                              SelectionChanged="ChatList_SelectionChanged" />
+
+                    <StackPanel x:Name="SectionPlaceholder" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                        <FontIcon x:Name="SectionPlaceholderIcon" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <TextBlock x:Name="SectionPlaceholderText" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- ───────────── Conversation pane ───────────── -->
+                <Grid Grid.Column="1" Background="{ThemeResource ChatPaneBackgroundBrush}"
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="1" Background="{ThemeResource WallpaperBrush}" />
+
+                    <Grid Height="58" Padding="16,0,10,0" ColumnSpacing="12"
+                          Background="{ThemeResource ChatHeaderBackgroundBrush}"
+                          BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,0,0,1"
+                          Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" Size="36" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{x:Bind ViewModel.SelectedChat.Status, Mode=OneWay}" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call">
+                                <FontIcon Glyph="&#xE714;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Voice call" AutomationProperties.Name="Voice call">
+                                <FontIcon Glyph="&#xE717;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" Margin="8,0,0,0" ToolTipService.ToolTip="Search" AutomationProperties.Name="Search in chat">
+                                <FontIcon Glyph="&#xE721;" FontSize="16" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer x:Name="MessagesScroller" Grid.Row="1" Padding="28,8,28,12"
+                                  Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                        <ItemsRepeater x:Name="Messages"
+                                       ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
+                                       ItemTemplate="{StaticResource MessageTemplates}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Spacing="6" />
+                            </ItemsRepeater.Layout>
+                        </ItemsRepeater>
+                    </ScrollViewer>
+
+                    <!-- Composer: docked bar; the mic becomes Send once there is text. -->
+                    <Grid Grid.Row="2" Padding="10,6" ColumnSpacing="2"
+                          Background="{ThemeResource ComposerBrush}"
+                          BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,1,0,0"
+                          Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
+                                Click="Emoji_Click">
+                            <FontIcon Glyph="&#xE76E;" FontSize="17" />
+                        </Button>
+                        <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
+                            <FontIcon Glyph="&#xE723;" FontSize="17" />
+                        </Button>
+                        <TextBox x:Name="ComposerBox" Grid.Column="2" PlaceholderText="Type a message"
+                                 AutomationProperties.Name="Message"
+                                 VerticalAlignment="Center" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
+                                 BorderThickness="0" Background="Transparent" Padding="6"
+                                 TextChanged="ComposerBox_TextChanged"
+                                 PreviewKeyDown="ComposerBox_PreviewKeyDown">
+                            <TextBox.Resources>
+                                <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="Transparent" />
+                                <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="Transparent" />
+                                <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+                            </TextBox.Resources>
+                        </TextBox>
+                        <Grid Grid.Column="3">
+                            <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}"
+                                    ToolTipService.ToolTip="Voice message" AutomationProperties.Name="Voice message">
+                                <FontIcon Glyph="&#xE720;" FontSize="17" />
+                            </Button>
+                            <Button x:Name="SendButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed"
+                                    ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="Send_Click">
+                                <FontIcon Glyph="&#xE724;" FontSize="17" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </Button>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Nothing selected -->
+                    <StackPanel Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
+                                Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
+                        <Image Source="ms-appx:///Assets/AppIcon.png" Width="72" />
+                        <TextBlock Text="WhatsApp Native" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </NavigationView>
     </Grid>
 </Window>

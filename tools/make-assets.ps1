@@ -1,4 +1,4 @@
-﻿# Generates the chat wallpaper (light + dark) and the app icon into ..\src\Assets.
+# Generates the chat wallpaper (light + dark) and the app icon into ..\src\Assets.
 # Doodles are Segoe Fluent Icons glyphs scattered on a jittered grid.
 Add-Type -AssemblyName System.Drawing
 
@@ -36,7 +36,7 @@ function New-Wallpaper([string] $path, [System.Drawing.Color] $bg, [System.Drawi
     $g.Dispose(); $bmp.Dispose()
 }
 
-New-Wallpaper (Join-Path $assets 'Wallpaper.Light.png') ([System.Drawing.Color]::FromArgb(239, 234, 226)) ([System.Drawing.Color]::FromArgb(48, 120, 110, 95))
+New-Wallpaper (Join-Path $assets 'Wallpaper.Light.png') ([System.Drawing.Color]::FromArgb(240, 239, 237)) ([System.Drawing.Color]::FromArgb(40, 110, 110, 110))
 New-Wallpaper (Join-Path $assets 'Wallpaper.Dark.png')  ([System.Drawing.Color]::FromArgb(17, 21, 24))    ([System.Drawing.Color]::FromArgb(15, 255, 255, 255))
 
 # App icon: green circle with a white chat glyph.
@@ -54,6 +54,20 @@ function New-IconBitmap([int] $s) {
     $g.Dispose()
     return $bmp
 }
+
+# Profile placeholder for the rail: grey circle with a person glyph.
+$pp = New-Object System.Drawing.Bitmap 96, 96
+$g = [System.Drawing.Graphics]::FromImage($pp)
+$g.SmoothingMode = 'AntiAlias'; $g.TextRenderingHint = 'AntiAlias'
+$g.Clear([System.Drawing.Color]::Transparent)
+$g.FillEllipse((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(134, 150, 160))), 0, 0, 95, 95)
+$fmt = New-Object System.Drawing.StringFormat
+$fmt.Alignment = 'Center'; $fmt.LineAlignment = 'Center'
+$font = New-Object System.Drawing.Font 'Segoe Fluent Icons', 48, ([System.Drawing.GraphicsUnit]::Pixel)
+$g.DrawString([string][char]0xE77B, $font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF 0, 2, 96, 96), $fmt)
+$g.Dispose()
+$pp.Save((Join-Path $assets 'ProfilePlaceholder.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+$pp.Dispose()
 
 $png = New-IconBitmap 256
 $png.Save((Join-Path $assets 'AppIcon.png'), [System.Drawing.Imaging.ImageFormat]::Png)

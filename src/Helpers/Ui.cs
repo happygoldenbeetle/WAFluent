@@ -14,6 +14,10 @@ public static class Ui
     public static Visibility HasDelivery(Delivery d) => Visible(d != Delivery.None);
     public static Visibility IsNull(object? value) => Visible(value is null);
     public static Visibility IsNotNull(object? value) => Visible(value is not null);
+    public static Visibility Positive(int value) => Visible(value > 0);
+
+    public static HorizontalAlignment Align(bool isOutgoing) =>
+        isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 
     public static ImageSource? Image(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 640 };

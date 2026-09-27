@@ -9,6 +9,15 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Styles/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- WhatsApp green replaces the Windows accent everywhere (selection pills, badges, focus lines). -->
+            <Color x:Key="SystemAccentColor">#00A884</Color>
+            <Color x:Key="SystemAccentColorLight1">#06CF9C</Color>
+            <Color x:Key="SystemAccentColorLight2">#25D366</Color>
+            <Color x:Key="SystemAccentColorLight3">#7AE3C3</Color>
+            <Color x:Key="SystemAccentColorDark1">#008069</Color>
+            <Color x:Key="SystemAccentColorDark2">#017561</Color>
+            <Color x:Key="SystemAccentColorDark3">#005C4B</Color>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

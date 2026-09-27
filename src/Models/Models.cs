@@ -30,6 +30,7 @@ public sealed class Message
     public string Text { get; init; } = "";
     public string Time { get; init; } = "";
     public Delivery Delivery { get; init; }
+    public string Reaction { get; init; } = "";
 
     // Image messages
     public string? ImagePath { get; init; }
@@ -58,6 +59,8 @@ public sealed class Chat : Observable
     public string Status { get; init; } = "";
     public bool IsTyping { get; init; }
     public string PreviewGlyph { get; init; } = "";   // e.g. a camera/video icon before the preview
+    public bool IsPinned { get; init; }
+    public bool HasMention { get; init; }
     public ObservableCollection<Message> Messages { get; } = new();
 
     public string Preview { get => _preview; set => Set(ref _preview, value); }

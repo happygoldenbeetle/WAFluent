@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -6,8 +6,8 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#EFEAE2" />
-            <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#F9F9F9" />
+            <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#F0EFED" />
+            <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#FAFAFA" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14000000" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#D9FDD3" />
             <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#FFFFFF" />
@@ -19,14 +19,14 @@
             <SolidColorBrush x:Key="FileCardBrush" Color="#0D0B141A" />
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#140B141A" />
-            <SolidColorBrush x:Key="ComposerBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="ComposerBrush" Color="#FAFAFA" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#CCFFFFFF" />
             <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Light.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#111518" />
-            <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#1F1F1F" />
+            <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#33000000" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#005C4B" />
             <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#202C33" />
@@ -38,8 +38,8 @@
             <SolidColorBrush x:Key="FileCardBrush" Color="#26000000" />
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="#1AFFFFFF" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#14FFFFFF" />
-            <SolidColorBrush x:Key="ComposerBrush" Color="#2A2F32" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#182229" />
+            <SolidColorBrush x:Key="ComposerBrush" Color="#202020" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#CC182229" />
             <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Dark.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
         </ResourceDictionary>
 
@@ -113,6 +113,17 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Emoji reaction that overlaps the bottom edge of a bubble. -->
+    <Style x:Key="ReactionPillStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource IncomingBubbleBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource BubbleShadowBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="5,1,5,2" />
+        <Setter Property="Margin" Value="8,-6,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
 
     <Style x:Key="MetaTextStyle" TargetType="TextBlock">
