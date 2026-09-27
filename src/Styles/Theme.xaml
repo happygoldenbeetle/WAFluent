@@ -7,6 +7,8 @@
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#F0EFED" />
+            <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F5F5F5F5" />
+            <SolidColorBrush x:Key="LightboxBarBrush" Color="#E6FFFFFF" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#FAFAFA" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14000000" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#D9FDD3" />
@@ -27,6 +29,8 @@
 
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#1C1C1C" />
+            <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F20F0F0F" />
+            <SolidColorBrush x:Key="LightboxBarBrush" Color="#CC202020" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#144D37" />
@@ -47,6 +51,8 @@
 
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="LightboxBarBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />

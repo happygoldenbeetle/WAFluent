@@ -185,13 +185,6 @@ public sealed partial class MainWindow : Window
 
     // ───────────── Helpers ─────────────
 
-    /// <summary>Open a downloaded photo/sticker in the default viewer (Photos).</summary>
-    private void Media_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not Message { MediaPath: { } path } || !File.Exists(path)) return;
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
-    }
-
     private DateTime _ignoreScrollUntil;
 
     /// <summary>Near the top of the conversation: fetch older messages.</summary>
