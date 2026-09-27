@@ -50,30 +50,53 @@ public static class Format
         _ => Delivery.Sent,
     };
 
-    /// <summary>Media isn't downloaded yet, so non-text messages show a labelled line.</summary>
+    /// <summary>
+    /// Images, stickers and voice notes get their own bubbles once their download details are
+    /// known; other media (video, documents...) still show as a labelled line for now.
+    /// </summary>
     public static Message ToMessage(MessageDto dto, bool isGroup)
     {
         var when = FromUnix(dto.Ts);
-        var common = new Message
+        var media = dto.Media;
+
+        Message Make(MessageKind kind, string text = "", string fileName = "", string fileDetails = "",
+                     double width = 300, double height = 200) => new()
         {
             Id = dto.Id,
+            Kind = kind,
             IsOutgoing = dto.FromMe,
             Timestamp = when,
             UnixTs = dto.Ts,
             Time = when.ToString("H:mm"),
             Delivery = dto.FromMe ? ToDelivery(dto.Status) : Delivery.None,
             SenderName = isGroup && !dto.FromMe ? dto.SenderName : "",
+            Text = text,
+            FileName = fileName,
+            FileDetails = fileDetails,
+            HasMedia = media is not null,
+            MediaPath = media?.Path,
+            MediaWidth = width,
+            MediaHeight = height,
+            Seconds = media?.Seconds ?? 0,
+            Waveform = media?.Waveform ?? [],
         };
 
-        if (dto.Kind == "document")
+        switch (dto.Kind)
         {
-            var name = string.IsNullOrEmpty(dto.FileName) ? "Document" : dto.FileName;
-            var ext = Path.GetExtension(name).TrimStart('.').ToUpperInvariant();
-            return Clone(common, MessageKind.File, text: dto.Text, fileName: name,
-                         fileDetails: ext.Length > 0 ? $"{ext} document" : "Document");
+            case "image" when media is not null:
+                var (w, h) = Fit(media.Width, media.Height, maxWidth: 300, maxHeight: 360);
+                return Make(MessageKind.Image, dto.Text, width: w, height: h);
+            case "sticker" when media is not null:
+                return Make(MessageKind.Sticker, width: 150, height: 150);
+            case "voice" or "audio" when media is not null:
+                return Make(MessageKind.Voice);
+            case "document":
+                var name = string.IsNullOrEmpty(dto.FileName) ? "Document" : dto.FileName;
+                var ext = Path.GetExtension(name).TrimStart('.').ToUpperInvariant();
+                return Make(MessageKind.File, dto.Text, name, ext.Length > 0 ? $"{ext} document" : "Document");
         }
 
-        var text = dto.Kind switch
+        var label = dto.Kind switch
         {
             "text" => dto.Text,
             "image" => Label("📷", "Photo", dto.Text),
@@ -87,24 +110,21 @@ public static class Format
             "poll" => Label("📊", "Poll", dto.Text),
             _ => dto.Text.Length > 0 ? dto.Text : "Unsupported message",
         };
-        return Clone(common, MessageKind.Text, text: text);
+        return Make(MessageKind.Text, label);
+    }
+
+    /// <summary>Scales a picture into the bubble keeping its proportions (unknown size: 300x200).</summary>
+    private static (double Width, double Height) Fit(int width, int height, double maxWidth, double maxHeight)
+    {
+        if (width <= 0 || height <= 0) return (maxWidth, 200);
+        var scale = Math.Min(maxWidth / width, maxHeight / height);
+        return (Math.Max(160, Math.Round(width * scale)), Math.Max(100, Math.Round(height * scale)));
     }
 
     private static string Label(string emoji, string name, string caption) =>
         caption.Length > 0 ? $"{emoji} {caption}" : $"{emoji} {name}";
 
-    private static Message Clone(Message m, MessageKind kind, string text = "", string fileName = "", string fileDetails = "") => new()
-    {
-        Id = m.Id,
-        Kind = kind,
-        IsOutgoing = m.IsOutgoing,
-        Timestamp = m.Timestamp,
-        UnixTs = m.UnixTs,
-        Time = m.Time,
-        Delivery = m.Delivery,
-        SenderName = m.SenderName,
-        Text = text,
-        FileName = fileName,
-        FileDetails = fileDetails,
-    };
+    /// <summary>"0:07", "1:23", "1:02:03".</summary>
+    public static string Duration(TimeSpan t) =>
+        t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : $"{(int)t.TotalMinutes}:{t.Seconds:00}";
 }

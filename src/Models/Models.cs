@@ -6,7 +6,7 @@ namespace WhatsAppNative.Models;
 
 public enum Delivery { None, Sent, Delivered, Read }
 
-public enum MessageKind { Text, Image, File, DateDivider }
+public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker }
 
 public abstract class Observable : INotifyPropertyChanged
 {
@@ -23,8 +23,11 @@ public abstract class Observable : INotifyPropertyChanged
     protected void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
-public sealed class Message
+public sealed class Message : Observable
 {
+    private string? _mediaPath;
+    private bool _mediaFailed;
+
     public string Id { get; init; } = "";
     public MessageKind Kind { get; init; }
     public bool IsOutgoing { get; init; }
@@ -38,8 +41,34 @@ public sealed class Message
     /// <summary>Shown above incoming messages in groups.</summary>
     public string SenderName { get; init; } = "";
 
-    // Image messages
-    public string? ImagePath { get; init; }
+    // ───── Attachments (image, sticker, voice) ─────
+
+    /// <summary>The message has a downloadable attachment.</summary>
+    public bool HasMedia { get; init; }
+
+    /// <summary>Downloaded file; null while downloading (or not yet requested).</summary>
+    public string? MediaPath
+    {
+        get => _mediaPath;
+        set { if (Set(ref _mediaPath, value)) { Raise(nameof(IsMediaLoading)); Raise(nameof(HasMediaFile)); } }
+    }
+
+    public bool MediaFailed
+    {
+        get => _mediaFailed;
+        set { if (Set(ref _mediaFailed, value)) Raise(nameof(IsMediaLoading)); }
+    }
+
+    public bool HasMediaFile => _mediaPath is not null;
+    public bool IsMediaLoading => HasMedia && _mediaPath is null && !_mediaFailed;
+
+    /// <summary>On-screen size for images/stickers, keeping the original proportions.</summary>
+    public double MediaWidth { get; init; } = 300;
+    public double MediaHeight { get; init; } = 200;
+
+    /// <summary>Voice notes: length and 64 amplitude samples (0-100).</summary>
+    public int Seconds { get; init; }
+    public int[] Waveform { get; init; } = [];
 
     // File messages
     public string FileName { get; init; } = "";
@@ -83,6 +112,9 @@ public sealed class Chat : Observable
 
     /// <summary>Nothing older exists on this device or the phone.</summary>
     public bool HistoryComplete { get; set; }
+
+    /// <summary>Already asked the phone to fill in missing media details this session.</summary>
+    public bool BackfillRequested { get; set; }
 
     private bool _loadingOlder;
     /// <summary>Waiting for older messages (spinner at the top of the conversation).</summary>

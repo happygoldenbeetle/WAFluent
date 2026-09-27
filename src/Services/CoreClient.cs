@@ -12,7 +12,10 @@ public sealed record ChatDto(
 
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
-    string? FileName, int Status);
+    string? FileName, int Status, MediaDto? Media);
+
+/// <summary>Attachment details; <c>Path</c> is set once the file has been downloaded.</summary>
+public sealed record MediaDto(string Mime, int Width, int Height, int Seconds, int[]? Waveform, string? Path);
 
 /// <summary>
 /// Runs core\wafluent-core.exe (the Rust WhatsApp connection) and talks to it with
@@ -37,6 +40,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, MessageDto>? MessageReceived;
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
+    public event Action<string, string, string>? MediaReceived;      // chat, message, file path
+    public event Action<string, string, string>? MediaFailed;        // chat, message, reason
 
     public static string DataDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent");
@@ -81,6 +86,11 @@ public sealed class CoreClient : IDisposable
         Send(new { cmd = "loadOlder", chatId, beforeTs, beforeId, limit });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
+
+    public void DownloadMedia(string chatId, string messageId) => Send(new { cmd = "downloadMedia", chatId, messageId });
+
+    /// <summary>Fill in media details for messages stored before media support existed.</summary>
+    public void BackfillMedia(string chatId) => Send(new { cmd = "backfillMedia", chatId });
 
     public void Logout() => Send(new { cmd = "logout" });
 
@@ -139,6 +149,21 @@ public sealed class CoreClient : IDisposable
                 var older = root.GetProperty("messages").Deserialize<List<MessageDto>>(Json) ?? [];
                 var complete = root.GetProperty("complete").GetBoolean();
                 Post(() => OlderMessagesReceived?.Invoke(olderChat, older, complete));
+                break;
+            case "media":
+            case "mediaFailed":
+                var mediaChat = root.GetProperty("chatId").GetString() ?? "";
+                var mediaMsg = root.GetProperty("messageId").GetString() ?? "";
+                if (root.GetProperty("type").GetString() == "media")
+                {
+                    var file = root.GetProperty("path").GetString() ?? "";
+                    Post(() => MediaReceived?.Invoke(mediaChat, mediaMsg, file));
+                }
+                else
+                {
+                    var reason = root.GetProperty("reason").GetString() ?? "";
+                    Post(() => MediaFailed?.Invoke(mediaChat, mediaMsg, reason));
+                }
                 break;
             case "avatar":
                 var avatarChat = root.GetProperty("chatId").GetString() ?? "";

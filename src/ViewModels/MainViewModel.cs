@@ -48,6 +48,35 @@ public sealed class MainViewModel : Observable
         core.MessageReceived += OnMessage;
         core.OlderMessagesReceived += OnOlderMessages;
         core.AvatarReceived += OnAvatar;
+        core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
+        core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
+    }
+
+    // ───────────── Attachments ─────────────
+
+    private Message? Find(string chatId, string messageId) =>
+        _byId.TryGetValue(chatId, out var chat) ? chat.Messages.FirstOrDefault(m => m.Id == messageId) : null;
+
+    /// <summary>
+    /// Auto-downloads pictures, stickers and voice notes for messages now on screen (newest
+    /// first, like WhatsApp on Wi-Fi). Already-downloaded files come straight back from the cache.
+    /// </summary>
+    private void RequestMedia(Chat chat, IEnumerable<Message> messages)
+    {
+        if (_core is null) return;
+        foreach (var m in messages.Reverse())
+            if (m.HasMedia && m.MediaPath is null && !m.MediaFailed
+                && m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice)
+                _core.DownloadMedia(chat.Id, m.Id);
+    }
+
+    /// <summary>Messages saved before media support lack download details; ask once per chat to fill them in.</summary>
+    private void BackfillIfNeeded(Chat chat, IEnumerable<MessageDto> messages)
+    {
+        if (_core is null || chat.BackfillRequested) return;
+        if (!messages.Any(d => d.Media is null && d.Kind is "image" or "voice" or "audio" or "sticker")) return;
+        chat.BackfillRequested = true;
+        _core.BackfillMedia(chat.Id);
     }
 
     // ───────────── Profile pictures ─────────────
@@ -263,6 +292,8 @@ public sealed class MainViewModel : Observable
         foreach (var dto in messages) Append(chat, Format.ToMessage(dto, chat.IsGroup));
         chat.MessagesLoaded = true;
         if (chat == _selectedChat) ConversationChanged?.Invoke();
+        RequestMedia(chat, chat.Messages);
+        BackfillIfNeeded(chat, messages);
 
         // A newly linked device only gets a message or two for most chats; fetch more right away.
         if (messages.Count < 25) LoadOlder(chat);
@@ -296,6 +327,7 @@ public sealed class MainViewModel : Observable
         var older = messages.Where(d => !known.Contains(d.Id)).Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
         if (older.Count == 0) return;
         Prepend(chat, older);
+        RequestMedia(chat, older);
 
         // Keep filling until there's enough to scroll through.
         if (!complete && chat.Messages.Count(m => m.Kind != MessageKind.DateDivider) < 25) LoadOlder(chat);
@@ -325,7 +357,9 @@ public sealed class MainViewModel : Observable
     {
         if (!_byId.TryGetValue(chatId, out var chat) || !chat.MessagesLoaded) return;
         if (chat.Messages.Any(m => m.Id == dto.Id)) return;
-        Append(chat, Format.ToMessage(dto, chat.IsGroup));
+        var message = Format.ToMessage(dto, chat.IsGroup);
+        Append(chat, message);
+        RequestMedia(chat, [message]);
         if (chat == _selectedChat) ConversationChanged?.Invoke();
     }
 

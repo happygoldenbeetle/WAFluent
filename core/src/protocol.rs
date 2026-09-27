@@ -30,6 +30,10 @@ pub enum Event {
     /// A profile picture was downloaded, changed or removed (`path` = None).
     /// `chat_id` is "self" for your own picture.
     Avatar { chat_id: String, path: Option<String> },
+    /// Reply to `downloadMedia`: the decrypted file.
+    Media { chat_id: String, message_id: String, path: String },
+    /// `downloadMedia` failed (e.g. the phone deleted it from WhatsApp's servers).
+    MediaFailed { chat_id: String, message_id: String, reason: String },
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -72,6 +76,23 @@ pub struct MessageDto {
     pub file_name: String,
     /// Outgoing delivery: 0 unknown, 1 sent, 2 delivered, 3 read.
     pub status: u8,
+    /// Attachment details, when the message has a downloadable one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media: Option<MediaDto>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaDto {
+    pub mime: String,
+    pub width: u32,
+    pub height: u32,
+    pub seconds: u32,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waveform: Vec<u8>,
+    /// Decrypted file on disk, once downloaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 /// UI -> Core.
@@ -82,6 +103,11 @@ pub enum Command {
     /// Messages before (`before_ts`, `before_id`): served from the local store,
     /// or requested from the phone (history sync on demand) when the store has none.
     LoadOlder { chat_id: String, before_ts: i64, before_id: String, limit: Option<u32> },
+    /// Download (or return the cached copy of) a message's attachment.
+    DownloadMedia { chat_id: String, message_id: String },
+    /// Messages stored before media support have no download details; re-request the
+    /// chat's recent history from the phone to fill them in, then resend `messages`.
+    BackfillMedia { chat_id: String },
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,

@@ -10,11 +10,15 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
     public DataTemplate? Image { get; set; }
     public DataTemplate? File { get; set; }
     public DataTemplate? DateDivider { get; set; }
+    public DataTemplate? Voice { get; set; }
+    public DataTemplate? Sticker { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item is Message m
         ? m.Kind switch
         {
             MessageKind.Image => Image,
+            MessageKind.Voice => Voice,
+            MessageKind.Sticker => Sticker,
             MessageKind.File => File,
             MessageKind.DateDivider => DateDivider,
             _ => Text,

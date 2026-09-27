@@ -105,21 +105,32 @@
                     <DataTemplate x:DataType="models:Message">
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
-                                <StackPanel Width="300">
-                                    <Border Height="190" CornerRadius="6" Background="{ThemeResource FileCardBrush}">
-                                        <Grid>
-                                            <FontIcon Glyph="&#xEB9F;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}"
-                                                      Visibility="{x:Bind helpers:Ui.IsNull(ImagePath)}" />
-                                            <Border CornerRadius="6">
-                                                <Border.Background>
-                                                    <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(ImagePath)}" Stretch="UniformToFill" />
-                                                </Border.Background>
-                                            </Border>
-                                        </Grid>
-                                    </Border>
-                                    <Grid Padding="5,6,5,2">
-                                        <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14"
-                                                   Visibility="{x:Bind HasText}">
+                                <StackPanel Width="{x:Bind MediaWidth}">
+                                    <!-- Click opens the full picture in the Windows Photos app. -->
+                                    <Grid Height="{x:Bind MediaHeight}" CornerRadius="6" Background="{ThemeResource FileCardBrush}"
+                                          Tapped="Media_Tapped">
+                                        <ProgressRing Width="32" Height="32" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
+                                                    Visibility="{x:Bind MediaFailed, Mode=OneWay}">
+                                            <FontIcon Glyph="&#xEB9F;" FontSize="28" Foreground="{ThemeResource MetaTextBrush}" />
+                                            <TextBlock Text="Photo unavailable" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
+                                        </StackPanel>
+                                        <Border CornerRadius="6">
+                                            <Border.Background>
+                                                <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="UniformToFill" />
+                                            </Border.Background>
+                                        </Border>
+                                        <!-- Without a caption the time sits on the picture. -->
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
+                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasText)}">
+                                            <StackPanel Orientation="Horizontal" Spacing="3">
+                                                <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
+                                                <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <Grid Padding="5,6,5,2" Visibility="{x:Bind HasText}">
+                                        <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14">
                                             <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                         </TextBlock>
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
@@ -136,6 +147,46 @@
                         </StackPanel>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Image>
+
+                <helpers:MessageTemplateSelector.Voice>
+                    <DataTemplate x:DataType="models:Message">
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,6,10,4">
+                                <StackPanel>
+                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,2"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                               Visibility="{x:Bind ShowSender}" />
+                                    <controls:VoicePlayer Message="{x:Bind}" />
+                                </StackPanel>
+                            </controls:Bubble>
+                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
+                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Voice>
+
+                <helpers:MessageTemplateSelector.Sticker>
+                    <DataTemplate x:DataType="models:Message">
+                        <!-- Stickers float without a bubble, like WhatsApp. -->
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Spacing="2">
+                            <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       Visibility="{x:Bind ShowSender}" />
+                            <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent" Tapped="Media_Tapped">
+                                <ProgressRing Width="28" Height="28" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
+                                <Image Source="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="Uniform" />
+                            </Grid>
+                            <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
+                                    Background="{ThemeResource IncomingBubbleBrush}">
+                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
+                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Sticker>
 
                 <helpers:MessageTemplateSelector.File>
                     <DataTemplate x:DataType="models:Message">

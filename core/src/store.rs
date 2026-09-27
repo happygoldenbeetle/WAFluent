@@ -3,7 +3,8 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::protocol::{ChatDto, MessageDto};
+use crate::extract::Media;
+use crate::protocol::{ChatDto, MediaDto, MessageDto};
 
 pub struct Store {
     db: Connection,
@@ -69,6 +70,24 @@ CREATE TABLE IF NOT EXISTS avatars(
     picture_id TEXT NOT NULL DEFAULT '',
     path       TEXT NOT NULL DEFAULT '',
     checked_at INTEGER NOT NULL DEFAULT 0
+);
+-- Attachments: the CDN reference needed to download later, plus the local file once fetched.
+CREATE TABLE IF NOT EXISTS media(
+    chat_id         TEXT NOT NULL,
+    message_id      TEXT NOT NULL,
+    media_type      TEXT NOT NULL,
+    direct_path     TEXT NOT NULL,
+    media_key       BLOB NOT NULL,
+    file_sha256     BLOB NOT NULL,
+    file_enc_sha256 BLOB NOT NULL,
+    file_length     INTEGER NOT NULL,
+    mimetype        TEXT NOT NULL DEFAULT '',
+    width           INTEGER NOT NULL DEFAULT 0,
+    height          INTEGER NOT NULL DEFAULT 0,
+    seconds         INTEGER NOT NULL DEFAULT 0,
+    waveform        BLOB,
+    path            TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(chat_id, message_id)
 );
 -- A chat can be addressed by phone-number JID or by LID; both map to one chat id.
 CREATE TABLE IF NOT EXISTS aliases(
@@ -201,7 +220,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media;",
         );
     }
 
@@ -323,7 +342,7 @@ impl Store {
             })
         });
         let Ok(rows) = rows else { return Vec::new() };
-        let mut out: Vec<MessageDto> = rows.flatten().map(|m| self.to_dto(m)).collect();
+        let mut out: Vec<MessageDto> = rows.flatten().map(|m| self.to_dto(chat_id, m)).collect();
         out.reverse();
         out
     }
@@ -353,9 +372,22 @@ impl Store {
             })
         });
         let Ok(rows) = rows else { return Vec::new() };
-        let mut out: Vec<MessageDto> = rows.flatten().map(|m| self.to_dto(m)).collect();
+        let mut out: Vec<MessageDto> = rows.flatten().map(|m| self.to_dto(chat_id, m)).collect();
         out.reverse();
         out
+    }
+
+    /// Newest stored message of a chat: (id, from_me, ts).
+    pub fn newest(&self, chat_id: &str) -> Option<(String, bool, i64)> {
+        self.db
+            .query_row(
+                "SELECT id, from_me, ts FROM messages WHERE chat_id = ?1 ORDER BY ts DESC, rowid DESC LIMIT 1",
+                [chat_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
     }
 
     /// Oldest stored message of a chat: (id, from_me, ts) — the anchor for asking the phone.
@@ -371,9 +403,11 @@ impl Store {
             .flatten()
     }
 
-    pub fn to_dto(&self, m: StoredMessage) -> MessageDto {
+    pub fn to_dto(&self, chat_id: &str, m: StoredMessage) -> MessageDto {
         let sender_name = if m.from_me { String::new() } else { self.person_name(&m.sender, &m.push_name) };
+        let media = self.media_dto(chat_id, &m.id);
         MessageDto {
+            media,
             id: m.id,
             from_me: m.from_me,
             sender: m.sender,
@@ -384,6 +418,86 @@ impl Store {
             file_name: m.file_name,
             status: m.status,
         }
+    }
+
+    // ───────────── Media ─────────────
+
+    pub fn insert_media(&self, chat_id: &str, message_id: &str, m: &Media) {
+        let _ = self.db.execute(
+            "INSERT OR IGNORE INTO media(chat_id, message_id, media_type, direct_path, media_key, file_sha256,
+                                         file_enc_sha256, file_length, mimetype, width, height, seconds, waveform)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                chat_id, message_id, m.media_type, m.direct_path, m.media_key, m.file_sha256,
+                m.file_enc_sha256, m.file_length as i64, m.mimetype, m.width, m.height, m.seconds,
+                (!m.waveform.is_empty()).then_some(&m.waveform)
+            ],
+        );
+    }
+
+    /// The stored CDN reference and local path for an attachment.
+    pub fn media(&self, chat_id: &str, message_id: &str) -> Option<(Media, String)> {
+        self.db
+            .query_row(
+                "SELECT media_type, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype, path
+                 FROM media WHERE chat_id = ?1 AND message_id = ?2",
+                [chat_id, message_id],
+                |r| {
+                    let media_type: String = r.get(0)?;
+                    Ok((
+                        Media {
+                            media_type: match media_type.as_str() {
+                                "image" => "image",
+                                "video" => "video",
+                                "audio" => "audio",
+                                "sticker" => "sticker",
+                                _ => "document",
+                            },
+                            direct_path: r.get(1)?,
+                            media_key: r.get(2)?,
+                            file_sha256: r.get(3)?,
+                            file_enc_sha256: r.get(4)?,
+                            file_length: r.get::<_, i64>(5)? as u64,
+                            mimetype: r.get(6)?,
+                            ..Default::default()
+                        },
+                        r.get(7)?,
+                    ))
+                },
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    pub fn set_media_path(&self, chat_id: &str, message_id: &str, path: &str) {
+        let _ = self.db.execute(
+            "UPDATE media SET path = ?3 WHERE chat_id = ?1 AND message_id = ?2",
+            params![chat_id, message_id, path],
+        );
+    }
+
+    fn media_dto(&self, chat_id: &str, message_id: &str) -> Option<MediaDto> {
+        self.db
+            .query_row(
+                "SELECT mimetype, width, height, seconds, waveform, path FROM media WHERE chat_id = ?1 AND message_id = ?2",
+                [chat_id, message_id],
+                |r| {
+                    let path: String = r.get(5)?;
+                    Ok(MediaDto {
+                        mime: r.get(0)?,
+                        width: r.get(1)?,
+                        height: r.get(2)?,
+                        seconds: r.get(3)?,
+                        waveform: r.get::<_, Option<Vec<u8>>>(4)?.unwrap_or_default(),
+                        // A cleared cache folder shouldn't point at missing files.
+                        path: (!path.is_empty() && std::path::Path::new(&path).exists()).then_some(path),
+                    })
+                },
+            )
+            .optional()
+            .ok()
+            .flatten()
     }
 
     /// Best available name: address book, then their push name, then the number.

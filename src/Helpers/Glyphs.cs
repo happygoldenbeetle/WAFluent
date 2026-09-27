@@ -18,4 +18,7 @@ public static class Glyphs
     public static readonly string Document = G(0xE8A5);
     public static readonly string Location = G(0xE81D);
     public static readonly string Poll = G(0xE9D5);
+    public static readonly string Play = G(0xE768);
+    public static readonly string Pause = G(0xE769);
+    public static readonly string Warning = G(0xE7BA);
 }

@@ -6,6 +6,7 @@
 #![recursion_limit = "512"]
 
 mod avatars;
+mod media;
 mod extract;
 mod protocol;
 mod store;
@@ -38,6 +39,10 @@ pub(crate) struct Ctx {
     pending_history: Arc<Mutex<HashMap<String, (i64, String)>>>,
     /// Profile-picture fetch queue (see avatars.rs).
     pub(crate) avatars: mpsc::UnboundedSender<avatars::Request>,
+    /// Attachment download queue (see media.rs).
+    media: mpsc::UnboundedSender<media::Request>,
+    /// Chats re-requested from the phone to fill in missing media details.
+    backfill: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Ctx {
@@ -109,6 +114,7 @@ async fn run(dir: PathBuf) {
         }
     };
     let (avatar_tx, avatar_rx) = mpsc::unbounded_channel();
+    let (media_tx, media_rx) = mpsc::unbounded_channel();
     let ctx = Ctx {
         tx,
         db: Arc::new(Mutex::new(store)),
@@ -116,6 +122,8 @@ async fn run(dir: PathBuf) {
         chats_dirty: Arc::new(Notify::new()),
         pending_history: Arc::default(),
         avatars: avatar_tx,
+        media: media_tx,
+        backfill: Arc::default(),
     };
     ctx.status("starting", None);
 
@@ -179,6 +187,7 @@ async fn run(dir: PathBuf) {
     let handle = bot.spawn();
     let client = handle.client();
     avatars::spawn(ctx.clone(), Arc::clone(&client), avatar_rx);
+    media::spawn(ctx.clone(), Arc::clone(&client), media_rx);
 
     // Commands from the UI until it closes stdin.
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
@@ -221,6 +230,20 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
             load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
         }
+        Command::DownloadMedia { chat_id, message_id } => {
+            let _ = ctx.media.send(media::Request { chat_id, message_id });
+        }
+        Command::BackfillMedia { chat_id } => {
+            if !ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone()) {
+                return; // already asked this session
+            }
+            let newest = ctx.db().newest(&chat_id);
+            let (Some((id, from_me, ts)), Ok(jid)) = (newest, chat_id.parse::<Jid>()) else { return };
+            if let Err(e) = client.fetch_message_history(&jid, &id, from_me, ts * 1000, 50).await {
+                warn!("media backfill request failed for {chat_id}: {e}");
+                ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
+            }
+        }
         Command::MarkRead { chat_id } => {
             let chat = {
                 let db = ctx.db();
@@ -242,6 +265,7 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
 fn forget_everything(ctx: &Ctx) {
     ctx.db().clear();
     avatars::clear_cache(ctx);
+    media::clear_cache(ctx);
     ctx.send(Out::Chats { chats: Vec::new() });
     ctx.send(Out::Avatar { chat_id: avatars::SELF_ID.into(), path: None });
     ctx.status("loggedOut", None);
@@ -275,6 +299,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                     info!("history chunk: {} conversations (progress {progress:?}, on-demand {on_demand})", chats.len());
                     if on_demand {
                         answer_pending_history(ctx, &chats);
+                        answer_backfill(ctx, &chats);
                     } else {
                         avatars::queue_stale(ctx);   // new chats from the sync
                     }
@@ -322,7 +347,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     }
     let Some(content) = extract::content(message) else { return };
 
-    let (chat_id, stored) = {
+    let (chat_id, stored, media) = {
         let db = ctx.db();
         // A 1:1 chat can show up under its LID live while history stored it by
         // phone number (or the other way round); link the two.
@@ -354,7 +379,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
             file_name: content.file_name,
             status: if source.is_from_me { 1 } else { 0 },
         };
-        (chat_id, stored)
+        (chat_id, stored, content.media)
     };
 
     let (dto, chat) = {
@@ -362,11 +387,14 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         if !db.insert_message(&chat_id, &stored) {
             return; // duplicate delivery
         }
+        if let Some(media) = &media {
+            db.insert_media(&chat_id, &stored.id, media);
+        }
         if !stored.from_me {
             db.increment_unread(&chat_id);
         }
         let chat = db.chat(&chat_id);
-        (db.to_dto(stored), chat)
+        (db.to_dto(&chat_id, stored), chat)
     };
 
     ctx.send(Out::Message { chat_id, message: dto });
@@ -410,6 +438,18 @@ fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashSet<String>) {
         let messages = ctx.db().messages_before(&chat_id, ts, &id, 200);
         let complete = messages.is_empty();
         ctx.send(Out::OlderMessages { chat_id, messages, complete });
+    }
+}
+
+/// Chats whose media details were just refilled get their message list resent.
+fn answer_backfill(ctx: &Ctx, chats_in_chunk: &HashSet<String>) {
+    let done: Vec<String> = {
+        let backfill = ctx.backfill.lock().unwrap_or_else(|p| p.into_inner());
+        backfill.iter().filter(|id| chats_in_chunk.contains(*id)).cloned().collect()
+    };
+    for chat_id in done {
+        let messages = ctx.db().messages(&chat_id, 300);
+        ctx.send(Out::Messages { chat_id, messages });
     }
 }
 
@@ -480,10 +520,14 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
         if !from_me && !sender.is_empty() {
             s.set_push_name(&sender, &push_name);
         }
+        let id = key.id.clone().unwrap_or_default();
+        if let Some(media) = &content.media {
+            s.insert_media(&chat_id, &id, media);
+        }
         s.insert_message(
             &chat_id,
             &StoredMessage {
-                id: key.id.clone().unwrap_or_default(),
+                id,
                 from_me,
                 sender,
                 push_name,

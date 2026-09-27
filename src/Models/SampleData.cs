@@ -40,7 +40,8 @@ public static class SampleData
                 new Message
                 {
                     Kind = MessageKind.Image, Text = "So beautiful here!", Time = "15:06", Reaction = "❤️",
-                    ImagePath = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"),
+                    HasMedia = true,
+                    MediaPath = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"),
                 },
                 Out("Wow! Have great time. Enjoy.", "15:12")),
 
