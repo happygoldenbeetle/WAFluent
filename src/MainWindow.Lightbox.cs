@@ -140,29 +140,50 @@ public sealed partial class MainWindow
 
     // ───────────── The Quick Look flight ─────────────
 
-    /// <summary>Springs a copy of the picture from the thumbnail's rectangle to the viewer's.</summary>
+    // The picture is never stretched. A bubble shows it cropped to fill its box (stickers: whole),
+    // so the flight scales the full picture *uniformly* and animates a rounded crop window
+    // between "exactly what the bubble shows" and "the whole picture". First and last frames
+    // then match the thumbnail and the viewer pixel for pixel — no snap at either end.
+
+    private const float BubbleCornerRadius = 6f;   // the bubble picture's Border.CornerRadius
+
+    /// <summary>Scale/position of the full picture plus the part of it that shows (in its own coordinates).</summary>
+    private readonly record struct Pose(float Scale, Vector3 Translation, Vector2 ClipOffset, Vector2 ClipSize, float Radius);
+
+    /// <summary>How the full picture (laid out at <paramref name="full"/>) looks as its bubble.</summary>
+    private static Pose BubblePose(Rect bubble, Rect full, bool cropped)
+    {
+        var fill = Math.Max(bubble.Width / full.Width, bubble.Height / full.Height);   // UniformToFill
+        var fit = Math.Min(bubble.Width / full.Width, bubble.Height / full.Height);    // Uniform
+        var s = cropped ? fill : fit;
+        var clip = cropped ? new Vector2((float)(bubble.Width / s), (float)(bubble.Height / s))
+                           : new Vector2((float)full.Width, (float)full.Height);
+        var offset = new Vector2(((float)full.Width - clip.X) / 2, ((float)full.Height - clip.Y) / 2);   // centred crop
+        return new((float)s, Offset(bubble, full), offset, clip, cropped ? BubbleCornerRadius / (float)s : 0);
+    }
+
+    private static Pose FullPose(Rect full) =>
+        new(1, Vector3.Zero, Vector2.Zero, new((float)full.Width, (float)full.Height), CornerRadius);
+
+    /// <summary>Springs the picture out of its bubble into the viewer.</summary>
     private void FlyIn(FrameworkElement from, BitmapImage bitmap)
     {
         Lightbox.UpdateLayout();
-        var target = BoundsIn(LightboxImage, Lightbox);
-        var source = BoundsIn(from, Lightbox);
-        if (target.Width < 1 || source.Width < 1 || _viewerClosing)
+        var full = BoundsIn(LightboxImage, Lightbox);
+        var bubble = BoundsIn(from, Lightbox);
+        if (full.Width < 1 || bubble.Width < 1 || _viewerClosing)
         {
             LightboxImage.Opacity = 1;
             return;
         }
 
-        PlaceFlyImage(bitmap, target);
+        var cropped = _viewerItems[_viewerIndex].Kind == MessageKind.Image;
+        var (visual, clip) = StartFlight(bitmap, full, BubblePose(bubble, full, cropped));
         from.Opacity = 0;   // the picture has "left" its bubble
-
-        var visual = FlyVisual(target);
-        visual.Scale = new Vector3((float)(source.Width / target.Width), (float)(source.Height / target.Height), 1);
-        visual.Properties.InsertVector3("Translation", Offset(source, target));
 
         var compositor = visual.Compositor;
         var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        visual.StartAnimation("Translation", Spring(compositor, Vector3.Zero));
-        visual.StartAnimation("Scale", Spring(compositor, Vector3.One));
+        AnimateTo(visual, clip, FullPose(full), spring: true);
         batch.End();
         batch.Completed += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
@@ -173,40 +194,62 @@ public sealed partial class MainWindow
         });
     }
 
-    /// <summary>The reverse: shrinks the picture back into its bubble.</summary>
+    /// <summary>The reverse: the picture shrinks back into its bubble, cropping as it goes.</summary>
     private void FlyBack(FrameworkElement to)
     {
-        var from = BoundsIn(LightboxImage, Lightbox);
-        var target = BoundsIn(to, Lightbox);
-        if (from.Width < 1 || LightboxImage.Source is not BitmapImage bitmap)
+        var full = BoundsIn(LightboxImage, Lightbox);
+        var bubble = BoundsIn(to, Lightbox);
+        if (full.Width < 1 || LightboxImage.Source is not BitmapImage bitmap)
         {
             FadeAway();
             return;
         }
 
-        PlaceFlyImage(bitmap, from);
+        var cropped = _viewerItems[_viewerIndex].Kind == MessageKind.Image;
+        var (visual, clip) = StartFlight(bitmap, full, FullPose(full));
         LightboxImage.Opacity = 0;
         to.Opacity = 0;
 
-        var visual = FlyVisual(from);
-        visual.Scale = Vector3.One;
-        visual.Properties.InsertVector3("Translation", Vector3.Zero);
-
-        var compositor = visual.Compositor;
-        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0.3f, 0f), new Vector2(0.2f, 1f));
-        Vector3KeyFrameAnimation To(Vector3 value)
-        {
-            var a = compositor.CreateVector3KeyFrameAnimation();
-            a.InsertKeyFrame(1f, value, ease);
-            a.Duration = TimeSpan.FromMilliseconds(260);
-            return a;
-        }
-
-        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        visual.StartAnimation("Translation", To(Offset(target, from)));
-        visual.StartAnimation("Scale", To(new Vector3((float)(target.Width / from.Width), (float)(target.Height / from.Height), 1)));
+        var batch = visual.Compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+        AnimateTo(visual, clip, BubblePose(bubble, full, cropped), spring: false);
         batch.End();
         batch.Completed += (_, _) => DispatcherQueue.TryEnqueue(FinishClose);
+    }
+
+    /// <summary>Shows FlyImage at the full picture's layout rect, set to <paramref name="pose"/>.</summary>
+    private (Visual Visual, CompositionRoundedRectangleGeometry Clip) StartFlight(BitmapImage bitmap, Rect full, Pose pose)
+    {
+        FlyImage.Source = bitmap;
+        FlyImage.Width = full.Width;
+        FlyImage.Height = full.Height;
+        Canvas.SetLeft(FlyImage, full.X);
+        Canvas.SetTop(FlyImage, full.Y);
+        FlyImage.Visibility = Visibility.Visible;
+
+        ElementCompositionPreview.SetIsTranslationEnabled(FlyImage, true);
+        var visual = ElementCompositionPreview.GetElementVisual(FlyImage);
+        visual.CenterPoint = new Vector3((float)full.Width / 2, (float)full.Height / 2, 0);
+
+        var clip = visual.Compositor.CreateRoundedRectangleGeometry();
+        visual.Clip = visual.Compositor.CreateGeometricClip(clip);
+
+        visual.Scale = new Vector3(pose.Scale, pose.Scale, 1);
+        visual.Properties.InsertVector3("Translation", pose.Translation);
+        clip.Offset = pose.ClipOffset;
+        clip.Size = pose.ClipSize;
+        clip.CornerRadius = new Vector2(pose.Radius);
+        return (visual, clip);
+    }
+
+    /// <summary>Scale, position, crop window and corner radius all move together, on one curve.</summary>
+    private static void AnimateTo(Visual visual, CompositionRoundedRectangleGeometry clip, Pose pose, bool spring)
+    {
+        var c = visual.Compositor;
+        visual.StartAnimation("Scale", spring ? Spring(c, new Vector3(pose.Scale, pose.Scale, 1)) : Ease(c, new Vector3(pose.Scale, pose.Scale, 1)));
+        visual.StartAnimation("Translation", spring ? Spring(c, pose.Translation) : Ease(c, pose.Translation));
+        clip.StartAnimation("Offset", spring ? Spring(c, pose.ClipOffset) : Ease(c, pose.ClipOffset));
+        clip.StartAnimation("Size", spring ? Spring(c, pose.ClipSize) : Ease(c, pose.ClipSize));
+        clip.StartAnimation("CornerRadius", spring ? Spring(c, new Vector2(pose.Radius)) : Ease(c, new Vector2(pose.Radius)));
     }
 
     /// <summary>When there's no bubble to return to: shrink slightly and fade.</summary>
@@ -235,17 +278,6 @@ public sealed partial class MainWindow
         });
     }
 
-    private void PlaceFlyImage(BitmapImage bitmap, Rect rect)
-    {
-        FlyImage.Source = bitmap;
-        FlyImage.Width = rect.Width;
-        FlyImage.Height = rect.Height;
-        Canvas.SetLeft(FlyImage, rect.X);
-        Canvas.SetTop(FlyImage, rect.Y);
-        RoundCorners(FlyImage, rect.Width, rect.Height);
-        FlyImage.Visibility = Visibility.Visible;
-    }
-
     private const float CornerRadius = 12f;   // about what Quick Look uses
 
     /// <summary>
@@ -267,24 +299,48 @@ public sealed partial class MainWindow
         visual.Clip = compositor.CreateGeometricClip(geometry);
     }
 
-    /// <summary>FlyImage's composition visual, scaling around its centre, with Translation enabled.</summary>
-    private Visual FlyVisual(Rect rect)
-    {
-        ElementCompositionPreview.SetIsTranslationEnabled(FlyImage, true);
-        var visual = ElementCompositionPreview.GetElementVisual(FlyImage);
-        visual.CenterPoint = new Vector3((float)rect.Width / 2, (float)rect.Height / 2, 0);
-        return visual;
-    }
+    // Opening springs (slightly bouncy, quick — close to Quick Look); closing eases out.
+    // Every property of a flight uses the same curve so they stay in lockstep.
+    private const float SpringDamping = 0.72f;
+    private static readonly TimeSpan SpringPeriod = TimeSpan.FromMilliseconds(48);
+    private static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(260);
 
-    /// <summary>Slightly bouncy, quick — close to Quick Look's feel.</summary>
-    private static SpringVector3NaturalMotionAnimation Spring(Compositor compositor, Vector3 to)
+    private static SpringVector3NaturalMotionAnimation Spring(Compositor c, Vector3 to)
     {
-        var spring = compositor.CreateSpringVector3Animation();
+        var spring = c.CreateSpringVector3Animation();
         spring.FinalValue = to;
-        spring.DampingRatio = 0.72f;
-        spring.Period = TimeSpan.FromMilliseconds(48);
+        spring.DampingRatio = SpringDamping;
+        spring.Period = SpringPeriod;
         return spring;
     }
+
+    private static SpringVector2NaturalMotionAnimation Spring(Compositor c, Vector2 to)
+    {
+        var spring = c.CreateSpringVector2Animation();
+        spring.FinalValue = to;
+        spring.DampingRatio = SpringDamping;
+        spring.Period = SpringPeriod;
+        return spring;
+    }
+
+    private static Vector3KeyFrameAnimation Ease(Compositor c, Vector3 to)
+    {
+        var a = c.CreateVector3KeyFrameAnimation();
+        a.InsertKeyFrame(1f, to, CloseEasing(c));
+        a.Duration = CloseDuration;
+        return a;
+    }
+
+    private static Vector2KeyFrameAnimation Ease(Compositor c, Vector2 to)
+    {
+        var a = c.CreateVector2KeyFrameAnimation();
+        a.InsertKeyFrame(1f, to, CloseEasing(c));
+        a.Duration = CloseDuration;
+        return a;
+    }
+
+    private static CompositionEasingFunction CloseEasing(Compositor c) =>
+        c.CreateCubicBezierEasingFunction(new Vector2(0.3f, 0f), new Vector2(0.2f, 1f));
 
     /// <summary>Translation moving the centre of <paramref name="at"/> onto the centre of <paramref name="from"/>.</summary>
     private static Vector3 Offset(Rect from, Rect at) => new(
