@@ -1,0 +1,23 @@
+[package]
+name = "wafluent-core"
+version = "0.1.0"
+edition = "2024"
+description = "WhatsApp connection for WAFluent: speaks JSON lines over stdin/stdout"
+publish = false
+
+[dependencies]
+# Defaults minus "simd" (nightly-only portable_simd) and "signal" (we shut down on stdin EOF).
+whatsapp-rust = { version = "0.7", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "tokio-native", "ureq-client"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Must stay on the libsqlite3-sys line whatsapp-rust bundles (0.37 -> rusqlite 0.39).
+rusqlite = "0.39"
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["humantime"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true

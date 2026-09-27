@@ -129,6 +129,16 @@
         <Setter Property="HorizontalAlignment" Value="Left" />
     </Style>
 
+    <!-- Numbered circle on the link screen. -->
+    <Style x:Key="StepNumberStyle" TargetType="Border">
+        <Setter Property="Width" Value="26" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="CornerRadius" Value="13" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
     <!-- Round buttons in the call window. -->
     <Style x:Key="CallButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
         <Setter Property="Width" Value="44" />

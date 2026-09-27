@@ -1,0 +1,423 @@
+//! wafluent-core: the WhatsApp connection behind WAFluent.
+//!
+//! Started by the WinUI app with redirected stdio. Events go out on stdout and
+//! commands come in on stdin, one JSON object per line (see `protocol.rs`).
+//! Logs go to stderr. Closing stdin shuts the connection down cleanly.
+#![recursion_limit = "512"]
+
+mod extract;
+mod protocol;
+mod store;
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use log::{error, info, warn};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::{Notify, mpsc};
+use whatsapp_rust::prelude::*;
+
+use protocol::{Command, Event as Out};
+use store::{ChatMeta, Store, StoredMessage};
+
+type Tx = mpsc::UnboundedSender<Out>;
+type Db = Arc<Mutex<Store>>;
+
+/// Everything the event handlers share.
+#[derive(Clone)]
+struct Ctx {
+    tx: Tx,
+    db: Db,
+    /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
+    chats_dirty: Arc<Notify>,
+}
+
+impl Ctx {
+    fn send(&self, event: Out) {
+        let _ = self.tx.send(event);
+    }
+
+    fn status(&self, state: &'static str, detail: Option<String>) {
+        self.send(Out::Status { state, detail });
+    }
+
+    fn db(&self) -> std::sync::MutexGuard<'_, Store> {
+        self.db.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+fn main() {
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,whatsapp_rust=warn,wacore=warn"),
+    )
+    .target(env_logger::Target::Stderr)
+    .init();
+
+    let data_dir = data_dir();
+    if let Err(e) = std::fs::create_dir_all(&data_dir) {
+        eprintln!("cannot create {}: {e}", data_dir.display());
+        std::process::exit(1);
+    }
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    rt.block_on(run(data_dir));
+}
+
+/// `--data-dir <path>`, defaulting to %LOCALAPPDATA%\WAFluent.
+fn data_dir() -> PathBuf {
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(i) = args.iter().position(|a| a == "--data-dir")
+        && let Some(dir) = args.get(i + 1)
+    {
+        return PathBuf::from(dir);
+    }
+    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    base.join("WAFluent")
+}
+
+async fn run(dir: PathBuf) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Out>();
+
+    // Single writer keeps stdout lines whole.
+    let writer = tokio::spawn(async move {
+        let mut out = tokio::io::stdout();
+        while let Some(event) = rx.recv().await {
+            let Ok(mut line) = serde_json::to_vec(&event) else { continue };
+            line.push(b'\n');
+            if out.write_all(&line).await.is_err() || out.flush().await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let store = match Store::open(&dir.join("wafluent.db")) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = tx.send(Out::Status { state: "error", detail: Some(format!("Local database: {e}")) });
+            return;
+        }
+    };
+    let ctx = Ctx { tx, db: Arc::new(Mutex::new(store)), chats_dirty: Arc::new(Notify::new()) };
+    ctx.status("starting", None);
+
+    // Show what we already have while connecting.
+    let cached = ctx.db().chats();
+    if !cached.is_empty() {
+        ctx.send(Out::Chats { chats: cached });
+    }
+
+    spawn_snapshot_debouncer(ctx.clone());
+
+    let session = dir.join("whatsapp.db");
+    let backend = match SqliteStore::new(&session.to_string_lossy()).await {
+        Ok(b) => b,
+        Err(e) => {
+            ctx.status("error", Some(format!("Session store: {e}")));
+            return;
+        }
+    };
+
+    let bot = Bot::builder()
+        .with_backend(backend)
+        .on_qr_code({
+            let ctx = ctx.clone();
+            move |code, timeout| {
+                let ctx = ctx.clone();
+                async move {
+                    ctx.status("qr", None);
+                    ctx.send(Out::Qr { code, timeout_secs: timeout.as_secs() });
+                }
+            }
+        })
+        .on_message({
+            let ctx = ctx.clone();
+            move |m| {
+                let ctx = ctx.clone();
+                async move { on_message(&ctx, &m.message, &m.info) }
+            }
+        })
+        .on_event({
+            let ctx = ctx.clone();
+            move |event, _client| {
+                let ctx = ctx.clone();
+                async move { on_event(&ctx, event).await }
+            }
+        })
+        .build()
+        .await;
+
+    let bot = match bot {
+        Ok(bot) => bot,
+        Err(e) => {
+            ctx.status("error", Some(format!("Could not start: {e}")));
+            return;
+        }
+    };
+
+    let handle = bot.spawn();
+    let client = handle.client();
+
+    // Commands from the UI until it closes stdin.
+    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let line = line.trim_start_matches('\u{feff}').trim();
+        if line.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<Command>(line) {
+            Ok(cmd) => on_command(&ctx, &client, cmd).await,
+            Err(e) => warn!("bad command {line:?}: {e}"),
+        }
+    }
+
+    info!("stdin closed, shutting down");
+    handle.shutdown().await;
+    drop(ctx);
+    let _ = tokio::time::timeout(Duration::from_secs(2), writer).await;
+}
+
+/// History sync and app-state sync produce hundreds of changes in bursts;
+/// send at most one full chat list per 700 ms.
+fn spawn_snapshot_debouncer(ctx: Ctx) {
+    tokio::spawn(async move {
+        loop {
+            ctx.chats_dirty.notified().await;
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            let chats = ctx.db().chats();
+            ctx.send(Out::Chats { chats });
+        }
+    });
+}
+
+async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
+    match cmd {
+        Command::LoadMessages { chat_id, limit } => {
+            let messages = ctx.db().messages(&chat_id, limit.unwrap_or(300));
+            ctx.send(Out::Messages { chat_id, messages });
+        }
+        Command::MarkRead { chat_id } => {
+            let chat = {
+                let db = ctx.db();
+                db.mark_read(&chat_id);
+                db.chat(&chat_id)
+            };
+            if let Some(chat) = chat {
+                ctx.send(Out::Chat { chat });
+            }
+        }
+        Command::Logout => {
+            client.logout().await;
+            ctx.db().clear();
+            ctx.send(Out::Chats { chats: Vec::new() });
+            ctx.status("loggedOut", None);
+        }
+    }
+}
+
+async fn on_event(ctx: &Ctx, event: Arc<Event>) {
+    match &*event {
+        Event::Connected(_) => {
+            ctx.status("connected", None);
+            ctx.chats_dirty.notify_one();
+        }
+        Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
+        Event::Disconnected(_) => ctx.status("connecting", None),
+        Event::LoggedOut(_) => {
+            ctx.db().clear();
+            ctx.send(Out::Chats { chats: Vec::new() });
+            ctx.status("loggedOut", None);
+        }
+        Event::HistorySync(lazy) => {
+            let lazy = (**lazy).clone();
+            let db = Arc::clone(&ctx.db);
+            let progress = lazy.progress();
+            let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
+            match result {
+                Ok(Ok(count)) => info!("history chunk: {count} conversations (progress {progress:?})"),
+                Ok(Err(e)) => error!("history sync decode failed: {e}"),
+                Err(e) => error!("history sync task failed: {e}"),
+            }
+            if let Some(p) = progress.filter(|p| *p < 100) {
+                ctx.status("syncing", Some(format!("Loading your chats… {p}%")));
+            }
+            ctx.chats_dirty.notify_one();
+        }
+        Event::ContactUpdate(update) => {
+            let name = update.action.full_name.as_deref().or(update.action.first_name.as_deref()).unwrap_or("");
+            let db = ctx.db();
+            db.set_full_name(&update.jid.to_non_ad_string(), name);
+            for alt in [&update.action.pn_jid, &update.action.lid_jid].into_iter().flatten() {
+                db.set_full_name(alt, name);
+            }
+            drop(db);
+            ctx.chats_dirty.notify_one();
+        }
+        Event::PushNameUpdate(update) => {
+            ctx.db().set_push_name(&update.jid.to_non_ad_string(), &update.new_push_name);
+            ctx.chats_dirty.notify_one();
+        }
+        Event::ClientOutdated(_) => ctx.status("error", Some("WhatsApp says this client version is outdated.".into())),
+        Event::TemporaryBan(ban) => ctx.status("error", Some(format!("Temporarily banned by WhatsApp: {ban:?}"))),
+        Event::ConnectFailure(fail) => ctx.status("error", Some(format!("Connection failed: {fail:?}"))),
+        Event::StreamReplaced(_) => ctx.status("error", Some("Logged in somewhere else with this session.".into())),
+        _ => {}
+    }
+}
+
+fn is_hidden_chat(jid: &str) -> bool {
+    // Status updates and channels are not chats.
+    jid.ends_with("@broadcast") || jid.ends_with("@newsletter")
+}
+
+fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
+    let source = &info.source;
+    let raw_chat = source.chat.to_non_ad_string();
+    if is_hidden_chat(&raw_chat) {
+        return;
+    }
+    let Some(content) = extract::content(message) else { return };
+
+    let (chat_id, stored) = {
+        let db = ctx.db();
+        // A 1:1 chat can show up under its LID live while history stored it by
+        // phone number (or the other way round); link the two.
+        if !source.is_group {
+            let alt = if source.is_from_me { &source.recipient_alt } else { &source.sender_alt };
+            if let Some(alt) = alt {
+                let alt = alt.to_non_ad_string();
+                if db.canonical(&raw_chat) == raw_chat && db.chat(&raw_chat).is_none() && db.chat(&alt).is_some() {
+                    db.add_alias(&raw_chat, &alt);
+                }
+            }
+        }
+        let chat_id = db.canonical(&raw_chat);
+        let sender = if source.is_from_me { String::new() } else { source.sender.to_non_ad_string() };
+        if !source.is_from_me {
+            db.set_push_name(&sender, &info.push_name);
+        }
+        db.ensure_chat(&chat_id, source.is_group);
+        let stored = StoredMessage {
+            id: info.id.to_string(),
+            from_me: source.is_from_me,
+            sender,
+            push_name: info.push_name.clone(),
+            ts: info.timestamp.timestamp(),
+            kind: content.kind.to_string(),
+            text: content.text,
+            file_name: content.file_name,
+            status: if source.is_from_me { 1 } else { 0 },
+        };
+        (chat_id, stored)
+    };
+
+    let (dto, chat) = {
+        let db = ctx.db();
+        if !db.insert_message(&chat_id, &stored) {
+            return; // duplicate delivery
+        }
+        if !stored.from_me {
+            db.increment_unread(&chat_id);
+        }
+        let chat = db.chat(&chat_id);
+        (db.to_dto(stored), chat)
+    };
+
+    ctx.send(Out::Message { chat_id, message: dto });
+    if let Some(chat) = chat {
+        ctx.send(Out::Chat { chat });
+    }
+}
+
+/// Decodes one history-sync chunk into the store. Returns conversations seen.
+fn ingest_history(lazy: &whatsapp_rust::wacore::types::events::LazyHistorySync, db: &Mutex<Store>) -> Result<usize, String> {
+    let mut stream = lazy.stream();
+    let mut store = db.lock().unwrap_or_else(|p| p.into_inner());
+    store.batch(|s| {
+        let mut count = 0;
+        while let Some(conv) = stream.next_conversation().map_err(|e| e.to_string())? {
+            ingest_conversation(s, &conv);
+            count += 1;
+        }
+        let rest = stream.remainder().map_err(|e| e.to_string())?;
+        for p in &rest.pushnames {
+            if let (Some(id), Some(name)) = (&p.id, &p.pushname) {
+                s.set_push_name(id, name);
+            }
+        }
+        for m in &rest.phone_number_to_lid_mappings {
+            if let (Some(pn), Some(lid)) = (&m.pn_jid, &m.lid_jid) {
+                // Point whichever form has no chat of its own at the one that does.
+                if s.chat(lid).is_some() { s.add_alias(pn, lid) } else { s.add_alias(lid, pn) }
+            }
+        }
+        Ok(count)
+    })
+}
+
+fn ingest_conversation(s: &Store, conv: &wa::Conversation) {
+    if is_hidden_chat(&conv.id) {
+        return;
+    }
+    let is_group = conv.id.ends_with("@g.us");
+    let chat_id = s.canonical(&conv.id);
+    for alt in [&conv.pn_jid, &conv.lid_jid].into_iter().flatten() {
+        s.add_alias(alt, &chat_id);
+    }
+
+    let name = conv.name.as_deref().or(conv.display_name.as_deref()).unwrap_or("");
+    let unread = conv.unread_count.unwrap_or(0) + u32::from(conv.marked_as_unread == Some(true) && conv.unread_count.unwrap_or(0) == 0);
+    s.upsert_chat(&ChatMeta {
+        id: &chat_id,
+        name,
+        is_group,
+        unread,
+        pinned: conv.pinned.unwrap_or(0) > 0,
+        archived: conv.archived.unwrap_or(false),
+        mute_end: conv.mute_end_time.map(|t| t as i64).unwrap_or(0),
+    });
+
+    for hm in &conv.messages {
+        let Some(wmi) = hm.message.as_option() else { continue };
+        let Some(key) = wmi.key.as_option() else { continue };
+        let Some(msg) = wmi.message.as_option() else { continue };
+        let Some(content) = extract::content(msg) else { continue };
+        let from_me = key.from_me.unwrap_or(false);
+        let sender = match (from_me, is_group) {
+            (true, _) => String::new(),
+            (false, true) => key.participant.clone().or_else(|| wmi.participant.clone()).unwrap_or_default(),
+            (false, false) => chat_id.clone(),
+        };
+        let push_name = wmi.push_name.clone().unwrap_or_default();
+        if !from_me && !sender.is_empty() {
+            s.set_push_name(&sender, &push_name);
+        }
+        s.insert_message(
+            &chat_id,
+            &StoredMessage {
+                id: key.id.clone().unwrap_or_default(),
+                from_me,
+                sender,
+                push_name,
+                ts: wmi.message_timestamp.unwrap_or(0) as i64,
+                kind: content.kind.to_string(),
+                text: content.text,
+                file_name: content.file_name,
+                status: if from_me { delivery(wmi) } else { 0 },
+            },
+        );
+    }
+}
+
+/// WebMessageInfo.Status -> 1 sent, 2 delivered, 3 read.
+fn delivery(wmi: &wa::WebMessageInfo) -> u8 {
+    use wa::web_message_info::Status;
+    match wmi.status {
+        Some(Status::READ | Status::PLAYED) => 3,
+        Some(Status::DELIVERY_ACK) => 2,
+        _ => 1,
+    }
+}

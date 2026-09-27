@@ -25,12 +25,17 @@ public abstract class Observable : INotifyPropertyChanged
 
 public sealed class Message
 {
+    public string Id { get; init; } = "";
     public MessageKind Kind { get; init; }
     public bool IsOutgoing { get; init; }
     public string Text { get; init; } = "";
     public string Time { get; init; } = "";
+    public DateTime Timestamp { get; init; }
     public Delivery Delivery { get; init; }
     public string Reaction { get; init; } = "";
+
+    /// <summary>Shown above incoming messages in groups.</summary>
+    public string SenderName { get; init; } = "";
 
     // Image messages
     public string? ImagePath { get; init; }
@@ -40,32 +45,44 @@ public sealed class Message
     public string FileDetails { get; init; } = "";
 
     public bool HasText => Text.Length > 0;
+    public bool ShowSender => !IsOutgoing && SenderName.Length > 0;
 
     /// <summary>
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.
     /// Must end in a non-whitespace character: trailing spaces take no width at a line end.
     /// </summary>
-    public string TimeSpacer => "\u00A0\u00A0" + Time + (IsOutgoing ? "\u00A0___" : "");
+    public string TimeSpacer => "  " + Time + (IsOutgoing ? " ___" : "");
 }
 
 public sealed class Chat : Observable
 {
+    private string _name = "";
     private string _preview = "";
+    private string _previewGlyph = "";
     private string _time = "";
     private int _unread;
+    private bool _isPinned;
     private Delivery _lastDelivery;
 
-    public required string Name { get; init; }
+    /// <summary>WhatsApp JID for live chats; empty for sample data.</summary>
+    public string Id { get; init; } = "";
+    public bool IsGroup { get; init; }
     public string Status { get; init; } = "";
     public bool IsTyping { get; init; }
-    public string PreviewGlyph { get; init; } = "";   // e.g. a camera/video icon before the preview
-    public bool IsPinned { get; init; }
     public bool HasMention { get; init; }
     public bool HasStatus { get; init; }   // unseen status update: green ring around the avatar
+    public DateTime LastActivity { get; set; }
+
+    /// <summary>True once this chat's history has been fetched from the core.</summary>
+    public bool MessagesLoaded { get; set; }
+
     public ObservableCollection<Message> Messages { get; } = new();
 
+    public required string Name { get => _name; set => Set(ref _name, value); }
     public string Preview { get => _preview; set => Set(ref _preview, value); }
+    public string PreviewGlyph { get => _previewGlyph; set => Set(ref _previewGlyph, value); }   // e.g. a camera icon before the preview
     public string Time { get => _time; set => Set(ref _time, value); }
+    public bool IsPinned { get => _isPinned; set => Set(ref _isPinned, value); }
 
     public int Unread
     {

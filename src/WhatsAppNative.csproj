@@ -25,5 +25,29 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
   </ItemGroup>
+
+  <!--
+    Builds the Rust WhatsApp connection (../core) and ships it next to the app as
+    core\wafluent-core.exe. Pass -p:SkipCore=true to build the UI alone.
+  -->
+  <PropertyGroup>
+    <CoreDir>$(MSBuildThisFileDirectory)..\core\</CoreDir>
+    <CoreProfile Condition="'$(Configuration)' == 'Release'">release</CoreProfile>
+    <CoreProfile Condition="'$(Configuration)' != 'Release'">debug</CoreProfile>
+    <CoreCargoFlags Condition="'$(Configuration)' == 'Release'">--release</CoreCargoFlags>
+    <!-- rustup's default location; PATH may not include it for MSBuild. -->
+    <CargoExe>cargo</CargoExe>
+    <CargoExe Condition="Exists('$(USERPROFILE)\.cargo\bin\cargo.exe')">"$(USERPROFILE)\.cargo\bin\cargo.exe"</CargoExe>
+  </PropertyGroup>
+
+  <Target Name="BuildCore" BeforeTargets="BeforeBuild" Condition="'$(SkipCore)' != 'true'">
+    <Exec Command="$(CargoExe) build $(CoreCargoFlags) --manifest-path &quot;$(CoreDir)Cargo.toml&quot;" />
+    <ItemGroup>
+      <Content Include="$(CoreDir)target\$(CoreProfile)\wafluent-core.exe"
+               Link="core\wafluent-core.exe"
+               CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

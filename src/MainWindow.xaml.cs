@@ -8,18 +8,25 @@ using Windows.System;
 using Windows.UI.Core;
 using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
+using WhatsAppNative.Services;
 using WhatsAppNative.ViewModels;
 
 namespace WhatsAppNative;
 
 public sealed partial class MainWindow : Window
 {
+    private readonly CoreClient? _core;
     private CallWindow? _call;
 
-    public MainViewModel ViewModel { get; } = new();
+    public MainViewModel ViewModel { get; }
 
     public MainWindow()
     {
+        // Live WhatsApp when the core is shipped next to the app; `--sample` forces placeholder data.
+        var sample = Environment.GetCommandLineArgs().Contains("--sample") || !CoreClient.IsAvailable;
+        if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
+        ViewModel = new MainViewModel(_core);
+
         InitializeComponent();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
@@ -36,7 +43,30 @@ public sealed partial class MainWindow : Window
         // x:Bind fills the list on Loading, so the initial selection has to wait until then.
         ChatList.Loaded += (_, _) => ChatList.SelectedItem = ViewModel.SelectedChat;
         Messages.Loaded += (_, _) => ScrollToBottom();
-        Closed += (_, _) => _call?.Close();
+        ViewModel.ConversationChanged += ScrollToBottom;
+        Closed += (_, _) =>
+        {
+            _call?.Close();
+            _core?.Dispose();
+        };
+
+        _core?.Start();
+    }
+
+    private async void Logout_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Log out?",
+            Content = "WAFluent will be unlinked from your phone and the chats saved on this PC will be removed.",
+            PrimaryButtonText = "Log out",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        ViewModel.Logout();
+        Nav.SelectedItem = Nav.MenuItems[0];
     }
 
     /// <summary>`--theme light` / `--theme dark` forces a theme (handy for checking both).</summary>
@@ -66,6 +96,7 @@ public sealed partial class MainWindow : Window
         SearchBox.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
         ChatList.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
         SectionPlaceholder.Visibility = isChats ? Visibility.Collapsed : Visibility.Visible;
+        LogoutButton.Visibility = section == "Settings" && ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
         (SectionPlaceholderIcon.Glyph, SectionPlaceholderText.Text) = section switch
         {
             "Calls" => (Glyphs.Phone, "No recent calls"),

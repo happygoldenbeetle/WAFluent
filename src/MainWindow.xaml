@@ -19,10 +19,10 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Avatar DisplayName="{x:Bind Name}" Size="48" ShowRing="{x:Bind HasStatus}" />
+                    <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Size="48" ShowRing="{x:Bind HasStatus}" />
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                        <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -31,9 +31,9 @@
                             </Grid.ColumnDefinitions>
                             <controls:DeliveryTicks Delivery="{x:Bind LastDelivery, Mode=OneWay}" Margin="0,0,4,0"
                                                     Visibility="{x:Bind helpers:Ui.HasDelivery(LastDelivery), Mode=OneWay}" />
-                            <FontIcon Grid.Column="1" Glyph="{x:Bind PreviewGlyph}" FontSize="13" Margin="0,0,5,0"
+                            <FontIcon Grid.Column="1" Glyph="{x:Bind PreviewGlyph, Mode=OneWay}" FontSize="13" Margin="0,0,5,0"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                      Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewGlyph)}" />
+                                      Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewGlyph), Mode=OneWay}" />
                             <TextBlock Grid.Column="2" Text="{x:Bind Preview, Mode=OneWay}" FontSize="13"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
@@ -55,7 +55,7 @@
                         </Grid>
                         <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
                             <FontIcon Glyph="&#xE718;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                      Visibility="{x:Bind IsPinned}" />
+                                      Visibility="{x:Bind IsPinned, Mode=OneWay}" />
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Both(HasMention, HasUnread), Mode=OneWay}" />
@@ -74,11 +74,19 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}">
                                 <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <!-- Group chats: who wrote it. -->
+                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,1"
+                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                               TextTrimming="CharacterEllipsis" Visibility="{x:Bind ShowSender}" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
-                                    <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14">
+                                    <TextBlock Grid.Row="1" TextWrapping="Wrap" IsTextSelectionEnabled="True" FontSize="14">
                                         <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                     </TextBlock>
-                                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
+                                    <StackPanel Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
                                                 Orientation="Horizontal" Spacing="3">
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                         <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -261,6 +269,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -282,16 +291,31 @@
                                     AutomationProperties.Name="Search chats"
                                     TextChanged="Search_TextChanged" />
 
-                    <ListView x:Name="ChatList" Grid.Row="2" Margin="4,0,4,0"
+                    <!-- Reconnecting / syncing while chats are already on screen. -->
+                    <Grid Grid.Row="2" Margin="16,0,16,8" Padding="12,8" ColumnSpacing="10" CornerRadius="6"
+                          Background="{ThemeResource LayerFillColorAltBrush}"
+                          Visibility="{x:Bind ViewModel.ShowBanner, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressRing Width="14" Height="14" IsActive="{x:Bind ViewModel.ShowBanner, Mode=OneWay}" />
+                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.BannerText, Mode=OneWay}" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                    </Grid>
+
+                    <ListView x:Name="ChatList" Grid.Row="3" Margin="4,0,4,0"
                               ItemsSource="{x:Bind ViewModel.Chats}"
                               ItemTemplate="{StaticResource ChatItemTemplate}"
                               SingleSelectionFollowsFocus="False"
                               SelectionChanged="ChatList_SelectionChanged" />
 
-                    <StackPanel x:Name="SectionPlaceholder" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed"
+                    <StackPanel x:Name="SectionPlaceholder" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed"
                                 HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                         <FontIcon x:Name="SectionPlaceholderIcon" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                         <TextBlock x:Name="SectionPlaceholderText" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Button x:Name="LogoutButton" Content="Log out" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                Visibility="Collapsed" Click="Logout_Click" />
                     </StackPanel>
                 </Grid>
 
@@ -319,6 +343,7 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.Status, Mode=OneWay}" FontSize="12"
+                                       Visibility="{x:Bind helpers:Ui.NotEmpty(ViewModel.SelectedChat.Status), Mode=OneWay}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -366,7 +391,9 @@
                         <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
                             <FontIcon Glyph="&#xE723;" FontSize="17" />
                         </Button>
-                        <TextBox x:Name="ComposerBox" Grid.Column="2" PlaceholderText="Type a message"
+                        <TextBox x:Name="ComposerBox" Grid.Column="2"
+                                 PlaceholderText="{x:Bind ViewModel.ComposerPlaceholder}"
+                                 IsEnabled="{x:Bind ViewModel.CanSend}"
                                  AutomationProperties.Name="Message"
                                  VerticalAlignment="Center" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
                                  BorderThickness="0" Background="Transparent" Padding="6"
@@ -402,5 +429,64 @@
                 </Grid>
             </Grid>
         </NavigationView>
+
+        <!-- ═════════════ Link your phone (live mode, until chats are available) ═════════════ -->
+        <Grid Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+              Visibility="{x:Bind ViewModel.ShowLinkScreen, Mode=OneWay}">
+            <Border MaxWidth="920" Margin="32" Padding="40,36" VerticalAlignment="Center" CornerRadius="8"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <Grid ColumnSpacing="48">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Spacing="22" VerticalAlignment="Center">
+                        <TextBlock Text="Use WhatsApp on your computer" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <StackPanel Spacing="14">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource StepNumberStyle}"><TextBlock Text="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" /></Border>
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center">Open <Bold>WhatsApp</Bold> on your phone</TextBlock>
+                            </Grid>
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource StepNumberStyle}"><TextBlock Text="2" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" /></Border>
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center">Tap <Bold>Menu ⋮</Bold> on Android, or <Bold>Settings</Bold> on iPhone</TextBlock>
+                            </Grid>
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource StepNumberStyle}"><TextBlock Text="3" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" /></Border>
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center">Tap <Bold>Linked devices</Bold>, then <Bold>Link a device</Bold></TextBlock>
+                            </Grid>
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource StepNumberStyle}"><TextBlock Text="4" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12" /></Border>
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center">Point your phone at this screen to scan the QR code</TextBlock>
+                            </Grid>
+                        </StackPanel>
+                        <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="Unofficial client"
+                                 Message="WAFluent isn't made by WhatsApp. Meta can suspend accounts that use unofficial apps, so a spare number is safest for now." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Width="280" Spacing="16" VerticalAlignment="Center">
+                        <!-- Always black on white so it scans in dark mode too. -->
+                        <Border Width="264" Height="264" Padding="6" CornerRadius="8" Background="White" HorizontalAlignment="Center">
+                            <Grid>
+                                <Image Source="{x:Bind ViewModel.QrImage, Mode=OneWay}" Stretch="Uniform"
+                                       Visibility="{x:Bind ViewModel.ShowQr, Mode=OneWay}"
+                                       AutomationProperties.Name="Pairing QR code" />
+                                <ProgressRing Width="44" Height="44" Foreground="#00A884"
+                                              IsActive="{x:Bind ViewModel.ShowLinkProgress, Mode=OneWay}"
+                                              Visibility="{x:Bind ViewModel.ShowLinkProgress, Mode=OneWay}" />
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="{x:Bind ViewModel.LinkStatusText, Mode=OneWay}" TextWrapping="Wrap"
+                                   HorizontalTextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

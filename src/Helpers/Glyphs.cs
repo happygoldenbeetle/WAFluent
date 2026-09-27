@@ -15,4 +15,7 @@ public static class Glyphs
     public static readonly string Contact = G(0xE77B);
     public static readonly string Mic = G(0xE720);
     public static readonly string MicOff = G(0xF781);
+    public static readonly string Document = G(0xE8A5);
+    public static readonly string Location = G(0xE81D);
+    public static readonly string Poll = G(0xE9D5);
 }
