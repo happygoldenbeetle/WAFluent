@@ -21,4 +21,12 @@ public static class Glyphs
     public static readonly string Play = G(0xE768);
     public static readonly string Pause = G(0xE769);
     public static readonly string Warning = G(0xE7BA);
+    public static readonly string Copy = G(0xE8C8);
+    public static readonly string Save = G(0xE74E);
+    public static readonly string View = G(0xE890);
+    public static readonly string OpenExternal = G(0xE8A7);
+    public static readonly string Folder = G(0xE838);
+    public static readonly string Info = G(0xE946);
+    public static readonly string Refresh = G(0xE72C);
+    public static readonly string Speed = G(0xE916);
 }

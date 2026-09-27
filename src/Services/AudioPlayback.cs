@@ -63,9 +63,11 @@ public static class AudioPlayback
     }
 
     /// <summary>1x → 1.5x → 2x → 1x, like WhatsApp.</summary>
-    public static void CycleRate()
+    public static void CycleRate() => SetRate(Rate switch { 1 => 1.5, 1.5 => 2, _ => 1 });
+
+    public static void SetRate(double rate)
     {
-        Rate = Rate switch { 1 => 1.5, 1.5 => 2, _ => 1 };
+        Rate = rate;
         if (_player is not null) _player.PlaybackSession.PlaybackRate = Rate;
         Raise();
     }

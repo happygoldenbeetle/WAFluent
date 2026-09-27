@@ -70,6 +70,14 @@ public sealed class MainViewModel : Observable
                 _core.DownloadMedia(chat.Id, m.Id);
     }
 
+    /// <summary>Tries a failed attachment download again (for the open chat).</summary>
+    public void RetryDownload(Message message)
+    {
+        if (_core is null || _selectedChat is null || !message.HasMedia) return;
+        message.MediaFailed = false;   // back to the loading spinner
+        _core.DownloadMedia(_selectedChat.Id, message.Id);
+    }
+
     /// <summary>Messages saved before media support lack download details; ask once per chat to fill them in.</summary>
     private void BackfillIfNeeded(Chat chat, IEnumerable<MessageDto> messages)
     {

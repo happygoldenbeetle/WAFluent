@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
@@ -7,11 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
-using Windows.Storage;
-using Windows.Storage.Pickers;
-using Windows.Storage.Streams;
 using Windows.System;
 using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
@@ -472,36 +467,20 @@ public sealed partial class MainWindow
 
     private void LightboxOpen_Click(object sender, RoutedEventArgs e)
     {
-        if (CurrentViewerPath() is { } path) Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        if (CurrentViewerPath() is { } path) MediaActions.OpenExternally(path);
     }
 
     private async void LightboxCopy_Click(object sender, RoutedEventArgs e)
     {
         if (CurrentViewerPath() is not { } path) return;
-        var file = await StorageFile.GetFileFromPathAsync(path);
-        var data = new DataPackage();
-        data.SetBitmap(RandomAccessStreamReference.CreateFromFile(file));   // paste into chats/editors
-        data.SetStorageItems([file]);                                        // paste into Explorer
-        Clipboard.SetContent(data);
+        await MediaActions.CopyImageAsync(path);
         FlashViewerStatus("Copied");
     }
 
     private async void LightboxSave_Click(object sender, RoutedEventArgs e)
     {
         if (CurrentViewerPath() is not { } path) return;
-        var m = _viewerItems[_viewerIndex];
-        var ext = Path.GetExtension(path);
-        var picker = new FileSavePicker
-        {
-            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
-            SuggestedFileName = $"WhatsApp Image {m.Timestamp:yyyy-MM-dd 'at' HH.mm.ss}",
-        };
-        picker.FileTypeChoices.Add("Image", [ext]);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var target = await picker.PickSaveFileAsync();
-        if (target is null) return;
-        File.Copy(path, target.Path, overwrite: true);
-        FlashViewerStatus("Saved");
+        if (await MediaActions.SaveAsAsync(this, path, _viewerItems[_viewerIndex])) FlashViewerStatus("Saved");
     }
 
     private string? CurrentViewerPath() =>
