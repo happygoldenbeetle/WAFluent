@@ -53,7 +53,7 @@ public sealed partial class MainWindow
         _viewerSource = source;
         _viewerClosing = false;
 
-        EnsureViewerShortcuts();
+        EnsureViewerSetup();
         Lightbox.Visibility = Visibility.Visible;
         LightboxImage.Opacity = 0;   // the flying copy stands in until it lands
         ShowViewerItem(animateFrom: source);
@@ -86,12 +86,11 @@ public sealed partial class MainWindow
         _viewerClosing = false;
     }
 
-    /// <summary>Scrim, top bar, arrows and caption fade together (their OpacityTransitions).</summary>
+    /// <summary>Scrim, arrows and caption fade together (their OpacityTransitions).</summary>
     private void SetChrome(bool visible)
     {
         var o = visible ? 1 : 0;
         LightboxScrim.Opacity = o;
-        LightboxBar.Opacity = o;
         LightboxCaption.Opacity = o;
         LightboxPrev.Opacity = o;
         LightboxNext.Opacity = o;
@@ -102,18 +101,12 @@ public sealed partial class MainWindow
     private void ShowViewerItem(FrameworkElement? animateFrom = null)
     {
         var m = _viewerItems[_viewerIndex];
-        var chat = ViewModel.SelectedChat;
 
         // Full resolution here (bubbles decode small copies) so zooming stays sharp.
         var bitmap = new BitmapImage();
         LightboxImage.Source = bitmap;
         LightboxScroller.ChangeView(0, 0, 1, disableAnimation: true);
 
-        var sender = m.IsOutgoing ? "You" : m.SenderName.Length > 0 ? m.SenderName : chat?.Name ?? "";
-        LightboxSender.Text = sender;
-        LightboxAvatar.DisplayName = sender;
-        LightboxAvatar.Source = !m.IsOutgoing && chat is { IsGroup: false } ? chat.AvatarPath : null;
-        LightboxWhen.Text = $"{Format.DayLabel(m.Timestamp)} at {m.Time}";
         LightboxCaption.Text = m.Kind == MessageKind.Image ? m.Text : "";
         LightboxCaption.Visibility = LightboxCaption.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         LightboxPrev.Visibility = _viewerIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -249,7 +242,29 @@ public sealed partial class MainWindow
         FlyImage.Height = rect.Height;
         Canvas.SetLeft(FlyImage, rect.X);
         Canvas.SetTop(FlyImage, rect.Y);
+        RoundCorners(FlyImage, rect.Width, rect.Height);
         FlyImage.Visibility = Visibility.Visible;
+    }
+
+    private const float CornerRadius = 12f;   // about what Quick Look uses
+
+    /// <summary>
+    /// Rounded-rectangle clip on the element's composition visual. It lives in the element's own
+    /// coordinates, so the flight's Scale and the viewer's zoom scale the corners along with it.
+    /// </summary>
+    private static void RoundCorners(UIElement element, double width, double height)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+        if (visual.Clip is CompositionGeometricClip { Geometry: CompositionRoundedRectangleGeometry existing })
+        {
+            existing.Size = new Vector2((float)width, (float)height);
+            return;
+        }
+        var geometry = compositor.CreateRoundedRectangleGeometry();
+        geometry.CornerRadius = new Vector2(CornerRadius);
+        geometry.Size = new Vector2((float)width, (float)height);
+        visual.Clip = compositor.CreateGeometricClip(geometry);
     }
 
     /// <summary>FlyImage's composition visual, scaling around its centre, with Translation enabled.</summary>
@@ -315,10 +330,18 @@ public sealed partial class MainWindow
         LightboxZoomOutItem.IsEnabled = CanZoomOut;
     }
 
-    /// <summary>Ctrl+/Ctrl- (main row or numpad), Ctrl+0, Ctrl+C, Ctrl+S while the viewer is open.</summary>
-    private void EnsureViewerShortcuts()
+    private bool _viewerReady;
+
+    /// <summary>
+    /// One-time setup: rounded corners that follow the picture's size, and the shortcuts
+    /// Ctrl+/Ctrl- (main row or numpad), Ctrl+0, Ctrl+C, Ctrl+S while the viewer is open.
+    /// </summary>
+    private void EnsureViewerSetup()
     {
-        if (Lightbox.KeyboardAccelerators.Count > 3) return;   // Esc, Left, Right come from XAML
+        if (_viewerReady) return;
+        _viewerReady = true;
+        LightboxImage.SizeChanged += (_, e) => RoundCorners(LightboxImage, e.NewSize.Width, e.NewSize.Height);
+
         void Add(VirtualKey key, Action action)
         {
             var accelerator = new KeyboardAccelerator { Key = key, Modifiers = VirtualKeyModifiers.Control };
@@ -348,8 +371,7 @@ public sealed partial class MainWindow
 
     private void LightboxScroller_SizeChanged(object sender, SizeChangedEventArgs e) => FitViewerImage();
 
-
-    /// <summary>Clicks on the dimmed area close the viewer; the picture and bars swallow theirs.</summary>
+    /// <summary>Clicks on the dimmed area close the viewer; the picture, arrows and caption swallow theirs.</summary>
     private void Lightbox_BackgroundTapped(object sender, TappedRoutedEventArgs e) => CloseViewer();
 
     private void LightboxEat_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
@@ -373,7 +395,7 @@ public sealed partial class MainWindow
     private void LightboxZoomOut_Click(object sender, RoutedEventArgs e) => Zoom(1 / 1.5);
     private void LightboxPrev_Click(object sender, RoutedEventArgs e) => Step(-1);
     private void LightboxNext_Click(object sender, RoutedEventArgs e) => Step(1);
-    
+
     private void LightboxClose_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
@@ -429,12 +451,12 @@ public sealed partial class MainWindow
     private string? CurrentViewerPath() =>
         _viewerItems.Count > 0 && _viewerItems[_viewerIndex].MediaPath is { } p && File.Exists(p) ? p : null;
 
-    /// <summary>Briefly shows "Copied"/"Saved" in place of the date line.</summary>
+    /// <summary>Briefly shows "Copied"/"Saved" in a pill near the bottom, then fades it away.</summary>
     private async void FlashViewerStatus(string text)
     {
-        var original = LightboxWhen.Text;
-        LightboxWhen.Text = text;
-        await Task.Delay(1500);
-        if (LightboxWhen.Text == text) LightboxWhen.Text = original;
+        LightboxToastText.Text = text;
+        LightboxToast.Opacity = 1;
+        await Task.Delay(1400);
+        if (LightboxToastText.Text == text) LightboxToast.Opacity = 0;
     }
 }
