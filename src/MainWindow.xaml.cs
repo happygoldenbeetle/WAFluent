@@ -22,8 +22,9 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        // Live WhatsApp when the core is shipped next to the app; `--sample` forces placeholder data.
-        var sample = Environment.GetCommandLineArgs().Contains("--sample") || !CoreClient.IsAvailable;
+        // Live WhatsApp unless `--sample` asks for placeholder data. A missing core is an error,
+        // never a silent switch to sample data (that looked like a lost login).
+        var sample = Environment.GetCommandLineArgs().Contains("--sample");
         if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         ViewModel = new MainViewModel(_core);
 
@@ -50,7 +51,14 @@ public sealed partial class MainWindow : Window
             _core?.Dispose();
         };
 
-        _core?.Start();
+        if (_core is not null)
+        {
+            if (!CoreClient.IsAvailable)
+                ViewModel.ReportError($"The WhatsApp connection ({CoreClient.ExecutablePath}) is missing. Rebuild WAFluent. Your login and chats are safe.");
+            else
+                try { _core.Start(); }
+                catch (Exception e) { ViewModel.ReportError($"Couldn't start the WhatsApp connection: {e.Message}"); }
+        }
     }
 
     private async void Logout_Click(object sender, RoutedEventArgs e)

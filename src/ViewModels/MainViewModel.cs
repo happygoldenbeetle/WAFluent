@@ -168,6 +168,9 @@ public sealed class MainViewModel : Observable
 
     public void Logout() => _core?.Logout();
 
+    /// <summary>Problems on the app side (e.g. the core can't start) show like core errors.</summary>
+    public void ReportError(string message) => OnStatus("error", message);
+
     // ───────────── Chat list ─────────────
 
     public Chat? SelectedChat

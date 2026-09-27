@@ -42,9 +42,20 @@
     <CargoExe Condition="Exists('$(USERPROFILE)\.cargo\bin\cargo.exe')">"$(USERPROFILE)\.cargo\bin\cargo.exe"</CargoExe>
   </PropertyGroup>
 
+  <!--
+    Ship an already-built core even when SkipCore=true. Without this, MSBuild's incremental
+    clean deletes core\wafluent-core.exe from the output as an orphan of earlier builds.
+  -->
+  <ItemGroup Condition="Exists('$(CoreDir)target\$(CoreProfile)\wafluent-core.exe')">
+    <Content Include="$(CoreDir)target\$(CoreProfile)\wafluent-core.exe"
+             Link="core\wafluent-core.exe"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <Target Name="BuildCore" BeforeTargets="BeforeBuild" Condition="'$(SkipCore)' != 'true'">
     <Exec Command="$(CargoExe) build $(CoreCargoFlags) --manifest-path &quot;$(CoreDir)Cargo.toml&quot;" />
-    <ItemGroup>
+    <!-- First build ever: the exe didn't exist when the static item above was evaluated. -->
+    <ItemGroup Condition="'@(Content->WithMetadataValue('Link', 'core\wafluent-core.exe'))' == ''">
       <Content Include="$(CoreDir)target\$(CoreProfile)\wafluent-core.exe"
                Link="core\wafluent-core.exe"
                CopyToOutputDirectory="PreserveNewest" />
