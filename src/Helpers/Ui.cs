@@ -15,6 +15,7 @@ public static class Ui
     public static Visibility IsNull(object? value) => Visible(value is null);
     public static Visibility IsNotNull(object? value) => Visible(value is not null);
     public static Visibility Positive(int value) => Visible(value > 0);
+    public static Visibility Both(bool a, bool b) => Visible(a && b);
 
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;

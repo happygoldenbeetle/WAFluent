@@ -8,7 +8,10 @@ using Windows.UI;
 
 namespace WhatsAppNative.Controls;
 
-/// <summary>Circular avatar: initials on a colour picked from the name. A photo can be layered on later.</summary>
+/// <summary>
+/// Circular avatar: initials on a colour picked from the name, optionally inside a green
+/// "unseen status" ring. A photo can be layered on later.
+/// </summary>
 public sealed partial class Avatar : UserControl
 {
     private static readonly Color[] Palette =
@@ -20,6 +23,9 @@ public sealed partial class Avatar : UserControl
         Color.FromArgb(255, 0x98, 0x6F, 0x0B), Color.FromArgb(255, 0x00, 0x7C, 0x9A),
     ];
 
+    private static readonly SolidColorBrush RingBrush = new(Color.FromArgb(255, 0x1D, 0xAA, 0x61));
+
+    private readonly Ellipse _ring = new() { Stroke = RingBrush, StrokeThickness = 2 };
     private readonly Ellipse _circle = new();
     private readonly TextBlock _initials = new()
     {
@@ -35,12 +41,17 @@ public sealed partial class Avatar : UserControl
     public static readonly DependencyProperty SizeProperty = DependencyProperty.Register(
         nameof(Size), typeof(double), typeof(Avatar), new PropertyMetadata(48.0, (d, _) => ((Avatar)d).Update()));
 
+    public static readonly DependencyProperty ShowRingProperty = DependencyProperty.Register(
+        nameof(ShowRing), typeof(bool), typeof(Avatar), new PropertyMetadata(false, (d, _) => ((Avatar)d).Update()));
+
     public string DisplayName { get => (string)GetValue(DisplayNameProperty); set => SetValue(DisplayNameProperty, value); }
     public double Size { get => (double)GetValue(SizeProperty); set => SetValue(SizeProperty, value); }
+    public bool ShowRing { get => (bool)GetValue(ShowRingProperty); set => SetValue(ShowRingProperty, value); }
 
     public Avatar()
     {
         var root = new Grid();
+        root.Children.Add(_ring);
         root.Children.Add(_circle);
         root.Children.Add(_initials);
         Content = root;
@@ -51,8 +62,12 @@ public sealed partial class Avatar : UserControl
     private void Update()
     {
         Width = Height = Size;
-        _circle.Width = _circle.Height = Size;
-        _initials.FontSize = Math.Round(Size * 0.36);
+        _ring.Width = _ring.Height = Size;
+        _ring.Visibility = ShowRing ? Visibility.Visible : Visibility.Collapsed;
+        // With a ring, the picture shrinks to leave a thin gap inside it.
+        var inner = ShowRing ? Size - 8 : Size;
+        _circle.Width = _circle.Height = inner;
+        _initials.FontSize = Math.Round(inner * 0.36);
         _initials.Text = Initials(DisplayName ?? "");
         _circle.Fill = new SolidColorBrush(Palette[StableHash(DisplayName ?? "") % Palette.Length]);
     }

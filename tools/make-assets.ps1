@@ -37,7 +37,7 @@ function New-Wallpaper([string] $path, [System.Drawing.Color] $bg, [System.Drawi
 }
 
 New-Wallpaper (Join-Path $assets 'Wallpaper.Light.png') ([System.Drawing.Color]::FromArgb(240, 239, 237)) ([System.Drawing.Color]::FromArgb(40, 110, 110, 110))
-New-Wallpaper (Join-Path $assets 'Wallpaper.Dark.png')  ([System.Drawing.Color]::FromArgb(17, 21, 24))    ([System.Drawing.Color]::FromArgb(15, 255, 255, 255))
+New-Wallpaper (Join-Path $assets 'Wallpaper.Dark.png')  ([System.Drawing.Color]::FromArgb(28, 28, 28))    ([System.Drawing.Color]::FromArgb(13, 255, 255, 255))
 
 # App icon: green circle with a white chat glyph.
 function New-IconBitmap([int] $s) {

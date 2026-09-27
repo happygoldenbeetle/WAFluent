@@ -19,7 +19,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Avatar DisplayName="{x:Bind Name}" Size="44" />
+                    <controls:Avatar DisplayName="{x:Bind Name}" Size="48" ShowRing="{x:Bind HasStatus}" />
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                         <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -58,7 +58,7 @@
                                       Visibility="{x:Bind IsPinned}" />
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                       Visibility="{x:Bind HasMention}" />
+                                       Visibility="{x:Bind helpers:Ui.Both(HasMention, HasUnread), Mode=OneWay}" />
                             <InfoBadge Value="{x:Bind Unread, Mode=OneWay}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </StackPanel>
@@ -134,7 +134,7 @@
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
                                     <Border Background="{ThemeResource FileCardBrush}" CornerRadius="6" Padding="10,12,10,10">
-                                        <StackPanel Spacing="12">
+                                        <StackPanel Spacing="10">
                                             <Grid ColumnSpacing="12">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
@@ -147,6 +147,7 @@
                                                                TextTrimming="CharacterEllipsis" />
                                                 </StackPanel>
                                             </Grid>
+                                            <Rectangle Height="1" Margin="-10,0" Fill="{ThemeResource FileCardDividerBrush}" />
                                             <Grid ColumnSpacing="8">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
@@ -216,7 +217,8 @@
                 </NavigationViewItem>
                 <NavigationViewItem Content="Status" Tag="Status">
                     <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xEA3A;" />
+                        <!-- Double ring, drawn: the icon font has no status glyph. -->
+                        <PathIcon Data="F0 M8,0.75 A7.25,7.25 0 1 1 7.99,0.75 Z M8,2.1 A5.9,5.9 0 1 1 7.99,2.1 Z M8,4.6 A3.4,3.4 0 1 1 7.99,4.6 Z M8,5.95 A2.05,2.05 0 1 1 7.99,5.95 Z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
@@ -266,10 +268,10 @@
                         <TextBlock x:Name="ListTitle" Text="Chats" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <StackPanel x:Name="ListActions" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2">
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New chat" AutomationProperties.Name="New chat">
-                                <FontIcon Glyph="&#xE70F;" FontSize="15" />
+                                <FontIcon Glyph="&#xE932;" FontSize="16" />
                             </Button>
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Filter" AutomationProperties.Name="Filter chats">
-                                <FontIcon Glyph="&#xE71C;" FontSize="15" />
+                                <PathIcon Data="M1,3 H15 V4.3 H1 Z M3.5,7.4 H12.5 V8.7 H3.5 Z M6,11.8 H10 V13.1 H6 Z" />
                             </Button>
                         </StackPanel>
                     </Grid>
@@ -320,13 +322,16 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call"
+                                    Click="VideoCall_Click">
                                 <FontIcon Glyph="&#xE714;" FontSize="16" />
                             </Button>
-                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Voice call" AutomationProperties.Name="Voice call">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Voice call" AutomationProperties.Name="Voice call"
+                                    Click="VoiceCall_Click">
                                 <FontIcon Glyph="&#xE717;" FontSize="16" />
                             </Button>
-                            <Button Style="{StaticResource IconButtonStyle}" Margin="8,0,0,0" ToolTipService.ToolTip="Search" AutomationProperties.Name="Search in chat">
+                            <Rectangle Width="1" Height="18" Margin="6,0" VerticalAlignment="Center" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Search" AutomationProperties.Name="Search in chat">
                                 <FontIcon Glyph="&#xE721;" FontSize="16" />
                             </Button>
                         </StackPanel>

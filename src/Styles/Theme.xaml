@@ -16,30 +16,32 @@
             <SolidColorBrush x:Key="MetaTextBrush" Color="#667781" />
             <SolidColorBrush x:Key="SentTickBrush" Color="#8696A0" />
             <SolidColorBrush x:Key="ReadTickBrush" Color="#2F9AE0" />
-            <SolidColorBrush x:Key="FileCardBrush" Color="#0D0B141A" />
-            <SolidColorBrush x:Key="BubbleButtonBrush" Color="#FFFFFF" />
-            <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#140B141A" />
+            <SolidColorBrush x:Key="FileCardBrush" Color="#80FFFFFF" />
+            <SolidColorBrush x:Key="FileCardDividerBrush" Color="#140B141A" />
+            <SolidColorBrush x:Key="BubbleButtonBrush" Color="#0D000000" />
+            <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00000000" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#FAFAFA" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#CCFFFFFF" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#00FFFFFF" />
             <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Light.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
-            <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#111518" />
+            <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#1C1C1C" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#202020" />
-            <SolidColorBrush x:Key="PaneDividerBrush" Color="#33000000" />
-            <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#005C4B" />
-            <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#202C33" />
+            <SolidColorBrush x:Key="PaneDividerBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#144D37" />
+            <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#2E2E2E" />
             <SolidColorBrush x:Key="BubbleShadowBrush" Color="#40000000" />
-            <SolidColorBrush x:Key="BubbleTextBrush" Color="#E9EDEF" />
-            <SolidColorBrush x:Key="MetaTextBrush" Color="#9DAAB2" />
-            <SolidColorBrush x:Key="SentTickBrush" Color="#9DAAB2" />
+            <SolidColorBrush x:Key="BubbleTextBrush" Color="#F2F2F2" />
+            <SolidColorBrush x:Key="MetaTextBrush" Color="#A8A8A8" />
+            <SolidColorBrush x:Key="SentTickBrush" Color="#A8A8A8" />
             <SolidColorBrush x:Key="ReadTickBrush" Color="#53BDEB" />
             <SolidColorBrush x:Key="FileCardBrush" Color="#26000000" />
+            <SolidColorBrush x:Key="FileCardDividerBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="#1AFFFFFF" />
-            <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00FFFFFF" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#202020" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#CC182229" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#00000000" />
             <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Dark.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
         </ResourceDictionary>
 
@@ -55,6 +57,7 @@
             <SolidColorBrush x:Key="SentTickBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ReadTickBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="FileCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="FileCardDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
             <SolidColorBrush x:Key="ComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -124,6 +127,23 @@
         <Setter Property="Padding" Value="5,1,5,2" />
         <Setter Property="Margin" Value="8,-6,0,0" />
         <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+
+    <!-- Round buttons in the call window. -->
+    <Style x:Key="CallButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="22" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style x:Key="CallToggleStyle" TargetType="ToggleButton" BasedOn="{StaticResource DefaultToggleButtonStyle}">
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="22" />
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
 
     <Style x:Key="MetaTextStyle" TargetType="TextBlock">

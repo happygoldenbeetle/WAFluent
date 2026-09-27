@@ -45,7 +45,7 @@ public sealed class Message
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.
     /// Must end in a non-whitespace character: trailing spaces take no width at a line end.
     /// </summary>
-    public string TimeSpacer => "  " + Time + (IsOutgoing ? " ___" : "");
+    public string TimeSpacer => "\u00A0\u00A0" + Time + (IsOutgoing ? "\u00A0___" : "");
 }
 
 public sealed class Chat : Observable
@@ -61,6 +61,7 @@ public sealed class Chat : Observable
     public string PreviewGlyph { get; init; } = "";   // e.g. a camera/video icon before the preview
     public bool IsPinned { get; init; }
     public bool HasMention { get; init; }
+    public bool HasStatus { get; init; }   // unseen status update: green ring around the avatar
     public ObservableCollection<Message> Messages { get; } = new();
 
     public string Preview { get => _preview; set => Set(ref _preview, value); }

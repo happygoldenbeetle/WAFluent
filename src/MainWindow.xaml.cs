@@ -1,15 +1,12 @@
 using System.Runtime.InteropServices;
-using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
-using Windows.Graphics;
 using Windows.System;
-using Windows.UI;
 using Windows.UI.Core;
+using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
 using WhatsAppNative.ViewModels;
 
@@ -17,6 +14,8 @@ namespace WhatsAppNative;
 
 public sealed partial class MainWindow : Window
 {
+    private CallWindow? _call;
+
     public MainViewModel ViewModel { get; } = new();
 
     public MainWindow()
@@ -28,20 +27,16 @@ public sealed partial class MainWindow : Window
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         ApplyThemeArgument();
-        UpdateCaptionButtons();
-        Root.ActualThemeChanged += (_, _) => UpdateCaptionButtons();
+        WindowHelper.ApplyCaptionColors(this, Root.ActualTheme);
+        Root.ActualThemeChanged += (_, _) => WindowHelper.ApplyCaptionColors(this, Root.ActualTheme);
 
-        SizeAndCenter(1100, 720);
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            var scale = Scale();
-            presenter.PreferredMinimumWidth = (int)(760 * scale);
-            presenter.PreferredMinimumHeight = (int)(500 * scale);
-        }
+        WindowHelper.SizeAndCenter(this, 1100, 720);
+        WindowHelper.SetMinimumSize(this, 760, 500);
 
         // x:Bind fills the list on Loading, so the initial selection has to wait until then.
         ChatList.Loaded += (_, _) => ChatList.SelectedItem = ViewModel.SelectedChat;
         Messages.Loaded += (_, _) => ScrollToBottom();
+        Closed += (_, _) => _call?.Close();
     }
 
     /// <summary>`--theme light` / `--theme dark` forces a theme (handy for checking both).</summary>
@@ -51,21 +46,6 @@ public sealed partial class MainWindow : Window
         var i = Array.IndexOf(args, "--theme");
         if (i < 0 || i + 1 >= args.Length) return;
         Root.RequestedTheme = args[i + 1].Equals("light", StringComparison.OrdinalIgnoreCase) ? ElementTheme.Light : ElementTheme.Dark;
-    }
-
-    /// <summary>Caption buttons don't follow an app-forced theme on their own.</summary>
-    private void UpdateCaptionButtons()
-    {
-        var dark = Root.ActualTheme == ElementTheme.Dark;
-        var bar = AppWindow.TitleBar;
-        bar.ButtonBackgroundColor = Colors.Transparent;
-        bar.ButtonInactiveBackgroundColor = Colors.Transparent;
-        bar.ButtonForegroundColor = dark ? Colors.White : Colors.Black;
-        bar.ButtonInactiveForegroundColor = Color.FromArgb(0xFF, 0x8A, 0x8A, 0x8A);
-        bar.ButtonHoverBackgroundColor = dark ? Color.FromArgb(0x15, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x0F, 0x00, 0x00, 0x00);
-        bar.ButtonHoverForegroundColor = bar.ButtonForegroundColor;
-        bar.ButtonPressedBackgroundColor = dark ? Color.FromArgb(0x0B, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x0A, 0x00, 0x00, 0x00);
-        bar.ButtonPressedForegroundColor = bar.ButtonForegroundColor;
     }
 
     // ───────────── Rail + chat list ─────────────
@@ -88,12 +68,12 @@ public sealed partial class MainWindow : Window
         SectionPlaceholder.Visibility = isChats ? Visibility.Collapsed : Visibility.Visible;
         (SectionPlaceholderIcon.Glyph, SectionPlaceholderText.Text) = section switch
         {
-            "Calls" => ("", "No recent calls"),
-            "Status" => ("", "No status updates"),
-            "Starred" => ("", "No starred messages"),
-            "Archived" => ("", "No archived chats"),
-            "Settings" => ("", "Settings are coming soon"),
-            "Profile" => ("", "Your profile appears here once linked"),
+            "Calls" => (Glyphs.Phone, "No recent calls"),
+            "Status" => (Glyphs.Status, "No status updates"),
+            "Starred" => (Glyphs.Star, "No starred messages"),
+            "Archived" => (Glyphs.Archive, "No archived chats"),
+            "Settings" => (Glyphs.Settings, "Settings are coming soon"),
+            "Profile" => (Glyphs.Contact, "Your profile appears here once linked"),
             _ => ("", ""),
         };
     }
@@ -110,6 +90,25 @@ public sealed partial class MainWindow : Window
         if (ChatList.SelectedItem is not Chat chat || chat == ViewModel.SelectedChat) return;
         ViewModel.SelectedChat = chat;
         ScrollToBottom();
+    }
+
+    // ───────────── Calls ─────────────
+
+    private void VoiceCall_Click(object sender, RoutedEventArgs e) => StartCall(video: false);
+
+    private void VideoCall_Click(object sender, RoutedEventArgs e) => StartCall(video: true);
+
+    private void StartCall(bool video)
+    {
+        if (ViewModel.SelectedChat is not { } chat) return;
+        if (_call is not null)
+        {
+            _call.Activate();   // one call at a time
+            return;
+        }
+        _call = new CallWindow(chat, video, Root.RequestedTheme, this);
+        _call.Closed += (_, _) => _call = null;
+        _call.Activate();
     }
 
     // ───────────── Composer ─────────────
@@ -165,21 +164,5 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private double Scale() => GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
-
-    private void SizeAndCenter(int width, int height)
-    {
-        var scale = Scale();
-        var size = new SizeInt32((int)(width * scale), (int)(height * scale));
-        var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        size.Width = Math.Min(size.Width, work.Width);
-        size.Height = Math.Min(size.Height, work.Height);
-        AppWindow.MoveAndResize(new RectInt32(
-            work.X + (work.Width - size.Width) / 2,
-            work.Y + (work.Height - size.Height) / 2,
-            size.Width, size.Height));
-    }
-
-    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, nuint extraInfo);
 }

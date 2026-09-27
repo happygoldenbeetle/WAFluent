@@ -23,7 +23,9 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 | Path | What |
 |---|---|
 | `src/MainWindow.xaml` | Sidebar, conversation pane, message templates |
-| `src/Controls/` | `Avatar`, `Bubble`, `DeliveryTicks` |
+| `src/CallWindow.xaml` | In-call window: caller card, voice-level wave, timer, call controls |
+| `src/Controls/` | `Avatar` (with status ring), `Bubble`, `DeliveryTicks` |
+| `src/Helpers/` | x:Bind functions, message template selector, window sizing, icon glyphs |
 | `src/Styles/Theme.xaml` | Light/dark/high-contrast colours, bubble style |
 | `src/Models/` | `Chat`, `Message`, sample data |
 | `src/ViewModels/MainViewModel.cs` | Chat list, search, selection, sending |

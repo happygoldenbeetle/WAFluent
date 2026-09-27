@@ -1,11 +1,10 @@
+using WhatsAppNative.Helpers;
+
 namespace WhatsAppNative.Models;
 
 /// <summary>Placeholder chats for building the UI before the WhatsApp backend exists.</summary>
 public static class SampleData
 {
-    private const string VideoGlyph = "\uE714";
-    private const string PhotoGlyph = "\uEB9F";
-
     private static string? LocalImage(params string[] candidates) => candidates.FirstOrDefault(File.Exists);
 
     private static Message In(string text, string time, string reaction = "") =>
@@ -27,7 +26,7 @@ public static class SampleData
         new Chat { Name = "Maya Kasuma", Status = "last seen today at 14:54", Preview = "Yes! OK", Time = "14:54", IsPinned = true }
             .With(Day("Today"), Out("Coffee after the review?", "14:50"), In("Yes! OK", "14:54")),
 
-        new Chat { Name = "Jason Ballmer", Status = "online", Preview = "Video", PreviewGlyph = VideoGlyph, Time = "15:26", Unread = 3 }
+        new Chat { Name = "Jason Ballmer", Status = "online", Preview = "Video", PreviewGlyph = Glyphs.Video, Time = "15:26", Unread = 3 }
             .With(Day("Today"), In("Check this out", "15:25"), In("You have to see the ending", "15:25"), In("🎥 Video", "15:26")),
 
         new Chat { Name = "Alice Whitman", Status = "online", Preview = "Wow! Have great time. Enjoy.", Time = "15:12", LastDelivery = Delivery.Read }
@@ -48,10 +47,10 @@ public static class SampleData
         new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", Preview = "Rebecca: @Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),
 
-        new Chat { Name = "Stasa Benko", Status = "last seen today at 13:56", Preview = "Aww no problem.", Time = "13:56", Unread = 2 }
+        new Chat { Name = "Stasa Benko", Status = "last seen today at 13:56", Preview = "Aww no problem.", Time = "13:56", Unread = 2, HasStatus = true }
             .With(Day("Today"), Out("Sorry, can't make it tonight 😞", "13:50"), In("Aww", "13:55"), In("Aww no problem.", "13:56")),
 
-        new Chat { Name = "Family Foodies", Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = PhotoGlyph, Time = "11:21", LastDelivery = Delivery.Read }
+        new Chat { Name = "Family Foodies", Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = Glyphs.Photo, Time = "11:21", LastDelivery = Delivery.Read }
             .With(Day("Today"), In("Who made the lasagna??", "11:02"), Out("📷 Dinner last night", "11:21")),
 
         new Chat { Name = "Mark Rogers", Status = "typing…", IsTyping = true, Preview = "typing…", Time = "10:56" }
