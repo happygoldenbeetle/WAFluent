@@ -12,6 +12,7 @@ using Windows.Foundation;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
+using Windows.System;
 using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
 
@@ -20,8 +21,8 @@ namespace WhatsAppNative;
 /// <summary>
 /// Full-window photo viewer. Opens like macOS Quick Look: the picture springs out of its
 /// chat bubble to full size while the background dims, and flies back in on close.
-/// Zoom: Ctrl+wheel, pinch, double-click or buttons (greyed out at the limits);
-/// ←/→ step through the chat's pictures; copy / save / open in Photos.
+/// Zoom: Ctrl+wheel, pinch, double-click, Ctrl+/Ctrl-; right-click for zoom/copy/save/open;
+/// ←/→ step through the chat's pictures; Esc or a click outside closes.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -52,6 +53,7 @@ public sealed partial class MainWindow
         _viewerSource = source;
         _viewerClosing = false;
 
+        EnsureViewerShortcuts();
         Lightbox.Visibility = Visibility.Visible;
         LightboxImage.Opacity = 0;   // the flying copy stands in until it lands
         ShowViewerItem(animateFrom: source);
@@ -117,7 +119,6 @@ public sealed partial class MainWindow
         LightboxPrev.Visibility = _viewerIndex > 0 ? Visibility.Visible : Visibility.Collapsed;
         LightboxNext.Visibility = _viewerIndex < _viewerItems.Count - 1 ? Visibility.Visible : Visibility.Collapsed;
         FitViewerImage();
-        UpdateZoomButtons();
 
         if (animateFrom is not null)
         {
@@ -304,19 +305,49 @@ public sealed partial class MainWindow
         LightboxScroller.ChangeView(null, null, (float)target);
     }
 
-    /// <summary>Zoom out is unavailable at fit, zoom in at the maximum.</summary>
-    private void UpdateZoomButtons()
+    private bool CanZoomIn => LightboxScroller.ZoomFactor < LightboxScroller.MaxZoomFactor - 0.01;
+    private bool CanZoomOut => LightboxScroller.ZoomFactor > LightboxScroller.MinZoomFactor + 0.01;
+
+    /// <summary>Right-click menu: zoom items are greyed out at the limits.</summary>
+    private void LightboxMenu_Opening(object? sender, object e)
     {
-        var z = LightboxScroller.ZoomFactor;
-        LightboxZoomOutButton.IsEnabled = z > LightboxScroller.MinZoomFactor + 0.01;
-        LightboxZoomInButton.IsEnabled = z < LightboxScroller.MaxZoomFactor - 0.01;
+        LightboxZoomInItem.IsEnabled = CanZoomIn;
+        LightboxZoomOutItem.IsEnabled = CanZoomOut;
+    }
+
+    /// <summary>Ctrl+/Ctrl- (main row or numpad), Ctrl+0, Ctrl+C, Ctrl+S while the viewer is open.</summary>
+    private void EnsureViewerShortcuts()
+    {
+        if (Lightbox.KeyboardAccelerators.Count > 3) return;   // Esc, Left, Right come from XAML
+        void Add(VirtualKey key, Action action)
+        {
+            var accelerator = new KeyboardAccelerator { Key = key, Modifiers = VirtualKeyModifiers.Control };
+            accelerator.Invoked += (_, args) =>
+            {
+                if (Lightbox.Visibility != Visibility.Visible) return;
+                args.Handled = true;
+                action();
+            };
+            Lightbox.KeyboardAccelerators.Add(accelerator);
+        }
+        const VirtualKey OemPlus = (VirtualKey)0xBB, OemMinus = (VirtualKey)0xBD;
+        Add(OemPlus, () => { if (CanZoomIn) Zoom(1.5); });
+        Add(VirtualKey.Add, () => { if (CanZoomIn) Zoom(1.5); });
+        Add(OemMinus, () => { if (CanZoomOut) Zoom(1 / 1.5); });
+        Add(VirtualKey.Subtract, () => { if (CanZoomOut) Zoom(1 / 1.5); });
+        Add(VirtualKey.Number0, () => LightboxScroller.ChangeView(0, 0, 1));
+        Add(VirtualKey.C, () =>
+        {
+            // Let a caption text selection copy as text.
+            if (LightboxCaption.SelectedText.Length == 0) LightboxCopy_Click(this, new RoutedEventArgs());
+        });
+        Add(VirtualKey.S, () => LightboxSave_Click(this, new RoutedEventArgs()));
     }
 
     // ───────────── Event handlers ─────────────
 
     private void LightboxScroller_SizeChanged(object sender, SizeChangedEventArgs e) => FitViewerImage();
 
-    private void LightboxScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e) => UpdateZoomButtons();
 
     /// <summary>Clicks on the dimmed area close the viewer; the picture and bars swallow theirs.</summary>
     private void Lightbox_BackgroundTapped(object sender, TappedRoutedEventArgs e) => CloseViewer();
@@ -342,8 +373,7 @@ public sealed partial class MainWindow
     private void LightboxZoomOut_Click(object sender, RoutedEventArgs e) => Zoom(1 / 1.5);
     private void LightboxPrev_Click(object sender, RoutedEventArgs e) => Step(-1);
     private void LightboxNext_Click(object sender, RoutedEventArgs e) => Step(1);
-    private void LightboxClose_Click(object sender, RoutedEventArgs e) => CloseViewer();
-
+    
     private void LightboxClose_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         args.Handled = true;
