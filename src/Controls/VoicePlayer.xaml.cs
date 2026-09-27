@@ -12,7 +12,7 @@ namespace WhatsAppNative.Controls;
 /// <summary>Voice note bubble content: play/pause, waveform with progress, duration, speed.</summary>
 public sealed partial class VoicePlayer : UserControl
 {
-    private const int BarCount = 48;
+    private const int BarCount = 42;   // fills the space between the play button and the speed pill
     private const double MaxBarHeight = 28, MinBarHeight = 3;
 
     private readonly List<Rectangle> _bars = new();
@@ -89,10 +89,17 @@ public sealed partial class VoicePlayer : UserControl
         var position = isCurrent ? AudioPlayback.Position : TimeSpan.Zero;
         DurationText.Text = Format.Duration(isCurrent && position > TimeSpan.Zero ? position : duration);
 
-        RateButton.Visibility = isCurrent ? Visibility.Visible : Visibility.Collapsed;
+        // Shown only for the note that's playing, but always taking its space.
+        RateButton.Opacity = isCurrent ? 1 : 0;
+        RateButton.IsHitTestVisible = isCurrent;
         RateButton.Content = $"{AudioPlayback.Rate:0.#}×";
 
-        var played = duration > TimeSpan.Zero ? (int)Math.Round(BarCount * position / duration) : 0;
+        // Playhead dot rides along the waveform.
+        var fraction = duration > TimeSpan.Zero ? Math.Clamp(position / duration, 0, 1) : 0;
+        Knob.Visibility = isCurrent ? Visibility.Visible : Visibility.Collapsed;
+        Canvas.SetLeft(Knob, fraction * Bars.ActualWidth - Knob.Width / 2);
+
+        var played = (int)Math.Round(BarCount * fraction);
         if (played == _playedBars) return;
         _playedBars = played;
         for (var i = 0; i < _bars.Count; i++)

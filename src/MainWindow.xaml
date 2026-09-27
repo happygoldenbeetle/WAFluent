@@ -151,7 +151,7 @@
                 <helpers:MessageTemplateSelector.Voice>
                     <DataTemplate x:DataType="models:Message">
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,6,10,4">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,4,10,4">
                                 <StackPanel>
                                     <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,2"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
