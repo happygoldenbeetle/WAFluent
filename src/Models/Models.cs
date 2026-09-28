@@ -111,13 +111,25 @@ public sealed class Message : Observable
     public string FileDetails { get; init; } = "";
 
     public bool HasText => Text.Length > 0;
+
+    /// <summary>Deleted for everyone: shows "This message was deleted" in italics.</summary>
+    public bool IsDeleted { get; init; }
+    public bool Starred { get; init; }
+    public bool Edited { get; init; }
+
+    private bool _isSelected;
+    private bool _selecting;
+    /// <summary>Picked in select mode (the row is tinted and its circle ticked).</summary>
+    public bool IsSelected { get => _isSelected; set => Set(ref _isSelected, value); }
+    /// <summary>Select mode is on: every message shows its circle.</summary>
+    public bool Selecting { get => _selecting; set => Set(ref _selecting, value); }
     public bool ShowSender => !IsOutgoing && SenderName.Length > 0;
 
     /// <summary>
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.
     /// Must end in a non-whitespace character: trailing spaces take no width at a line end.
     /// </summary>
-    public string TimeSpacer => "  " + Time + (IsOutgoing ? " ___" : "");
+    public string TimeSpacer => "  " + (Starred ? "__ " : "") + (Edited ? "Edited " : "") + Time + (IsOutgoing ? " ___" : "");
 }
 
 public sealed class Chat : Observable
@@ -142,6 +154,25 @@ public sealed class Chat : Observable
     public bool HasMention { get; init; }
     public bool HasStatus { get; init; }   // unseen status update: green ring around the avatar
     public DateTime LastActivity { get; set; }
+
+    private bool _isMuted, _isArchived, _isBlocked, _isSaved, _isFavourite;
+    private string _pinnedMessageId = "", _pinnedMessagePreview = "";
+    public bool IsMuted { get => _isMuted; set => Set(ref _isMuted, value); }
+    public bool IsArchived { get => _isArchived; set => Set(ref _isArchived, value); }
+    public bool IsBlocked { get => _isBlocked; set => Set(ref _isBlocked, value); }
+    /// <summary>In your contacts (1:1 chats); unsaved numbers offer "Add to contacts".</summary>
+    public bool IsSaved { get => _isSaved; set => Set(ref _isSaved, value); }
+    /// <summary>Favourites are kept on this PC (ui.json).</summary>
+    public bool IsFavourite { get => _isFavourite; set => Set(ref _isFavourite, value); }
+
+    /// <summary>The message pinned in this chat (banner under the header).</summary>
+    public string PinnedMessageId
+    {
+        get => _pinnedMessageId;
+        set { if (Set(ref _pinnedMessageId, value)) Raise(nameof(HasPinnedMessage)); }
+    }
+    public string PinnedMessagePreview { get => _pinnedMessagePreview; set => Set(ref _pinnedMessagePreview, value); }
+    public bool HasPinnedMessage => _pinnedMessageId.Length > 0;
 
     /// <summary>When the chat was pinned (Unix seconds): the newest pin sits on top.</summary>
     public long PinnedAt { get; set; }

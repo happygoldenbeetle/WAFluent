@@ -6,6 +6,7 @@
     xmlns:controls="using:WhatsAppNative.Controls"
     xmlns:helpers="using:WhatsAppNative.Helpers"
     xmlns:models="using:WhatsAppNative.Models"
+    xmlns:vm="using:WhatsAppNative.ViewModels"
     Title="WAFluent">
 
     <Grid x:Name="Root">
@@ -67,6 +68,8 @@
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
                         <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
+                            <FontIcon Glyph="&#xE74F;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                      Visibility="{x:Bind IsMuted, Mode=OneWay}" />
                             <!-- A tilted pushpin, head and needle, like the phone (Material "push_pin" outline, filled). -->
                             <Path Width="13" Height="13" Stretch="Uniform" RenderTransformOrigin="0.5,0.5"
                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsPinned, Mode=OneWay}"
@@ -90,7 +93,16 @@
             <helpers:MessageTemplateSelector x:Key="MessageTemplates">
                 <helpers:MessageTemplateSelector.Text>
                     <DataTemplate x:DataType="models:Message">
-                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <!-- Tight line bounds: the text box runs from cap height to baseline, so equal
                                  padding means the words sit optically centred (descenders use the bottom pad). -->
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="10">
@@ -112,12 +124,16 @@
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
                                     <TextBlock Grid.Row="2" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                               TextLineBounds="Tight">
+                                               TextLineBounds="Tight" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}">
                                         <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                     </TextBlock>
                                     <!-- Time on the same baseline as the last line of text. -->
                                     <StackPanel Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Orientation="Horizontal" Spacing="3">
+                                        <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
+                                                  Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
+                                        <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
+                                                   Margin="0,0,2,0" Visibility="{x:Bind Edited}" />
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
                                         <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
                                                                 Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -128,12 +144,22 @@
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
+                        </Grid>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Text>
 
                 <helpers:MessageTemplateSelector.Image>
                     <DataTemplate x:DataType="models:Message">
-                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
@@ -170,7 +196,11 @@
                                         </TextBlock>
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Orientation="Horizontal" Spacing="3">
-                                            <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
+                                            <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
+                                                  Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
+                                        <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
+                                                   Margin="0,0,2,0" Visibility="{x:Bind Edited}" />
+                                        <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
                                             <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
                                                                     Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                         </StackPanel>
@@ -181,12 +211,22 @@
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
+                        </Grid>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Image>
 
                 <helpers:MessageTemplateSelector.Voice>
                     <DataTemplate x:DataType="models:Message">
-                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,4,10,4">
                                 <StackPanel>
                                     <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,2" Visibility="{x:Bind ShowSender}">
@@ -203,13 +243,23 @@
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
+                        </Grid>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Voice>
 
                 <helpers:MessageTemplateSelector.Sticker>
                     <DataTemplate x:DataType="models:Message">
                         <!-- Stickers float without a bubble, like WhatsApp. -->
-                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Spacing="2">
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Spacing="2">
                             <controls:Redact HorizontalAlignment="Left" Visibility="{x:Bind ShowSender}">
                                 <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
@@ -230,12 +280,22 @@
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
+                        </Grid>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Sticker>
 
                 <helpers:MessageTemplateSelector.File>
                     <DataTemplate x:DataType="models:Message">
-                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
@@ -276,6 +336,7 @@
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
+                        </Grid>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.File>
 
@@ -384,7 +445,8 @@
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New chat" AutomationProperties.Name="New chat">
                                 <FontIcon Glyph="&#xE932;" FontSize="16" />
                             </Button>
-                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Filter" AutomationProperties.Name="Filter chats">
+                            <Button x:Name="FilterButton" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Filter" AutomationProperties.Name="Filter chats"
+                                    Click="Filter_Click">
                                 <PathIcon Data="M1,3 H15 V4.3 H1 Z M3.5,7.4 H12.5 V8.7 H3.5 Z M6,11.8 H10 V13.1 H6 Z" />
                             </Button>
                         </StackPanel>
@@ -424,6 +486,35 @@
                         </ListView.Resources>
                     </ListView>
 
+                    <!-- Starred messages from every chat (rail: Starred messages). -->
+                    <ListView x:Name="StarredList" Grid.Row="1" Grid.RowSpan="3" Margin="4,0,0,0" Padding="0,0,6,0" Visibility="Collapsed"
+                              ItemsSource="{x:Bind ViewModel.Starred}" SelectionMode="None" IsItemClickEnabled="True"
+                              ItemClick="Starred_ItemClick">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:StarredItem">
+                                <Grid Padding="4,10" RowSpacing="3">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <controls:Redact HorizontalAlignment="Left">
+                                        <TextBlock Text="{x:Bind ChatName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    </controls:Redact>
+                                    <TextBlock Grid.Column="1" Text="{x:Bind When}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE735;" FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock Text="{x:Bind Preview}" FontSize="13" MaxLines="2" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
                     <StackPanel x:Name="SectionPlaceholder" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed"
                                 HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                         <FontIcon x:Name="SectionPlaceholderIcon" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
@@ -456,11 +547,12 @@
                       BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <controls:TiledBackground Grid.Row="1" Background="{ThemeResource WallpaperColorBrush}"
+                    <controls:TiledBackground Grid.Row="1" Grid.RowSpan="2" Background="{ThemeResource WallpaperColorBrush}"
                                               Source="{ThemeResource WallpaperTile}" TileOpacity="{ThemeResource WallpaperTileOpacity}"
                                               TileWidth="{ThemeResource WallpaperTileWidth}" TileHeight="{ThemeResource WallpaperTileHeight}" />
 
@@ -502,7 +594,24 @@
                         </StackPanel>
                     </Grid>
 
-                    <ScrollViewer x:Name="MessagesScroller" Grid.Row="1" Padding="28,8,28,12"
+                    <!-- The message pinned in this chat: click to jump to it (right-click the message to unpin). -->
+                    <Grid Grid.Row="1" Padding="16,6,16,6" ColumnSpacing="12" Background="{ThemeResource ChatHeaderBackgroundBrush}"
+                          BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,0,0,1"
+                          Visibility="{x:Bind helpers:Ui.Visible(ViewModel.SelectedChat.HasPinnedMessage), Mode=OneWay, FallbackValue=Collapsed}"
+                          Tapped="PinnedBanner_Tapped">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="Pinned message" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.SelectedChat.PinnedMessagePreview, Mode=OneWay}" FontSize="13"
+                                       TextTrimming="CharacterEllipsis" MaxLines="1" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer x:Name="MessagesScroller" Grid.Row="2" Padding="28,8,28,12"
                                   Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                                   ViewChanged="MessagesScroller_ViewChanged">
                         <StackPanel>
@@ -534,7 +643,7 @@
                     </ScrollViewer>
 
                     <!-- :shortcode: suggestions, just above the composer (MainWindow.Emoji.cs). -->
-                    <Border x:Name="ShortcodePanel" Grid.Row="1" Visibility="Collapsed"
+                    <Border x:Name="ShortcodePanel" Grid.Row="2" Visibility="Collapsed"
                             HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,0,8"
                             MinWidth="240" MaxWidth="360" Padding="4" CornerRadius="8" Translation="0,0,16"
                             Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
@@ -546,10 +655,41 @@
                     </Border>
 
                     <!-- Composer: docked bar; the mic becomes Send once there is text. -->
-                    <Grid Grid.Row="2" Padding="10,6" ColumnSpacing="2"
+                    <!-- Select mode replaces the composer: count, then copy / star / forward / delete. -->
+                    <Grid Grid.Row="3" Padding="10,6" ColumnSpacing="4" MinHeight="52"
                           Background="{ThemeResource ComposerBrush}"
                           BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,1,0,0"
-                          Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                          Visibility="{x:Bind ViewModel.IsSelecting, Mode=OneWay}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Cancel (Esc)" AutomationProperties.Name="Cancel selection"
+                                Click="SelectCancel_Click">
+                            <FontIcon Glyph="&#xE711;" FontSize="14" />
+                        </Button>
+                        <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.SelectionText, Mode=OneWay}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Copy" AutomationProperties.Name="Copy selected" Click="SelectCopy_Click">
+                                <FontIcon Glyph="&#xE8C8;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Star" AutomationProperties.Name="Star selected" Click="SelectStar_Click">
+                                <FontIcon Glyph="&#xE734;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Forward" AutomationProperties.Name="Forward selected" Click="SelectForward_Click">
+                                <FontIcon Glyph="&#xE72D;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Delete" AutomationProperties.Name="Delete selected" Click="SelectDelete_Click">
+                                <FontIcon Glyph="&#xE74D;" FontSize="16" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.Row="3" Padding="10,6" ColumnSpacing="2"
+                          Background="{ThemeResource ComposerBrush}"
+                          BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,1,0,0"
+                          Visibility="{x:Bind helpers:Ui.VisibleAndNot(ViewModel.HasSelection, ViewModel.IsSelecting), Mode=OneWay}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -614,7 +754,7 @@
                     </Grid>
 
                     <!-- Nothing selected -->
-                    <StackPanel Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
+                    <StackPanel Grid.RowSpan="4" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
                                 Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
                         <Image Source="ms-appx:///Assets/AppIcon.png" Width="72" />
                         <TextBlock Text="WAFluent" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
@@ -795,6 +935,23 @@
             </Canvas>
         </Grid>
 
+
+        <!-- Confirmations and errors ("Forwarded", "Couldn't block this chat"). -->
+        <Border x:Name="Toast" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,84"
+                Padding="14,8" CornerRadius="8" Opacity="0" IsHitTestVisible="False" Translation="0,0,24"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+            <Border.OpacityTransition>
+                <ScalarTransition Duration="0:0:0.2" />
+            </Border.OpacityTransition>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon x:Name="ToastIcon" FontSize="14" VerticalAlignment="Center" />
+                <TextBlock x:Name="ToastText" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
 
         <!-- A reaction flying from the menu to its pill (MainWindow.Reactions.cs). -->
         <Canvas x:Name="FxLayer" Grid.RowSpan="2" IsHitTestVisible="False" />

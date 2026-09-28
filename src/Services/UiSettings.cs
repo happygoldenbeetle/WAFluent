@@ -29,6 +29,9 @@ public sealed class UiSettings
 
     private string[] _quick = ["❤️", "👍", "😂", "😮", "😢"];
 
+    /// <summary>Favourite chats (ids), kept on this PC.</summary>
+    public HashSet<string> Favourites { get; set; } = [];
+
     /// <summary>Emoji keyboard: most recent first, exactly as used (skin tone included).</summary>
     public List<string> RecentEmoji { get; set; } = [];
 

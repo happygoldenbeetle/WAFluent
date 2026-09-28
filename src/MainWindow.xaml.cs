@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
         EmojiData.Warm();
         SetupChatListPane();
         BuildQuickReactionSlots();
+        SetupChatMenus();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         ApplyDeveloperMode();
 
@@ -98,7 +99,9 @@ public sealed partial class MainWindow : Window
     {
         if (ListTitle is null) return;   // initial IsSelected fires during InitializeComponent
         var section = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "Chats";
-        var isChats = section == "Chats";
+        var isList = section is "Chats" or "Archived";   // both are the chat list, filtered
+        var isStarred = section == "Starred";
+        var isSettings = section == "Settings";
 
         ListTitle.Text = section switch
         {
@@ -106,20 +109,35 @@ public sealed partial class MainWindow : Window
             "Archived" => "Archived",
             _ => section,
         };
-        ListActions.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
-        SearchBox.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
-        ChatList.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
-        var isSettings = section == "Settings";
-        SectionPlaceholder.Visibility = isChats || isSettings ? Visibility.Collapsed : Visibility.Visible;
+        ViewModel.ShowArchived = section == "Archived";
+        if (isStarred) ViewModel.LoadStarred();
+
+        ListActions.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
+        SearchBox.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
+        ChatList.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
+        StarredList.Visibility = isStarred ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
         LogoutButton.Visibility = ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSectionPlaceholder(section);
+    }
+
+    /// <summary>The "nothing here" message: other sections, an empty Archived or Starred list.</summary>
+    private void UpdateSectionPlaceholder(string section)
+    {
+        var empty = section switch
+        {
+            "Chats" or "Settings" => false,
+            "Archived" => ViewModel.ArchivedCount == 0,
+            "Starred" => !ViewModel.HasStarred,
+            _ => true,
+        };
+        SectionPlaceholder.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         (SectionPlaceholderIcon.Glyph, SectionPlaceholderText.Text) = section switch
         {
             "Calls" => (Glyphs.Phone, "No recent calls"),
             "Status" => (Glyphs.Status, "No status updates"),
             "Starred" => (Glyphs.Star, "No starred messages"),
             "Archived" => (Glyphs.Archive, "No archived chats"),
-            "Settings" => (Glyphs.Settings, "Settings are coming soon"),
             "Profile" => (Glyphs.Contact, "Your profile appears here once linked"),
             _ => ("", ""),
         };

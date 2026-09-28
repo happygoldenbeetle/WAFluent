@@ -154,6 +154,39 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     None
 }
 
+/// Protocol traffic that changes an existing message.
+pub enum Control {
+    /// "Delete for everyone": the message with this id is gone.
+    Revoke(String),
+    /// The message with this id was edited to this content.
+    Edit(String, Content),
+    /// A message was pinned (true) or unpinned in the chat.
+    Pin(String, bool),
+}
+
+pub fn control(message: &wa::Message) -> Option<Control> {
+    use wa::message::pin_in_chat_message::Type as PinType;
+    use wa::message::protocol_message::Type;
+    let m = message.get_base_message();
+    if let Some(pm) = m.protocol_message.as_option() {
+        let id = pm.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
+        return match pm.r#type {
+            Some(Type::REVOKE) => Some(Control::Revoke(id)),
+            Some(Type::MESSAGE_EDIT) => pm.edited_message.as_option().and_then(content).map(|c| Control::Edit(id, c)),
+            _ => None,
+        };
+    }
+    if let Some(pin) = m.pin_in_chat_message.as_option() {
+        let id = pin.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
+        return match pin.r#type {
+            Some(PinType::PIN_FOR_ALL) => Some(Control::Pin(id, true)),
+            Some(PinType::UNPIN_FOR_ALL) => Some(Control::Pin(id, false)),
+            _ => None,
+        };
+    }
+    None
+}
+
 /// A reaction: (id of the message reacted to, emoji). An empty emoji removes it.
 pub fn reaction(message: &wa::Message) -> Option<(String, String)> {
     let r = message.get_base_message().reaction_message.as_option()?;
@@ -190,6 +223,107 @@ pub fn quote(message: &wa::Message) -> Option<Quote> {
         text: quoted.as_ref().map(|c| c.text.clone()).unwrap_or_default(),
         file_name: quoted.map(|c| c.file_name).unwrap_or_default(),
     })
+}
+
+/// A forwarded copy: text as-is, attachments re-sent from their CDN reference (no re-upload).
+pub fn forwarded(kind: &str, text: &str, file_name: &str, media: Option<&Media>) -> Option<wa::Message> {
+    let context = MessageField::some(wa::ContextInfo { is_forwarded: Some(true), forwarding_score: Some(1), ..Default::default() });
+    let caption = (!text.is_empty()).then(|| text.to_string());
+    let mut m = wa::Message::default();
+    let some = |b: &Vec<u8>| (!b.is_empty()).then(|| b.clone());
+    match (kind, media) {
+        ("text", _) => {
+            m.extended_text_message = MessageField::some(wa::message::ExtendedTextMessage {
+                text: Some(text.to_string()),
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        ("image", Some(x)) => {
+            m.image_message = MessageField::some(wa::message::ImageMessage {
+                direct_path: Some(x.direct_path.clone()),
+                media_key: some(&x.media_key),
+                file_sha256: some(&x.file_sha256),
+                file_enc_sha256: some(&x.file_enc_sha256),
+                file_length: Some(x.file_length),
+                mimetype: Some(x.mimetype.clone()),
+                width: Some(x.width),
+                height: Some(x.height),
+                caption,
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        ("video" | "gif", Some(x)) => {
+            m.video_message = MessageField::some(wa::message::VideoMessage {
+                direct_path: Some(x.direct_path.clone()),
+                media_key: some(&x.media_key),
+                file_sha256: some(&x.file_sha256),
+                file_enc_sha256: some(&x.file_enc_sha256),
+                file_length: Some(x.file_length),
+                mimetype: Some(x.mimetype.clone()),
+                width: Some(x.width),
+                height: Some(x.height),
+                seconds: Some(x.seconds),
+                gif_playback: Some(kind == "gif"),
+                caption,
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        ("voice" | "audio", Some(x)) => {
+            m.audio_message = MessageField::some(wa::message::AudioMessage {
+                direct_path: Some(x.direct_path.clone()),
+                media_key: some(&x.media_key),
+                file_sha256: some(&x.file_sha256),
+                file_enc_sha256: some(&x.file_enc_sha256),
+                file_length: Some(x.file_length),
+                mimetype: Some(x.mimetype.clone()),
+                seconds: Some(x.seconds),
+                ptt: Some(kind == "voice"),
+                waveform: some(&x.waveform),
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        ("document", Some(x)) => {
+            m.document_message = MessageField::some(wa::message::DocumentMessage {
+                direct_path: Some(x.direct_path.clone()),
+                media_key: some(&x.media_key),
+                file_sha256: some(&x.file_sha256),
+                file_enc_sha256: some(&x.file_enc_sha256),
+                file_length: Some(x.file_length),
+                mimetype: Some(x.mimetype.clone()),
+                file_name: (!file_name.is_empty()).then(|| file_name.to_string()),
+                caption,
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        ("sticker", Some(x)) => {
+            m.sticker_message = MessageField::some(wa::message::StickerMessage {
+                direct_path: Some(x.direct_path.clone()),
+                media_key: some(&x.media_key),
+                file_sha256: some(&x.file_sha256),
+                file_enc_sha256: some(&x.file_enc_sha256),
+                file_length: Some(x.file_length),
+                mimetype: Some(x.mimetype.clone()),
+                width: Some(x.width),
+                height: Some(x.height),
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        _ if !text.is_empty() => {
+            m.extended_text_message = MessageField::some(wa::message::ExtendedTextMessage {
+                text: Some(text.to_string()),
+                context_info: context,
+                ..Default::default()
+            })
+        }
+        _ => return None,
+    }
+    Some(m)
 }
 
 /// What a sent reply carries as its `quotedMessage`: enough for the other side to

@@ -9,12 +9,11 @@ namespace WhatsAppNative.ViewModels;
 
 public enum ConnectionState { Sample, Starting, Qr, Connecting, Syncing, Connected, LoggedOut, Error }
 
-public sealed class MainViewModel : Observable
+public sealed partial class MainViewModel : Observable
 {
     private readonly CoreClient? _core;
     private readonly List<Chat> _allChats = new();
     private readonly Dictionary<string, Chat> _byId = new();
-    private readonly HashSet<string> _archived = new();
     private Chat? _selectedChat;
     private string _searchText = "";
     private ConnectionState _state;
@@ -53,6 +52,7 @@ public sealed class MainViewModel : Observable
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) m.Delivery = Delivery.Failed; };
         core.ReceiptReceived += OnReceipt;
+        HookActions(core);
         core.ReactionsReceived += (chatId, messageId, all, mine) =>
         {
             if (Find(chatId, messageId) is not { } m) return;
@@ -208,7 +208,9 @@ public sealed class MainViewModel : Observable
         get => _selectedChat;
         set
         {
-            if (!Set(ref _selectedChat, value)) return;
+            if (value == _selectedChat) return;
+            if (_isSelecting) EndSelect();   // selections belong to the chat they were made in
+            Set(ref _selectedChat, value);
             CancelReply();   // a quote belongs to its chat
             if (value is not null) Open(value);
             Raise(nameof(HasSelection));
@@ -217,7 +219,7 @@ public sealed class MainViewModel : Observable
 
     public bool HasSelection => _selectedChat is not null;
 
-    public int PinnedCount => _allChats.Count(c => c.IsPinned && !_archived.Contains(c.Id));
+    public int PinnedCount => _allChats.Count(c => c.IsPinned && !c.IsArchived);
 
     /// <summary>Pins/unpins right away; the core syncs it to the phone and sends back the result.</summary>
     public void SetPinned(Chat chat, bool pinned)
@@ -298,7 +300,13 @@ public sealed class MainViewModel : Observable
         if (chat == _selectedChat && dto.Unread > 0) _core?.MarkRead(chat.Id);
         chat.Unread = chat == _selectedChat ? 0 : dto.Unread;
 
-        if (dto.Archived) _archived.Add(dto.Id); else _archived.Remove(dto.Id);
+        chat.IsArchived = dto.Archived;
+        chat.IsMuted = dto.Muted;
+        chat.IsBlocked = dto.Blocked;
+        chat.IsSaved = dto.Saved || dto.IsGroup;
+        chat.IsFavourite = _favourites.Contains(dto.Id);
+        chat.PinnedMessageId = dto.PinnedMessage?.Id ?? "";
+        chat.PinnedMessagePreview = dto.PinnedMessage?.Preview ?? "";
         return chat;
     }
 
@@ -315,7 +323,7 @@ public sealed class MainViewModel : Observable
     private void SyncVisible()
     {
         var target = _allChats
-            .Where(c => !_archived.Contains(c.Id))
+            .Where(Visible)
             .Where(c => c.Name.Contains(_searchText, StringComparison.CurrentCultureIgnoreCase))
             .ToList();
 

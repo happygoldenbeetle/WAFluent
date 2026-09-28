@@ -40,6 +40,16 @@ pub enum Event {
     SendFailed { chat_id: String, temp_id: String, reason: String },
     /// A message's reactions changed (someone reacted, changed or removed theirs).
     Reactions { chat_id: String, message_id: String, reactions: Vec<String>, my_reaction: Option<String> },
+    /// A message changed in place (deleted for everyone, edited, starred).
+    MessageUpdated { chat_id: String, message: MessageDto },
+    /// A message is gone from this device (deleted for me).
+    MessageRemoved { chat_id: String, message_id: String },
+    /// The chat was deleted.
+    ChatRemoved { chat_id: String },
+    /// Reply to `loadStarred`, newest first.
+    Starred { items: Vec<StarredDto> },
+    /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
+    Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
     Receipt { chat_id: String, message_ids: Vec<String>, status: u8 },
 }
@@ -68,6 +78,29 @@ pub struct ChatDto {
     /// Cached profile picture (JPEG path), when there is one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// You blocked this contact.
+    pub blocked: bool,
+    /// The contact is in your address book (1:1 chats).
+    pub saved: bool,
+    /// The message pinned in this chat, if any: its id and a one-line preview.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pinned_message: Option<PinnedDto>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PinnedDto {
+    pub id: String,
+    pub preview: String,
+}
+
+/// One starred message, for the Starred view.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StarredDto {
+    pub chat_id: String,
+    pub chat_name: String,
+    pub message: MessageDto,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -98,6 +131,9 @@ pub struct MessageDto {
     /// Your own reaction, if any (it is also in `reactions`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub my_reaction: Option<String>,
+    pub starred: bool,
+    /// The sender changed the text after sending.
+    pub edited: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -141,6 +177,20 @@ pub enum Command {
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },
+    /// Chat menu: archive | unarchive | mute (until_ms, or always) | unmute | markRead | markUnread |
+    /// clear | delete | block | unblock. Synced with the phone.
+    ChatAction { chat_id: String, action: String, until_ms: Option<i64> },
+    /// Save a 1:1 contact to your phone's address book.
+    SaveContact { chat_id: String, first_name: String, last_name: String },
+    /// Send copies of a message to other chats.
+    Forward { chat_id: String, message_id: String, to: Vec<String> },
+    PinMessage { chat_id: String, message_id: String, pin: bool },
+    StarMessage { chat_id: String, message_id: String, star: bool },
+    /// `for_everyone` = revoke (your own messages); otherwise delete for me.
+    DeleteMessage { chat_id: String, message_id: String, for_everyone: bool },
+    /// Report a message to WhatsApp as spam.
+    Report { chat_id: String, message_id: String },
+    LoadStarred,
     /// Pin or unpin a chat. Synced with the phone (WhatsApp allows three pins).
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.

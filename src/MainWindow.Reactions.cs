@@ -115,7 +115,7 @@ public sealed partial class MainWindow
     /// <summary>Double-click a message: react with your first quick reaction.</summary>
     private void Messages_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
+        if (ViewModel.IsSelecting || Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
         if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
         if (IsInside<Button>(e.OriginalSource as DependencyObject, row)) return;   // play button, file buttons...
         e.Handled = true;

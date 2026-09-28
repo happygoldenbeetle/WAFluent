@@ -67,31 +67,4 @@ public sealed partial class MainWindow
         _ui.Save();
         BuildQuickReactionSlots();
     }
-
-    // ───────────── Chat list: pin / unpin ─────────────
-
-    private const int MaxPinned = 3;   // WhatsApp's limit
-
-    private void Chat_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
-    {
-        if (sender is not FrameworkElement { Tag: Chat chat } item) return;
-        e.Handled = true;
-
-        var menu = new MenuFlyout();
-        if (chat.IsPinned)
-        {
-            menu.Items.Add(Item("Unpin chat", Glyphs.Unpin, () => ViewModel.SetPinned(chat, false)));
-        }
-        else
-        {
-            var full = ViewModel.PinnedCount >= MaxPinned;
-            var pin = Item(full ? $"Pin chat (up to {MaxPinned})" : "Pin chat", Glyphs.Pin, () => ViewModel.SetPinned(chat, true), enabled: !full);
-            menu.Items.Add(pin);
-        }
-
-        if (e.TryGetPosition(item, out var point))
-            menu.ShowAt(item, new FlyoutShowOptions { Position = point });
-        else
-            menu.ShowAt(item);
-    }
 }

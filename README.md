@@ -4,7 +4,8 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 
 > **Status:** links to your phone by QR code, shows your real chats, photos, stickers and voice notes,
 > and sends text messages, replies (drag a message to the right) and reactions (right-click or double-click a message).
-> Pinned, archived and muted chats follow the phone; right-click a chat to pin it.
+> Right-click a chat for WhatsApp Desktop's menu (archive, mute, pin, mark unread, favourites, block, clear, delete, add to contacts)
+> and a message to forward, pin, star, select, report or delete it. Emoji: in-app keyboard and :shortcode: autocomplete.
 > Sending media and calls are not wired up yet (the call window is a mockup).
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
@@ -40,6 +41,10 @@ dotnet build -p:Platform=x64      # also runs `cargo build` for core/
 
 The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX install or runtime download is needed.
 
+## Credits
+
+Emoji names, categories and shortcodes: [emojibase](https://github.com/milesj/emojibase) (MIT), trimmed by `tools/make-emoji-data.py`.
+
 ## Layout
 
 | Path | What |
@@ -55,7 +60,10 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 | `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
 | `src/MainWindow.Reactions.cs` | Reaction row in the message menu, emoji flight into the pill |
 | `src/MainWindow.ChatListPane.cs` | Resizable / collapsible chat list (remembered in `ui.json`) |
-| `src/MainWindow.Settings.cs` | Settings (quick reactions), Windows emoji panel picker, pin / unpin menu |
+| `src/MainWindow.Settings.cs` | Settings (quick reactions, developer mode) |
+| `src/MainWindow.ChatMenu.cs` | Chat list menu, filters, Starred view, select mode, toast |
+| `src/MainWindow.Emoji.cs`, `src/Controls/EmojiPicker.xaml` | Emoji keyboard and :shortcode: autocomplete |
+| `core/src/actions.rs` | Chat and message actions sent to WhatsApp |
 | `src/Helpers/` | Formatting, QR rendering, x:Bind functions, window sizing, icon glyphs |
 | `src/Styles/Theme.xaml` | Light/dark/high-contrast colours, bubble style |
 | `src/Models/` | `Chat`, `Message`, sample data |

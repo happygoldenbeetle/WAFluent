@@ -40,7 +40,7 @@ public sealed partial class MainWindow
             menu.Items.Add(Item("Try sending again", Glyphs.Refresh, () => ViewModel.RetrySend(m)));
             menu.Items.Add(new MenuFlyoutSeparator());
         }
-        else if (m.Delivery != Delivery.Pending)
+        else if (m.Delivery != Delivery.Pending && !m.IsDeleted)
         {
             menu.Items.Add(ReactionRow(menu, m, bubble));
             menu.Items.Add(new MenuFlyoutSeparator());
@@ -86,8 +86,23 @@ public sealed partial class MainWindow
         if (m.MediaFailed)
             menu.Items.Add(Item("Retry download", Glyphs.Refresh, () => ViewModel.RetryDownload(m)));
 
+        var sent = m.Delivery is not (Delivery.Pending or Delivery.Failed);
+        if (sent && !m.IsDeleted)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(Item("Forward", Glyphs.Forward, () => _ = ForwardAsync([m])));
+            var pinned = ViewModel.SelectedChat?.PinnedMessageId == m.Id;
+            menu.Items.Add(Item(pinned ? "Unpin" : "Pin", pinned ? Glyphs.Unpin : Glyphs.Pin, () => ViewModel.PinMessage(m, !pinned)));
+            menu.Items.Add(Item(m.Starred ? "Unstar" : "Star", m.Starred ? Glyphs.StarFill : Glyphs.Star, () => ViewModel.Star([m], !m.Starred)));
+        }
         menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(Item("Select", Glyphs.Select, () => ViewModel.BeginSelect(m)));
         menu.Items.Add(Item("Message info", Glyphs.Info, () => ShowMessageInfo(m, bubble)));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        if (!m.IsOutgoing && !m.IsDeleted)
+            menu.Items.Add(Item("Report", Glyphs.Report, () => _ = ConfirmAsync("Report this message?",
+                "The message and who sent it are sent to WhatsApp. The sender isn't told.", "Report", () => ViewModel.Report(m))));
+        menu.Items.Add(Item("Delete", Glyphs.Delete, () => _ = DeleteAsync([m])));
         return menu;
     }
 
@@ -103,11 +118,64 @@ public sealed partial class MainWindow
         return sub;
     }
 
-    private static MenuFlyoutItem Item(string text, string glyph, Action action, bool enabled = true)
+    private static MenuFlyoutItem Item(string text, string? glyph, Action action, bool enabled = true)
     {
-        var item = new MenuFlyoutItem { Text = text, Icon = new FontIcon { Glyph = glyph }, IsEnabled = enabled };
+        var item = new MenuFlyoutItem { Text = text, Icon = glyph is null ? null : new FontIcon { Glyph = glyph }, IsEnabled = enabled };
         item.Click += (_, _) => action();
         return item;
+    }
+
+    /// <summary>Pick chats to forward to (search, several at once).</summary>
+    private async Task ForwardAsync(IReadOnlyList<Message> messages)
+    {
+        var chats = ViewModel.ForwardTargets();
+        var search = new TextBox { PlaceholderText = "Search name or number" };
+        var list = new ListView { SelectionMode = ListViewSelectionMode.Multiple, Height = 360, ItemsSource = chats, DisplayMemberPath = nameof(Chat.Name) };
+        search.TextChanged += (_, _) =>
+        {
+            var picked = list.SelectedItems.Cast<Chat>().ToHashSet();
+            var shown = chats.Where(c => c.Name.Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
+            list.ItemsSource = shown;
+            foreach (var c in shown.Where(picked.Contains)) list.SelectedItems.Add(c);
+        };
+        var panel = new StackPanel { Spacing = 10, Width = 380 };
+        panel.Children.Add(search);
+        panel.Children.Add(list);
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = messages.Count == 1 ? "Forward message to" : $"Forward {messages.Count} messages to",
+            Content = panel,
+            PrimaryButtonText = "Forward",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = false,
+        };
+        list.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = list.SelectedItems.Count > 0;
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        ViewModel.Forward(messages, list.SelectedItems.Cast<Chat>().ToList());
+        ViewModel.EndSelect();
+    }
+
+    /// <summary>Delete for me, or for everyone when they're all yours (and recent enough for WhatsApp).</summary>
+    private async Task DeleteAsync(IReadOnlyList<Message> messages)
+    {
+        var mine = messages.All(m => m.IsOutgoing && !m.IsDeleted && DateTime.Now - m.Timestamp < TimeSpan.FromDays(2));
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = messages.Count == 1 ? "Delete message?" : $"Delete {messages.Count} messages?",
+            Content = new TextBlock { Text = mine ? "Delete for everyone removes it from the chat for everyone in it." : "It will be removed from this PC and your phone.", TextWrapping = TextWrapping.Wrap },
+            PrimaryButtonText = mine ? "Delete for everyone" : "Delete for me",
+            SecondaryButtonText = mine ? "Delete for me" : "",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.None) return;
+        var forEveryone = mine && result == ContentDialogResult.Primary;
+        ViewModel.Delete(messages, forEveryone);
+        ViewModel.EndSelect();
     }
 
     /// <summary>"Open" from the menu flies out of the same picture a click would.</summary>

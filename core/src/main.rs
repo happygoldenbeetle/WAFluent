@@ -5,6 +5,7 @@
 //! Logs go to stderr. Closing stdin shuts the connection down cleanly.
 #![recursion_limit = "512"]
 
+mod actions;
 mod avatars;
 mod media;
 mod extract;
@@ -31,7 +32,7 @@ type Db = Arc<Mutex<Store>>;
 #[derive(Clone)]
 pub(crate) struct Ctx {
     tx: Tx,
-    db: Db,
+    pub(crate) db: Db,
     pub(crate) data_dir: PathBuf,
     /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
     chats_dirty: Arc<Notify>,
@@ -249,6 +250,38 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id).await });
         }
+        Command::ChatAction { chat_id, action, until_ms } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::chat_action(&ctx, &client, chat_id, action, until_ms).await });
+        }
+        Command::SaveContact { chat_id, first_name, last_name } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::save_contact(&ctx, &client, chat_id, first_name, last_name).await });
+        }
+        Command::Forward { chat_id, message_id, to } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, to).await });
+        }
+        Command::PinMessage { chat_id, message_id, pin } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::pin_message(&ctx, &client, chat_id, message_id, pin).await });
+        }
+        Command::StarMessage { chat_id, message_id, star } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::star_message(&ctx, &client, chat_id, message_id, star).await });
+        }
+        Command::DeleteMessage { chat_id, message_id, for_everyone } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::delete_message(&ctx, &client, chat_id, message_id, for_everyone).await });
+        }
+        Command::Report { chat_id, message_id } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::report(&ctx, &client, chat_id, message_id).await });
+        }
+        Command::LoadStarred => {
+            let items = ctx.db().starred();
+            ctx.send(Out::Starred { items });
+        }
         Command::SetPinned { chat_id, pinned } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { set_pinned(&ctx, &client, chat_id, pinned).await });
@@ -345,6 +378,65 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
     }
 }
 
+/// Delete-for-everyone, edits and pins arriving as messages.
+fn apply_control(ctx: &Ctx, chat_id: &str, control: extract::Control) {
+    match control {
+        extract::Control::Revoke(id) => {
+            if ctx.db().set_deleted(chat_id, &id) {
+                send_message_update(ctx, chat_id, &id);
+                send_chat(ctx, chat_id);
+            }
+        }
+        extract::Control::Edit(id, content) => {
+            if ctx.db().set_edited(chat_id, &id, &content.text) {
+                send_message_update(ctx, chat_id, &id);
+                send_chat(ctx, chat_id);
+            }
+        }
+        extract::Control::Pin(id, pinned) => {
+            ctx.db().set_pinned_message(chat_id, if pinned { &id } else { "" });
+            send_chat(ctx, chat_id);
+        }
+    }
+}
+
+pub(crate) fn send_chat(ctx: &Ctx, chat_id: &str) {
+    if let Some(chat) = ctx.db().chat(chat_id) {
+        ctx.send(Out::Chat { chat });
+    }
+}
+
+pub(crate) fn send_message_update(ctx: &Ctx, chat_id: &str, message_id: &str) {
+    let dto = {
+        let db = ctx.db();
+        db.message(chat_id, message_id).map(|m| db.to_dto(chat_id, m))
+    };
+    if let Some(message) = dto {
+        ctx.send(Out::MessageUpdated { chat_id: chat_id.to_string(), message });
+    }
+}
+
+/// "Mark as unread": WhatsApp shows a dot; one unread is the closest we have.
+pub(crate) fn mark_unread(ctx: &Ctx, chat_id: &str) {
+    let db = ctx.db();
+    let unread = db.chat(chat_id).map(|c| c.unread).unwrap_or(0).max(1);
+    db.set_unread(chat_id, unread);
+}
+
+/// Who you blocked, from the server (the phone manages the list too).
+fn refresh_blocklist(ctx: &Ctx, client: &Arc<Client>) {
+    let (ctx, client) = (ctx.clone(), Arc::clone(client));
+    tokio::spawn(async move {
+        let Ok(entries) = client.blocking().get_blocklist().await else { return };
+        let mut ids = Vec::new();
+        for entry in entries {
+            ids.push(chat_for(&ctx, &client, &entry.jid).await);
+        }
+        ctx.db().set_blocklist(&ids);
+        ctx.chats_dirty.notify_one();
+    });
+}
+
 /// Applies one app-state change to a chat and refreshes the list.
 async fn chat_setting(ctx: &Ctx, client: &Arc<Client>, jid: &Jid, apply: impl FnOnce(&Store, &str)) {
     let id = chat_for(ctx, client, jid).await;
@@ -361,7 +453,7 @@ async fn chat_setting(ctx: &Ctx, client: &Arc<Client>, jid: &Jid, apply: impl Fn
 
 /// The stored chat for a JID. The phone may name a chat by phone number while we keep
 /// it under its LID (or the reverse): try the other form from the LID<->number map.
-async fn chat_for(ctx: &Ctx, client: &Arc<Client>, jid: &Jid) -> String {
+pub(crate) async fn chat_for(ctx: &Ctx, client: &Arc<Client>, jid: &Jid) -> String {
     let raw = jid.to_non_ad_string();
     let id = ctx.db().canonical(&raw);
     if ctx.db().chat(&id).is_some() {
@@ -497,6 +589,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.status("connected", None);
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
+            refresh_blocklist(ctx, client);
             avatars::queue_stale(ctx);
         }
         Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
@@ -551,6 +644,36 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             };
             chat_setting(ctx, client, &update.jid, |db, id| db.set_mute_end(id, end)).await;
         }
+        Event::StarUpdate(update) => {
+            let id = chat_for(ctx, client, &update.chat_jid).await;
+            let starred = update.action.starred.unwrap_or(false);
+            if ctx.db().set_starred(&id, &update.message_id, starred) {
+                send_message_update(ctx, &id, &update.message_id);
+            }
+        }
+        Event::DeleteMessageForMeUpdate(update) => {
+            let id = chat_for(ctx, client, &update.chat_jid).await;
+            if ctx.db().delete_message(&id, &update.message_id) {
+                ctx.send(Out::MessageRemoved { chat_id: id.clone(), message_id: update.message_id.clone() });
+                send_chat(ctx, &id);
+            }
+        }
+        Event::DeleteChatUpdate(update) => {
+            let id = chat_for(ctx, client, &update.jid).await;
+            ctx.db().delete_chat(&id);
+            ctx.send(Out::ChatRemoved { chat_id: id });
+        }
+        Event::ClearChatUpdate(update) => {
+            let id = chat_for(ctx, client, &update.jid).await;
+            ctx.db().clear_messages(&id);
+            ctx.send(Out::Messages { chat_id: id.clone(), messages: Vec::new() });
+            send_chat(ctx, &id);
+        }
+        Event::MarkChatAsReadUpdate(update) => {
+            let id = chat_for(ctx, client, &update.jid).await;
+            if update.action.read.unwrap_or(true) { ctx.db().mark_read(&id) } else { mark_unread(ctx, &id) }
+            send_chat(ctx, &id);
+        }
         Event::Receipt(receipt) => {
             use whatsapp_rust::wacore::types::presence::ReceiptType;
             let status = match receipt.r#type {
@@ -603,6 +726,11 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let source = &info.source;
     let raw_chat = source.chat.to_non_ad_string();
     if is_hidden_chat(&raw_chat) {
+        return;
+    }
+    if let Some(control) = extract::control(message) {
+        let chat_id = ctx.db().canonical(&raw_chat);
+        apply_control(ctx, &chat_id, control);
         return;
     }
     if let Some((target, emoji)) = extract::reaction(message) {

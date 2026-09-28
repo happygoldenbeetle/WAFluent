@@ -104,6 +104,9 @@ public static class Format
             ReplyFromMe = dto.Reply?.FromMe ?? false,
             Reactions = dto.Reactions ?? [],
             MyReaction = dto.MyReaction ?? "",
+            Starred = dto.Starred,
+            Edited = dto.Edited,
+            IsDeleted = dto.Kind == "deleted",
         };
 
         switch (dto.Kind)
@@ -133,6 +136,7 @@ public static class Format
             "location" => Label("📍", "Location", dto.Text),
             "contact" => Label("👤", "Contact", dto.Text),
             "poll" => Label("📊", "Poll", dto.Text),
+            "deleted" => dto.FromMe ? "You deleted this message" : "This message was deleted",
             _ => dto.Text.Length > 0 ? dto.Text : "Unsupported message",
         };
         return Make(MessageKind.Text, label);

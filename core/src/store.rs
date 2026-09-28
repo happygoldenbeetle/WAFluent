@@ -4,7 +4,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::extract::{Media, Quote};
-use crate::protocol::{ChatDto, MediaDto, MessageDto, ReplyDto};
+use crate::protocol::{ChatDto, MediaDto, MessageDto, PinnedDto, ReplyDto, StarredDto};
 
 pub struct Store {
     db: Connection,
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS quotes(
 const CHAT_SELECT: &str = "
 SELECT c.id, c.name, c.is_group, c.unread, c.pinned, c.archived, c.mute_end, c.last_ts,
        m.kind, m.text, m.file_name, m.from_me, m.status, m.sender, m.push_name,
-       a.path
+       a.path, c.blocked, c.pinned_msg
 FROM chats c
 LEFT JOIN messages m ON m.rowid = (
     SELECT rowid FROM messages WHERE chat_id = c.id ORDER BY ts DESC, rowid DESC LIMIT 1)
@@ -140,6 +140,15 @@ impl Store {
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.pragma_update(None, "synchronous", "NORMAL")?;
         db.execute_batch(SCHEMA)?;
+        // Columns added later; "duplicate column" once they exist is fine.
+        for sql in [
+            "ALTER TABLE chats ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE chats ADD COLUMN pinned_msg TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+        ] {
+            let _ = db.execute(sql, []);
+        }
         Ok(Self { db, me: Vec::new() })
     }
 
@@ -308,6 +317,131 @@ impl Store {
         );
     }
 
+    // ───────────── Chat / message actions ─────────────
+
+    pub fn set_blocked(&self, chat_id: &str, blocked: bool) {
+        let _ = self.db.execute("UPDATE chats SET blocked = ?2 WHERE id = ?1", params![chat_id, blocked]);
+    }
+
+    /// The server's blocklist replaces ours.
+    pub fn set_blocklist(&self, chat_ids: &[String]) {
+        let _ = self.db.execute("UPDATE chats SET blocked = 0", []);
+        for id in chat_ids {
+            self.set_blocked(id, true);
+        }
+    }
+
+    pub fn set_pinned_message(&self, chat_id: &str, message_id: &str) {
+        let _ = self.db.execute("UPDATE chats SET pinned_msg = ?2 WHERE id = ?1", params![chat_id, message_id]);
+    }
+
+    pub fn set_unread(&self, chat_id: &str, unread: u32) {
+        let _ = self.db.execute("UPDATE chats SET unread = ?2 WHERE id = ?1", params![chat_id, unread]);
+    }
+
+    pub fn set_starred(&self, chat_id: &str, message_id: &str, starred: bool) -> bool {
+        self.db
+            .execute("UPDATE messages SET starred = ?3 WHERE chat_id = ?1 AND id = ?2", params![chat_id, message_id, starred])
+            .unwrap_or(0)
+            > 0
+    }
+
+    /// "Delete for everyone": the bubble stays as "This message was deleted".
+    pub fn set_deleted(&self, chat_id: &str, message_id: &str) -> bool {
+        let _ = self.db.execute("DELETE FROM media WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
+        let _ = self.db.execute("DELETE FROM quotes WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
+        self.db
+            .execute(
+                "UPDATE messages SET kind = 'deleted', text = '', file_name = '' WHERE chat_id = ?1 AND id = ?2",
+                [chat_id, message_id],
+            )
+            .unwrap_or(0)
+            > 0
+    }
+
+    pub fn set_edited(&self, chat_id: &str, message_id: &str, text: &str) -> bool {
+        self.db
+            .execute(
+                "UPDATE messages SET text = ?3, edited = 1 WHERE chat_id = ?1 AND id = ?2 AND kind != 'deleted'",
+                params![chat_id, message_id, text],
+            )
+            .unwrap_or(0)
+            > 0
+    }
+
+    /// "Delete for me": gone from this device.
+    pub fn delete_message(&self, chat_id: &str, message_id: &str) -> bool {
+        for table in ["media", "quotes", "reactions"] {
+            let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1 AND message_id = ?2"), [chat_id, message_id]);
+        }
+        self.db.execute("DELETE FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, message_id]).unwrap_or(0) > 0
+    }
+
+    /// Empties a chat but keeps it in the list.
+    pub fn clear_messages(&self, chat_id: &str) {
+        for table in ["media", "quotes", "reactions"] {
+            let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [chat_id]);
+        }
+        let _ = self.db.execute("DELETE FROM messages WHERE chat_id = ?1", [chat_id]);
+        let _ = self.db.execute("UPDATE chats SET pinned_msg = '', unread = 0 WHERE id = ?1", [chat_id]);
+    }
+
+    pub fn delete_chat(&self, chat_id: &str) {
+        self.clear_messages(chat_id);
+        let _ = self.db.execute("DELETE FROM chats WHERE id = ?1", [chat_id]);
+    }
+
+    /// Starred messages across all chats, newest first.
+    pub fn starred(&self) -> Vec<StarredDto> {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT chat_id, id, from_me, sender, push_name, ts, kind, text, file_name, status
+             FROM messages WHERE starred = 1 ORDER BY ts DESC LIMIT 500",
+        ) else {
+            return Vec::new();
+        };
+        let rows: Vec<(String, StoredMessage)> = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    StoredMessage {
+                        id: r.get(1)?,
+                        from_me: r.get(2)?,
+                        sender: r.get(3)?,
+                        push_name: r.get(4)?,
+                        ts: r.get(5)?,
+                        kind: r.get(6)?,
+                        text: r.get(7)?,
+                        file_name: r.get(8)?,
+                        status: r.get(9)?,
+                    },
+                ))
+            })
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|(chat_id, m)| {
+                let chat_name = self.chat(&chat_id).map(|c| c.name).unwrap_or_else(|| self.person_name(&chat_id, ""));
+                let message = self.to_dto(&chat_id, m);
+                StarredDto { chat_id, chat_name, message }
+            })
+            .collect()
+    }
+
+    fn has_full_name(&self, jid: &str) -> bool {
+        self.db
+            .query_row(
+                "SELECT 1 FROM names WHERE full_name != '' AND (jid = ?1 OR jid IN (SELECT alt FROM aliases WHERE chat_id = ?1))",
+                [jid],
+                |_| Ok(()),
+            )
+            .is_ok()
+    }
+
+    /// The phone-number JID for a chat (its own id, an alias, or the LID map).
+    pub fn phone_jid(&self, jid: &str) -> Option<String> {
+        self.phone_number(jid).map(|n| format!("{n}@s.whatsapp.net"))
+    }
+
     pub fn clear_pins(&self) {
         let _ = self.db.execute("UPDATE chats SET pinned = 0", []);
     }
@@ -429,13 +563,20 @@ impl Store {
                 r.get::<_, Option<String>>(13)?,
                 r.get::<_, Option<String>>(14)?,
                 r.get::<_, Option<String>>(15)?,
+                r.get::<_, bool>(16)?,
+                r.get::<_, String>(17)?,
             ))
         });
         let Ok(rows) = rows else { return Vec::new() };
         rows.flatten()
-            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name, avatar)| {
+            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name, avatar, blocked, pinned_msg)| {
                 let kind = kind.unwrap_or_default();
                 let from_me = from_me.unwrap_or(false);
+                let saved = !is_group && self.has_full_name(&id);
+                let pinned_message = (!pinned_msg.is_empty()).then(|| PinnedDto {
+                    preview: self.message(&id, &pinned_msg).map(|m| preview(&m.kind, &m.text, &m.file_name)).unwrap_or_default(),
+                    id: pinned_msg.clone(),
+                });
                 let last_sender = match (&sender, is_group && !from_me) {
                     (Some(s), true) => Some(short_name(&self.person_name(s, push_name.as_deref().unwrap_or("")))),
                     _ => None,
@@ -456,6 +597,9 @@ impl Store {
                     last_ts,
                     last_sender,
                     avatar: avatar.filter(|p| !p.is_empty()),
+                    blocked,
+                    saved,
+                    pinned_message,
                 }
             })
             .collect()
@@ -574,7 +718,13 @@ impl Store {
         let media = self.media_dto(chat_id, &m.id);
         let reply = self.reply_dto(chat_id, &m.id);
         let (reactions, my_reaction) = self.reactions(chat_id, &m.id);
+        let (starred, edited): (bool, bool) = self
+            .db
+            .query_row("SELECT starred, edited FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, &m.id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap_or((false, false));
         MessageDto {
+            starred,
+            edited,
             media,
             reply,
             reactions,
@@ -610,7 +760,8 @@ impl Store {
     pub fn media(&self, chat_id: &str, message_id: &str) -> Option<(Media, String)> {
         self.db
             .query_row(
-                "SELECT media_type, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype, path
+                "SELECT media_type, direct_path, media_key, file_sha256, file_enc_sha256, file_length, mimetype, path,
+                        width, height, seconds, waveform
                  FROM media WHERE chat_id = ?1 AND message_id = ?2",
                 [chat_id, message_id],
                 |r| {
@@ -630,7 +781,10 @@ impl Store {
                             file_enc_sha256: r.get(4)?,
                             file_length: r.get::<_, i64>(5)? as u64,
                             mimetype: r.get(6)?,
-                            ..Default::default()
+                            width: r.get(8)?,
+                            height: r.get(9)?,
+                            seconds: r.get(10)?,
+                            waveform: r.get::<_, Option<Vec<u8>>>(11)?.unwrap_or_default(),
                         },
                         r.get(7)?,
                     ))
@@ -808,6 +962,7 @@ pub fn preview(kind: &str, text: &str, file_name: &str) -> String {
         "location" => "Location",
         "contact" => "Contact",
         "poll" => return format!("Poll: {text}"),
+        "deleted" => return "This message was deleted".into(),
         "" => "",
         _ => "Message",
     };

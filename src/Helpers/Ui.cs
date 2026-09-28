@@ -16,6 +16,14 @@ public static class Ui
     public static Visibility IsNotNull(object? value) => Visible(value is not null);
     public static Visibility Positive(int value) => Visible(value > 0);
     public static Visibility Both(bool a, bool b) => Visible(a && b);
+    public static Visibility VisibleAndNot(bool a, bool b) => Visible(a && !b);
+
+    /// <summary>Deleted messages read in italics.</summary>
+    public static Windows.UI.Text.FontStyle Italic(bool value) => value ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
+
+    /// <summary>Select mode: picked rows get a faint green wash.</summary>
+    public static Brush SelectionTint(bool selected) =>
+        new SolidColorBrush(selected ? Windows.UI.Color.FromArgb(0x33, 0x00, 0xA8, 0x84) : Microsoft.UI.Colors.Transparent);
 
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;

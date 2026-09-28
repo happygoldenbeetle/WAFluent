@@ -31,6 +31,7 @@ public sealed partial class MainWindow
 
     private void Media_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        if (ViewModel.IsSelecting) return;   // in select mode a tap picks the message instead
         if (sender is not FrameworkElement { Tag: Message { MediaPath: { } path } message } element || !File.Exists(path)) return;
         e.Handled = true;
         OpenViewer(message, element);

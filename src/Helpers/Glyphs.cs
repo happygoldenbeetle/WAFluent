@@ -32,4 +32,20 @@ public static class Glyphs
     public static readonly string Reply = G(0xE97A);
     public static readonly string Pin = G(0xE718);
     public static readonly string Unpin = G(0xE77A);
+    public static readonly string AddContact = G(0xE8FA);
+    public static readonly string Mute = G(0xE74F);
+    public static readonly string Volume = G(0xE767);
+    public static readonly string MarkRead = G(0xE8C3);
+    public static readonly string MarkUnread = G(0xE715);
+    public static readonly string Heart = G(0xEB51);
+    public static readonly string HeartFill = G(0xEB52);
+    public static readonly string CloseCircle = G(0xEA39);
+    public static readonly string Block = G(0xE8F8);
+    public static readonly string Clear = G(0xE894);
+    public static readonly string Delete = G(0xE74D);
+    public static readonly string Forward = G(0xE72D);
+    public static readonly string StarFill = G(0xE735);
+    public static readonly string Select = G(0xE762);
+    public static readonly string Report = G(0xE8E0);
+    public static readonly string CheckMark = G(0xE73E);
 }

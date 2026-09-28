@@ -50,6 +50,7 @@ public sealed partial class MainWindow
 
     private void Swipe_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (ViewModel.IsSelecting) return;   // taps pick messages in select mode
         var point = e.GetCurrentPoint(Messages);
         var mouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         if (mouse && !point.Properties.IsLeftButtonPressed) return;
@@ -120,7 +121,8 @@ public sealed partial class MainWindow
         ElementCompositionPreview.GetElementVisual(_swipeRow).StopAnimation("Translation");
 
         // The arrow waits just left of the bubble's resting place, vertically centred on it.
-        var origin = _swipeRow.TransformToVisual(SwipeLayer).TransformPoint(default);
+        var bubble = (_swipeRow as Panel)?.Children.OfType<StackPanel>().FirstOrDefault() ?? _swipeRow;
+        var origin = bubble.TransformToVisual(SwipeLayer).TransformPoint(default);
         _swipeRowLeft = origin.X;
         Canvas.SetTop(ReplyHint, origin.Y + (_swipeRow.ActualHeight - HintSize) / 2);
         Canvas.SetLeft(ReplyHint, 0);
@@ -239,9 +241,16 @@ public sealed partial class MainWindow
     /// <summary>Clicking a quote jumps to the message it quotes (when it's loaded) and flashes it.</summary>
     private void Quote_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: Message reply } || ViewModel.SelectedChat is not { } chat) return;
+        if (sender is not FrameworkElement { Tag: Message reply }) return;
         e.Handled = true;
-        var index = chat.Messages.ToList().FindIndex(m => m.Id == reply.ReplyId);
+        ScrollToMessage(reply.ReplyId);
+    }
+
+    /// <summary>Scrolls a loaded message into the middle of the view and flashes it.</summary>
+    private void ScrollToMessage(string messageId)
+    {
+        if (ViewModel.SelectedChat is not { } chat) return;
+        var index = chat.Messages.ToList().FindIndex(m => m.Id == messageId);
         if (index < 0) return;
 
         var target = Messages.GetOrCreateElement(index);
