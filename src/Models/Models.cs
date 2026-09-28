@@ -39,7 +39,31 @@ public sealed class Message : Observable
     public DateTime Timestamp { get; init; }
     public long UnixTs { get; init; }
     public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }
-    public string Reaction { get; init; } = "";
+    // ───── Reactions ─────
+
+    private IReadOnlyList<string> _reactions = [];
+    private string _myReaction = "";
+
+    /// <summary>One emoji per person who reacted, oldest first (yours included).</summary>
+    public IReadOnlyList<string> Reactions
+    {
+        get => _reactions;
+        set { _reactions = value; Raise(nameof(Reactions)); Raise(nameof(Reaction)); }
+    }
+
+    /// <summary>Your reaction, or "".</summary>
+    public string MyReaction { get => _myReaction; set => Set(ref _myReaction, value); }
+
+    /// <summary>The pill under the bubble: up to three different emoji, plus the count when more than one person reacted.</summary>
+    public string Reaction
+    {
+        get
+        {
+            if (_reactions.Count == 0) return "";
+            var distinct = string.Concat(_reactions.Distinct().Take(3));
+            return _reactions.Count > 1 ? $"{distinct} {_reactions.Count}" : distinct;
+        }
+    }
 
     /// <summary>Shown above incoming messages in groups.</summary>
     public string SenderName { get; init; } = "";

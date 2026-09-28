@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS aliases(
     alt     TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL
 );
+-- Reactions: one per person per message. reactor = 'me' for yours.
+CREATE TABLE IF NOT EXISTS reactions(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    reactor    TEXT NOT NULL,
+    emoji      TEXT NOT NULL,
+    ts         INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(chat_id, message_id, reactor)
+);
 -- Replies: the message each one quotes, as the quote itself described it.
 CREATE TABLE IF NOT EXISTS quotes(
     chat_id    TEXT NOT NULL,
@@ -212,6 +221,38 @@ impl Store {
         );
     }
 
+    /// Records (or with an empty emoji, removes) one person's reaction. Older updates lose.
+    pub fn set_reaction(&self, chat_id: &str, message_id: &str, reactor: &str, emoji: &str, ts: i64) {
+        let _ = if emoji.is_empty() {
+            self.db.execute(
+                "DELETE FROM reactions WHERE chat_id = ?1 AND message_id = ?2 AND reactor = ?3 AND ts <= ?4",
+                params![chat_id, message_id, reactor, ts],
+            )
+        } else {
+            self.db.execute(
+                "INSERT INTO reactions(chat_id, message_id, reactor, emoji, ts) VALUES(?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(chat_id, message_id, reactor) DO UPDATE SET emoji = excluded.emoji, ts = excluded.ts
+                 WHERE excluded.ts >= reactions.ts",
+                params![chat_id, message_id, reactor, emoji, ts],
+            )
+        };
+    }
+
+    /// (every reaction oldest first, yours).
+    pub fn reactions(&self, chat_id: &str, message_id: &str) -> (Vec<String>, Option<String>) {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT reactor, emoji FROM reactions WHERE chat_id = ?1 AND message_id = ?2 ORDER BY ts, rowid",
+        ) else {
+            return (Vec::new(), None);
+        };
+        let rows: Vec<(String, String)> = stmt
+            .query_map([chat_id, message_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+        let mine = rows.iter().find(|(who, _)| who == "me").map(|(_, e)| e.clone());
+        (rows.into_iter().map(|(_, e)| e).collect(), mine)
+    }
+
     /// Receipts only move forward (sent -> delivered -> read). Returns the ids that changed.
     pub fn upgrade_status(&self, chat_id: &str, ids: &[String], status: u8) -> Vec<String> {
         ids.iter()
@@ -261,7 +302,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions;",
         );
     }
 
@@ -473,9 +514,12 @@ impl Store {
         let sender_name = if m.from_me { String::new() } else { self.person_name(&m.sender, &m.push_name) };
         let media = self.media_dto(chat_id, &m.id);
         let reply = self.reply_dto(chat_id, &m.id);
+        let (reactions, my_reaction) = self.reactions(chat_id, &m.id);
         MessageDto {
             media,
             reply,
+            reactions,
+            my_reaction,
             id: m.id,
             from_me: m.from_me,
             sender: m.sender,

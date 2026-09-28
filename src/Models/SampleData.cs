@@ -10,7 +10,7 @@ public static class SampleData
     private static string NewId() => Guid.NewGuid().ToString("N");
 
     private static Message In(string text, string time, string reaction = "") =>
-        new() { Id = NewId(), Text = text, Time = time, Reaction = reaction };
+        new() { Id = NewId(), Text = text, Time = time, Reactions = reaction.Length > 0 ? [reaction] : [] };
 
     private static Message Out(string text, string time, Delivery d = Delivery.Read) =>
         new() { Id = NewId(), Text = text, Time = time, IsOutgoing = true, Delivery = d };
@@ -42,7 +42,7 @@ public static class SampleData
                 new Message
                 {
                     Id = "sample-photo",
-                    Kind = MessageKind.Image, Text = "So beautiful here!", Time = "15:06", Reaction = "❤️",
+                    Kind = MessageKind.Image, Text = "So beautiful here!", Time = "15:06", Reactions = ["❤️"], MyReaction = "❤️",
                     Timestamp = DateTime.Today.AddHours(15).AddMinutes(6),
                     HasMedia = true,
                     MediaPath = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"),

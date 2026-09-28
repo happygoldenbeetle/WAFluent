@@ -53,6 +53,12 @@ public sealed class MainViewModel : Observable
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) m.Delivery = Delivery.Failed; };
         core.ReceiptReceived += OnReceipt;
+        core.ReactionsReceived += (chatId, messageId, all, mine) =>
+        {
+            if (Find(chatId, messageId) is not { } m) return;
+            m.Reactions = all;
+            m.MyReaction = mine ?? "";
+        };
     }
 
     // ───────────── Attachments ─────────────
@@ -477,6 +483,23 @@ public sealed class MainViewModel : Observable
         if (Find(chatId, tempId) is not { } message) return;
         message.Id = dto.Id;
         if (message.Delivery is Delivery.Pending or Delivery.Failed) message.Delivery = Format.ToDelivery(dto.Status);
+    }
+
+    /// <summary>
+    /// Your reaction: shown at once, then confirmed (or put back) by the core.
+    /// Picking the emoji you already reacted with removes it. Returns true if it was added.
+    /// </summary>
+    public bool React(Message message, string emoji)
+    {
+        if (_selectedChat is not { } chat || message.Kind == MessageKind.DateDivider) return false;
+        var remove = message.MyReaction == emoji;
+        var others = message.Reactions.ToList();
+        if (message.MyReaction.Length > 0) others.Remove(message.MyReaction);
+        if (!remove) others.Add(emoji);
+        message.Reactions = others;
+        message.MyReaction = remove ? "" : emoji;
+        _core?.React(chat.Id, message.Id, remove ? "" : emoji);
+        return !remove;
     }
 
     private void OnReceipt(string chatId, IReadOnlyList<string> ids, int status)

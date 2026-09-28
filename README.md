@@ -3,8 +3,8 @@
 A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/dark theme, no browser engine.
 
 > **Status:** links to your phone by QR code, shows your real chats, photos, stickers and voice notes,
-> and sends text messages and replies (drag a message to the right, or right-click → Reply).
-> Sending media, reactions and calls are not wired up yet (the call window is a mockup).
+> and sends text messages, replies (drag a message to the right) and reactions (right-click a message).
+> Sending media and calls are not wired up yet (the call window is a mockup).
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
 
@@ -31,6 +31,8 @@ dotnet build -p:Platform=x64      # also runs `cargo build` for core/
 .\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\WhatsAppNative.exe
 ```
 
+- Emoji use the iOS set when `src/Assets/Fonts/AppleColorEmoji.ttf` exists (not committed: it's Apple's artwork and 35 MB).
+  Extract `system/fonts/NotoColorEmoji.ttf` from the iOS-emoji Magisk module zip and save it under that name; without it Windows' emoji are used.
 - `--sample` shows placeholder chats instead of connecting (also used automatically when the core isn't built).
 - `--theme light|dark` forces a theme.
 - `-p:SkipCore=true` builds the UI without compiling the Rust core.
@@ -50,6 +52,8 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 | `src/CallWindow.xaml` | In-call window (mockup) |
 | `src/Controls/` | `Avatar` (with status ring), `Bubble`, `DeliveryTicks`, `VoicePlayer`, `QuoteBlock`, `TiledBackground` (chat wallpaper) |
 | `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
+| `src/MainWindow.Reactions.cs` | Reaction row in the message menu, emoji flight into the pill |
+| `src/MainWindow.ChatListPane.cs` | Resizable / collapsible chat list (remembered in `ui.json`) |
 | `src/Helpers/` | Formatting, QR rendering, x:Bind functions, window sizing, icon glyphs |
 | `src/Styles/Theme.xaml` | Light/dark/high-contrast colours, bubble style |
 | `src/Models/` | `Chat`, `Message`, sample data |

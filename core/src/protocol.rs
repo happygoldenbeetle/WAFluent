@@ -38,6 +38,8 @@ pub enum Event {
     Sent { chat_id: String, temp_id: String, message: MessageDto },
     /// `sendText` failed; the UI marks its pending bubble.
     SendFailed { chat_id: String, temp_id: String, reason: String },
+    /// A message's reactions changed (someone reacted, changed or removed theirs).
+    Reactions { chat_id: String, message_id: String, reactions: Vec<String>, my_reaction: Option<String> },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
     Receipt { chat_id: String, message_ids: Vec<String>, status: u8 },
 }
@@ -88,6 +90,12 @@ pub struct MessageDto {
     /// The message this one replies to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply: Option<ReplyDto>,
+    /// One emoji per person who reacted, oldest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reactions: Vec<String>,
+    /// Your own reaction, if any (it is also in `reactions`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_reaction: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -131,6 +139,8 @@ pub enum Command {
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },
+    /// React to a message; an empty `emoji` removes your reaction.
+    React { chat_id: String, message_id: String, emoji: String },
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,

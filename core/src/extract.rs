@@ -154,6 +154,13 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     None
 }
 
+/// A reaction: (id of the message reacted to, emoji). An empty emoji removes it.
+pub fn reaction(message: &wa::Message) -> Option<(String, String)> {
+    let r = message.get_base_message().reaction_message.as_option()?;
+    let id = r.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
+    Some((id, r.text.clone().unwrap_or_default()))
+}
+
 /// The message a reply quotes: its id, who wrote it and what it showed.
 pub struct Quote {
     pub id: String,

@@ -22,6 +22,8 @@ public sealed partial class MainWindow
 
         var selection = (e.OriginalSource as TextBlock)?.SelectedText;
         var menu = BuildMessageMenu(message, bubble, string.IsNullOrEmpty(selection) ? null : selection);
+        // Inside the window, so the reaction row's positions line up with the bubble for the flight.
+        menu.ShouldConstrainToRootBounds = true;
         if (e.TryGetPosition(bubble, out var point))
             menu.ShowAt(bubble, new FlyoutShowOptions { Position = point });
         else
@@ -40,6 +42,8 @@ public sealed partial class MainWindow
         }
         else if (m.Delivery != Delivery.Pending)
         {
+            menu.Items.Add(ReactionRow(menu, m, bubble));
+            menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(Item("Reply", Glyphs.Reply, () => StartReply(m)));
             menu.Items.Add(new MenuFlyoutSeparator());
         }

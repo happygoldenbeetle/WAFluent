@@ -104,8 +104,8 @@
                                     </StackPanel>
                                 </Grid>
                             </controls:Bubble>
-                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
-                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
                     </DataTemplate>
@@ -157,8 +157,8 @@
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
-                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
                     </DataTemplate>
@@ -178,8 +178,8 @@
                                     <controls:VoicePlayer Message="{x:Bind}" />
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction)}">
-                                <TextBlock Text="{x:Bind Reaction}" FontSize="12" />
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
                     </DataTemplate>
@@ -203,6 +203,9 @@
                                     <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                 </StackPanel>
+                            </Border>
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
                         </StackPanel>
                     </DataTemplate>
@@ -247,6 +250,9 @@
                                     </StackPanel>
                                 </StackPanel>
                             </controls:Bubble>
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                            </Border>
                         </StackPanel>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.File>
@@ -282,7 +288,8 @@
                         IsSettingsVisible="False"
                         IsTitleBarAutoPaddingEnabled="False"
                         OpenPaneLength="240"
-                        SelectionChanged="Nav_SelectionChanged">
+                        SelectionChanged="Nav_SelectionChanged"
+                        ItemInvoked="Nav_ItemInvoked">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Chats" Tag="Chats" IsSelected="True">
                     <NavigationViewItem.Icon>
@@ -333,14 +340,15 @@
                 </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <Grid>
+            <Grid x:Name="ContentGrid">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="340" />
+                    <!-- Width comes from ui.json (MainWindow.ChatListPane.cs). -->
+                    <ColumnDefinition x:Name="ChatListColumn" Width="340" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <!-- ───────────── Chat list pane ───────────── -->
-                <Grid>
+                <Grid x:Name="ChatListPane">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -547,6 +555,10 @@
                         <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Grid>
+
+                <!-- Drag the edge to resize the chat list, past the minimum to close it; double-click toggles. -->
+                <controls:PaneSplitter x:Name="ChatListSplitter" Grid.Column="1" Width="10" Margin="-5,0,0,0"
+                                       HorizontalAlignment="Left" />
             </Grid>
         </NavigationView>
 
@@ -716,5 +728,8 @@
                 <Image x:Name="FlyImage" Stretch="Uniform" Visibility="Collapsed" />
             </Canvas>
         </Grid>
+
+        <!-- A reaction flying from the menu to its pill (MainWindow.Reactions.cs). -->
+        <Canvas x:Name="FxLayer" Grid.RowSpan="2" IsHitTestVisible="False" />
     </Grid>
 </Window>

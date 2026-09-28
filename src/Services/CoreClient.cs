@@ -12,7 +12,7 @@ public sealed record ChatDto(
 
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
-    string? FileName, int Status, MediaDto? Media, ReplyDto? Reply);
+    string? FileName, int Status, MediaDto? Media, ReplyDto? Reply, string[]? Reactions, string? MyReaction);
 
 /// <summary>The message a reply quotes.</summary>
 public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview);
@@ -47,6 +47,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string, string>? MediaFailed;        // chat, message, reason
     public event Action<string, string, MessageDto>? Sent;           // chat, temp id, stored message
     public event Action<string, string, string>? SendFailed;         // chat, temp id, reason
+    public event Action<string, string, IReadOnlyList<string>, string?>? ReactionsReceived;   // chat, message, all, yours
     public event Action<string, IReadOnlyList<string>, int>? ReceiptReceived;   // chat, message ids, 2 delivered / 3 read
 
     public static string DataDirectory { get; } =
@@ -101,6 +102,9 @@ public sealed class CoreClient : IDisposable
     /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
     public void SendText(string chatId, string text, string? replyTo, string tempId) =>
         Send(new { cmd = "sendText", chatId, text, replyTo, tempId });
+
+    /// <summary>React to a message; "" removes your reaction. Answered by ReactionsReceived.</summary>
+    public void React(string chatId, string messageId, string emoji) => Send(new { cmd = "react", chatId, messageId, emoji });
 
     public void Logout() => Send(new { cmd = "logout" });
 
@@ -186,6 +190,13 @@ public sealed class CoreClient : IDisposable
                 var failedTemp = root.GetProperty("tempId").GetString() ?? "";
                 var failReason = root.GetProperty("reason").GetString() ?? "";
                 Post(() => SendFailed?.Invoke(failedChat, failedTemp, failReason));
+                break;
+            case "reactions":
+                var reactChat = root.GetProperty("chatId").GetString() ?? "";
+                var reactMsg = root.GetProperty("messageId").GetString() ?? "";
+                var all = root.GetProperty("reactions").Deserialize<List<string>>(Json) ?? [];
+                var mine = root.TryGetProperty("myReaction", out var my) && my.ValueKind == JsonValueKind.String ? my.GetString() : null;
+                Post(() => ReactionsReceived?.Invoke(reactChat, reactMsg, all, mine));
                 break;
             case "receipt":
                 var receiptChat = root.GetProperty("chatId").GetString() ?? "";

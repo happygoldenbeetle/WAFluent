@@ -249,6 +249,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id).await });
         }
+        Command::React { chat_id, message_id, emoji } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { react(&ctx, &client, chat_id, message_id, emoji).await });
+        }
         Command::MarkRead { chat_id } => {
             let chat = {
                 let db = ctx.db();
@@ -335,6 +339,40 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
     if let Some(chat) = chat {
         ctx.send(Out::Chat { chat });
     }
+}
+
+/// Sends your reaction; the stored reactions go back to the UI either way
+/// (so a failed send puts the old state back).
+async fn react(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, emoji: String) {
+    let target = ctx.db().message(&chat_id, &message_id);
+    let (Some(target), Ok(jid)) = (target, chat_id.parse::<Jid>()) else {
+        send_reactions(ctx, chat_id, message_id);
+        return;
+    };
+    let participant = if !chat_id.ends_with("@g.us") {
+        None
+    } else if target.from_me {
+        let own = client.persistence_manager().get_device_snapshot();
+        own.pn.as_ref().or(own.lid.as_ref()).map(|j| j.to_non_ad_string())
+    } else {
+        Some(target.sender.clone())
+    };
+    let key = wa::MessageKey {
+        remote_jid: Some(chat_id.clone()),
+        from_me: Some(target.from_me),
+        id: Some(message_id.clone()),
+        participant,
+    };
+    match client.send_reaction(jid, key, &emoji).await {
+        Ok(_) => ctx.db().set_reaction(&chat_id, &message_id, "me", &emoji, store::unix_now() * 1000),
+        Err(e) => warn!("reaction in {chat_id} failed: {e}"),
+    }
+    send_reactions(ctx, chat_id, message_id);
+}
+
+fn send_reactions(ctx: &Ctx, chat_id: String, message_id: String) {
+    let (reactions, my_reaction) = ctx.db().reactions(&chat_id, &message_id);
+    ctx.send(Out::Reactions { chat_id, message_id, reactions, my_reaction });
 }
 
 /// Logged out: the local copy of chats, names and pictures goes too.
@@ -442,6 +480,13 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let source = &info.source;
     let raw_chat = source.chat.to_non_ad_string();
     if is_hidden_chat(&raw_chat) {
+        return;
+    }
+    if let Some((target, emoji)) = extract::reaction(message) {
+        let reactor = if source.is_from_me { "me".to_string() } else { source.sender.to_non_ad_string() };
+        let chat_id = ctx.db().canonical(&raw_chat);
+        ctx.db().set_reaction(&chat_id, &target, &reactor, &emoji, info.timestamp.timestamp_millis());
+        send_reactions(ctx, chat_id, target);
         return;
     }
     let Some(content) = extract::content(message) else { return };
@@ -611,6 +656,15 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
     for hm in &conv.messages {
         let Some(wmi) = hm.message.as_option() else { continue };
         let Some(key) = wmi.key.as_option() else { continue };
+        for r in &wmi.reactions {
+            let (Some(rkey), Some(id)) = (r.key.as_option(), key.id.as_deref()) else { continue };
+            let reactor = match (rkey.from_me.unwrap_or(false), is_group) {
+                (true, _) => "me".to_string(),
+                (false, true) => rkey.participant.clone().unwrap_or_default(),
+                (false, false) => chat_id.clone(),
+            };
+            s.set_reaction(&chat_id, id, &reactor, r.text.as_deref().unwrap_or(""), r.sender_timestamp_ms.unwrap_or(0));
+        }
         let Some(msg) = wmi.message.as_option() else { continue };
         let Some(content) = extract::content(msg) else { continue };
         let from_me = key.from_me.unwrap_or(false);

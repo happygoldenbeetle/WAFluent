@@ -4,3 +4,6 @@ obj/
 *.user
 *.suo
 core/target/
+
+# iOS emoji font (Apple artwork, 35 MB): extracted locally, never committed.
+src/Assets/Fonts/AppleColorEmoji.ttf

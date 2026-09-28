@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         SetupSwipe();
+        SetupChatListPane();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
         ExtendsContentIntoTitleBar = true;

@@ -102,6 +102,8 @@ public static class Format
             ReplyPreview = dto.Reply?.Preview ?? "",
             ReplyGlyph = PreviewGlyph(dto.Reply?.Kind ?? ""),
             ReplyFromMe = dto.Reply?.FromMe ?? false,
+            Reactions = dto.Reactions ?? [],
+            MyReaction = dto.MyReaction ?? "",
         };
 
         switch (dto.Kind)
