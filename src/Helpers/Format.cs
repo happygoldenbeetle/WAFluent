@@ -43,6 +43,24 @@ public static class Format
         _ => "",
     };
 
+    /// <summary>One-line summary of a message for a quote ("Photo", the text, the file name...).</summary>
+    public static string QuotePreview(Message m) => m.Kind switch
+    {
+        MessageKind.Image => m.HasText ? m.Text : "Photo",
+        MessageKind.Sticker => "Sticker",
+        MessageKind.Voice => $"Voice message ({Duration(TimeSpan.FromSeconds(m.Seconds))})",
+        MessageKind.File => m.FileName,
+        _ => m.Text,
+    };
+
+    public static string QuoteGlyph(Message m) => m.Kind switch
+    {
+        MessageKind.Image => Glyphs.Photo,
+        MessageKind.Voice => Glyphs.Mic,
+        MessageKind.File => Glyphs.Document,
+        _ => "",
+    };
+
     public static Delivery ToDelivery(int status) => status switch
     {
         3 => Delivery.Read,
@@ -79,6 +97,11 @@ public static class Format
             MediaHeight = height,
             Seconds = media?.Seconds ?? 0,
             Waveform = media?.Waveform ?? [],
+            ReplyId = dto.Reply?.Id ?? "",
+            ReplyName = dto.Reply?.SenderName ?? "",
+            ReplyPreview = dto.Reply?.Preview ?? "",
+            ReplyGlyph = PreviewGlyph(dto.Reply?.Kind ?? ""),
+            ReplyFromMe = dto.Reply?.FromMe ?? false,
         };
 
         switch (dto.Kind)

@@ -34,6 +34,12 @@ pub enum Event {
     Media { chat_id: String, message_id: String, path: String },
     /// `downloadMedia` failed (e.g. the phone deleted it from WhatsApp's servers).
     MediaFailed { chat_id: String, message_id: String, reason: String },
+    /// Reply to `sendText`: the message as stored, with its real id.
+    Sent { chat_id: String, temp_id: String, message: MessageDto },
+    /// `sendText` failed; the UI marks its pending bubble.
+    SendFailed { chat_id: String, temp_id: String, reason: String },
+    /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
+    Receipt { chat_id: String, message_ids: Vec<String>, status: u8 },
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -79,6 +85,20 @@ pub struct MessageDto {
     /// Attachment details, when the message has a downloadable one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media: Option<MediaDto>,
+    /// The message this one replies to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply: Option<ReplyDto>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplyDto {
+    pub id: String,
+    pub from_me: bool,
+    pub sender_name: String,
+    pub kind: String,
+    /// One-line summary ("Photo", the text, the file name...).
+    pub preview: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -108,6 +128,9 @@ pub enum Command {
     /// Messages stored before media support have no download details; re-request the
     /// chat's recent history from the phone to fill them in, then resend `messages`.
     BackfillMedia { chat_id: String },
+    /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
+    /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
+    SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,

@@ -30,7 +30,9 @@
         <Grid Grid.Row="1" Margin="8,0,8,0" CornerRadius="8"
               Background="{ThemeResource ChatPaneBackgroundBrush}"
               BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-            <Border Background="{ThemeResource WallpaperBrush}" Opacity="0.7" />
+            <controls:TiledBackground Background="{ThemeResource WallpaperColorBrush}" Source="{ThemeResource WallpaperTile}"
+                                      TileOpacity="{ThemeResource WallpaperTileOpacity}" Opacity="0.7"
+                                      TileWidth="{ThemeResource WallpaperTileWidth}" TileHeight="{ThemeResource WallpaperTileHeight}" />
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                 <controls:Avatar x:Name="CallerAvatar" Size="96" HorizontalAlignment="Center" />
                 <TextBlock x:Name="CallerName" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"

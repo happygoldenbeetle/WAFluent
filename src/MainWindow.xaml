@@ -73,24 +73,34 @@
                 <helpers:MessageTemplateSelector.Text>
                     <DataTemplate x:DataType="models:Message">
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}">
+                            <!-- Tight line bounds: the text box runs from cap height to baseline, so equal
+                                 padding means the words sit optically centred (descenders use the bottom pad). -->
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <!-- Group chats: who wrote it. -->
-                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,1"
-                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,8"
+                                               TextLineBounds="Tight" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                TextTrimming="CharacterEllipsis" Visibility="{x:Bind ShowSender}" />
+                                    <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
+                                    <controls:QuoteBlock Grid.Row="1" Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
-                                    <TextBlock Grid.Row="1" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14">
+                                    <TextBlock Grid.Row="2" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
+                                               TextLineBounds="Tight">
                                         <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                     </TextBlock>
-                                    <StackPanel Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
+                                    <!-- Time on the same baseline as the last line of text. -->
+                                    <StackPanel Grid.Row="2" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Orientation="Horizontal" Spacing="3">
-                                        <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                        <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
+                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                     </StackPanel>
                                 </Grid>
                             </controls:Bubble>
@@ -106,7 +116,10 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
-                                    <!-- Click opens the full picture in the Windows Photos app. -->
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                    <!-- Click opens the picture in the viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="6" Background="{ThemeResource FileCardBrush}"
                                           Tag="{x:Bind}" Tapped="Media_Tapped">
                                         <ProgressRing Width="32" Height="32" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
@@ -125,18 +138,21 @@
                                                 CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasText)}">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
                                                 <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
-                                                <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                                <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                             </StackPanel>
                                         </Border>
                                     </Grid>
-                                    <Grid Padding="5,6,5,2" Visibility="{x:Bind HasText}">
-                                        <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14">
+                                    <!-- Caption: 10 px from the picture and the bubble edges (4 bubble + 6 here). -->
+                                    <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
+                                        <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
+                                                   TextLineBounds="Tight">
                                             <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                         </TextBlock>
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,-3"
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Orientation="Horizontal" Spacing="3">
-                                            <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
+                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
@@ -156,6 +172,9 @@
                                     <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,2"
                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                Visibility="{x:Bind ShowSender}" />
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <controls:VoicePlayer Message="{x:Bind}" />
                                 </StackPanel>
                             </controls:Bubble>
@@ -182,7 +201,7 @@
                                     Background="{ThemeResource IncomingBubbleBrush}">
                                 <StackPanel Orientation="Horizontal" Spacing="3">
                                     <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -194,6 +213,9 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <Border Background="{ThemeResource FileCardBrush}" CornerRadius="6" Padding="10,12,10,10">
                                         <StackPanel Spacing="10">
                                             <Grid ColumnSpacing="12">
@@ -221,7 +243,7 @@
                                     </Border>
                                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
-                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                     </StackPanel>
                                 </StackPanel>
                             </controls:Bubble>
@@ -381,7 +403,9 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="1" Background="{ThemeResource WallpaperBrush}" />
+                    <controls:TiledBackground Grid.Row="1" Background="{ThemeResource WallpaperColorBrush}"
+                                              Source="{ThemeResource WallpaperTile}" TileOpacity="{ThemeResource WallpaperTileOpacity}"
+                                              TileWidth="{ThemeResource WallpaperTileWidth}" TileHeight="{ThemeResource WallpaperTileHeight}" />
 
                     <Grid Height="58" Padding="16,0,10,0" ColumnSpacing="12"
                           Background="{ThemeResource ChatHeaderBackgroundBrush}"
@@ -427,13 +451,24 @@
                                 <ProgressRing Width="16" Height="16" IsActive="{x:Bind ViewModel.SelectedChat.LoadingOlder, Mode=OneWay}" />
                                 <TextBlock Text="Loading older messages…" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
                             </StackPanel>
-                            <ItemsRepeater x:Name="Messages"
-                                           ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
-                                           ItemTemplate="{StaticResource MessageTemplates}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Spacing="6" />
-                                </ItemsRepeater.Layout>
-                            </ItemsRepeater>
+                            <Grid>
+                                <!-- Drag a message to the right to reply (MainWindow.Swipe.cs). -->
+                                <ItemsRepeater x:Name="Messages"
+                                               ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
+                                               ItemTemplate="{StaticResource MessageTemplates}">
+                                    <ItemsRepeater.Layout>
+                                        <StackLayout Spacing="6" />
+                                    </ItemsRepeater.Layout>
+                                </ItemsRepeater>
+                                <!-- The reply arrow that appears behind a message while it's dragged. -->
+                                <Canvas x:Name="SwipeLayer" IsHitTestVisible="False">
+                                    <Border x:Name="ReplyHint" Width="32" Height="32" CornerRadius="16"
+                                            Background="{ThemeResource ComposerBrush}"
+                                            BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="14" />
+                                    </Border>
+                                </Canvas>
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
 
@@ -442,20 +477,41 @@
                           Background="{ThemeResource ComposerBrush}"
                           BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,1,0,0"
                           Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
+                        <!-- Replying to: the quoted message, with ✕ to cancel (or Esc). -->
+                        <Grid Grid.ColumnSpan="4" Margin="4,2,0,6" ColumnSpacing="6"
+                              Visibility="{x:Bind ViewModel.IsReplying, Mode=OneWay}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <controls:QuoteBlock Author="{x:Bind ViewModel.ReplyingToName, Mode=OneWay}"
+                                                 Preview="{x:Bind ViewModel.ReplyingToPreview, Mode=OneWay}"
+                                                 Glyph="{x:Bind ViewModel.ReplyingToGlyph, Mode=OneWay}"
+                                                 FromMe="{x:Bind ViewModel.ReplyingToFromMe, Mode=OneWay}" />
+                            <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Cancel reply (Esc)" AutomationProperties.Name="Cancel reply"
+                                    Click="CancelReply_Click">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
+                        </Grid>
+                        <Button Grid.Row="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
                                 Click="Emoji_Click">
                             <FontIcon Glyph="&#xE76E;" FontSize="17" />
                         </Button>
-                        <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
+                        <Button Grid.Row="1" Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
                             <FontIcon Glyph="&#xE723;" FontSize="17" />
                         </Button>
-                        <TextBox x:Name="ComposerBox" Grid.Column="2"
+                        <TextBox x:Name="ComposerBox" Grid.Row="1" Grid.Column="2"
                                  PlaceholderText="{x:Bind ViewModel.ComposerPlaceholder}"
                                  IsEnabled="{x:Bind ViewModel.CanSend}"
                                  AutomationProperties.Name="Message"
@@ -471,7 +527,7 @@
                                 <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
                             </TextBox.Resources>
                         </TextBox>
-                        <Grid Grid.Column="3">
+                        <Grid Grid.Row="1" Grid.Column="3">
                             <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}"
                                     ToolTipService.ToolTip="Voice message" AutomationProperties.Name="Voice message">
                                 <FontIcon Glyph="&#xE720;" FontSize="17" />

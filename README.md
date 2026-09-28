@@ -2,8 +2,9 @@
 
 A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/dark theme, no browser engine.
 
-> **Status:** links to your phone by QR code and shows your real chats and incoming messages.
-> Sending, media downloads and calls are not wired up yet (the call window is a mockup).
+> **Status:** links to your phone by QR code, shows your real chats, photos, stickers and voice notes,
+> and sends text messages and replies (drag a message to the right, or right-click → Reply).
+> Sending media, reactions and calls are not wired up yet (the call window is a mockup).
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
 
@@ -47,9 +48,11 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 | `src/Services/CoreClient.cs` | Starts the core and translates its events |
 | `src/MainWindow.xaml` | Rail, chat list, conversation pane, link screen |
 | `src/CallWindow.xaml` | In-call window (mockup) |
-| `src/Controls/` | `Avatar` (with status ring), `Bubble`, `DeliveryTicks` |
+| `src/Controls/` | `Avatar` (with status ring), `Bubble`, `DeliveryTicks`, `VoicePlayer`, `QuoteBlock`, `TiledBackground` (chat wallpaper) |
+| `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
 | `src/Helpers/` | Formatting, QR rendering, x:Bind functions, window sizing, icon glyphs |
 | `src/Styles/Theme.xaml` | Light/dark/high-contrast colours, bubble style |
 | `src/Models/` | `Chat`, `Message`, sample data |
 | `src/ViewModels/MainViewModel.cs` | Connection state, chat list sync, messages |
-| `tools/make-assets.ps1` | Regenerates the doodle wallpapers and app icon |
+| `tools/make-assets.ps1` | Regenerates the app icon and profile placeholder |
+| `src/Assets/Wallpaper.*.png` | WhatsApp's chat doodle tiles ([source](https://gist.github.com/abdurrahmanekr/2747d704edec93a06e454eba2653e0df)) |

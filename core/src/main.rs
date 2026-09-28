@@ -244,6 +244,11 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
                 ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
             }
         }
+        Command::SendText { chat_id, text, reply_to, temp_id } => {
+            // Sending waits on the server; keep reading commands meanwhile.
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id).await });
+        }
         Command::MarkRead { chat_id } => {
             let chat = {
                 let db = ctx.db();
@@ -261,6 +266,77 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     }
 }
 
+async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: String, reply_to: Option<String>, temp_id: String) {
+    let jid = match chat_id.parse::<Jid>() {
+        Ok(jid) => jid,
+        Err(e) => {
+            ctx.send(Out::SendFailed { chat_id, temp_id, reason: format!("Bad chat id: {e}") });
+            return;
+        }
+    };
+
+    // A reply carries a copy of what it quotes (kind, text) plus who wrote it.
+    let quoted = reply_to.as_deref().and_then(|id| {
+        let db = ctx.db();
+        let m = db.message(&chat_id, id)?;
+        let media = db.media_dto(&chat_id, id);
+        Some((m, media))
+    });
+    let (message, quote) = match quoted {
+        Some((m, media)) => {
+            let participant = if m.from_me {
+                let own = client.persistence_manager().get_device_snapshot();
+                // Same address family as the chat: LID chats quote your LID.
+                let mine = if jid.server == Server::Lid { own.lid.as_ref().or(own.pn.as_ref()) } else { own.pn.as_ref().or(own.lid.as_ref()) };
+                mine.map(|j| j.to_non_ad_string()).unwrap_or_default()
+            } else if m.sender.is_empty() {
+                chat_id.clone()
+            } else {
+                m.sender.clone()
+            };
+            let (mime, seconds) = media.as_ref().map_or((String::new(), 0), |d| (d.mime.clone(), d.seconds));
+            let quoted = extract::quoted_message(&m.kind, &m.text, &m.file_name, &mime, seconds);
+            let context = whatsapp_rust::wacore::proto_helpers::build_quote_context(m.id.clone(), participant.clone(), &quoted);
+            let quote = extract::Quote { id: m.id, sender: participant, kind: "", text: m.text, file_name: m.file_name };
+            (wa::Message::text_with_context(text.clone(), context), Some(quote))
+        }
+        None => (wa::Message::text(text.clone()), None),
+    };
+
+    let sent = match client.send_message(jid, message).await {
+        Ok(sent) => sent,
+        Err(e) => {
+            warn!("send to {chat_id} failed: {e}");
+            ctx.send(Out::SendFailed { chat_id, temp_id, reason: e.to_string() });
+            return;
+        }
+    };
+
+    let (dto, chat) = {
+        let db = ctx.db();
+        let stored = StoredMessage {
+            id: sent.message_id,
+            from_me: true,
+            sender: String::new(),
+            push_name: String::new(),
+            ts: store::unix_now(),
+            kind: "text".into(),
+            text,
+            file_name: String::new(),
+            status: 1,
+        };
+        db.insert_message(&chat_id, &stored);
+        if let Some(quote) = &quote {
+            db.insert_quote(&chat_id, &stored.id, quote);
+        }
+        (db.to_dto(&chat_id, stored), db.chat(&chat_id))
+    };
+    ctx.send(Out::Sent { chat_id, temp_id, message: dto });
+    if let Some(chat) = chat {
+        ctx.send(Out::Chat { chat });
+    }
+}
+
 /// Logged out: the local copy of chats, names and pictures goes too.
 fn forget_everything(ctx: &Ctx) {
     ctx.db().clear();
@@ -274,6 +350,8 @@ fn forget_everything(ctx: &Ctx) {
 async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
     match &*event {
         Event::Connected(_) => {
+            let own = client.persistence_manager().get_device_snapshot();
+            ctx.db().set_me([&own.pn, &own.lid].into_iter().flatten().map(|j| j.to_non_ad_string()).collect());
             ctx.status("connected", None);
             ctx.chats_dirty.notify_one();
             avatars::queue_stale(ctx);
@@ -312,6 +390,27 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             }
             ctx.chats_dirty.notify_one();
         }
+        Event::Receipt(receipt) => {
+            use whatsapp_rust::wacore::types::presence::ReceiptType;
+            let status = match receipt.r#type {
+                ReceiptType::Delivered => 2,
+                ReceiptType::Read | ReceiptType::Played => 3,
+                _ => return,
+            };
+            let chat_id = ctx.db().canonical(&receipt.source.chat.to_non_ad_string());
+            let (changed, chat) = {
+                let db = ctx.db();
+                let changed = db.upgrade_status(&chat_id, &receipt.message_ids, status);
+                let chat = if changed.is_empty() { None } else { db.chat(&chat_id) };
+                (changed, chat)
+            };
+            if !changed.is_empty() {
+                ctx.send(Out::Receipt { chat_id, message_ids: changed, status });
+                if let Some(chat) = chat {
+                    ctx.send(Out::Chat { chat });
+                }
+            }
+        }
         Event::ContactUpdate(update) => {
             let name = update.action.full_name.as_deref().or(update.action.first_name.as_deref()).unwrap_or("");
             let db = ctx.db();
@@ -346,6 +445,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         return;
     }
     let Some(content) = extract::content(message) else { return };
+    let quote = extract::quote(message);
 
     let (chat_id, stored, media) = {
         let db = ctx.db();
@@ -389,6 +489,9 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         }
         if let Some(media) = &media {
             db.insert_media(&chat_id, &stored.id, media);
+        }
+        if let Some(quote) = &quote {
+            db.insert_quote(&chat_id, &stored.id, quote);
         }
         if !stored.from_me {
             db.increment_unread(&chat_id);
@@ -523,6 +626,9 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
         let id = key.id.clone().unwrap_or_default();
         if let Some(media) = &content.media {
             s.insert_media(&chat_id, &id, media);
+        }
+        if let Some(quote) = extract::quote(msg) {
+            s.insert_quote(&chat_id, &id, &quote);
         }
         s.insert_message(
             &chat_id,

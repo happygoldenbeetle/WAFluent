@@ -3,11 +3,13 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::extract::Media;
-use crate::protocol::{ChatDto, MediaDto, MessageDto};
+use crate::extract::{Media, Quote};
+use crate::protocol::{ChatDto, MediaDto, MessageDto, ReplyDto};
 
 pub struct Store {
     db: Connection,
+    /// Your own JIDs (phone number and LID), to tell your messages apart in quotes.
+    me: Vec<String>,
 }
 
 /// A message as stored; names are resolved when it is read back.
@@ -94,6 +96,17 @@ CREATE TABLE IF NOT EXISTS aliases(
     alt     TEXT PRIMARY KEY,
     chat_id TEXT NOT NULL
 );
+-- Replies: the message each one quotes, as the quote itself described it.
+CREATE TABLE IF NOT EXISTS quotes(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    quoted_id  TEXT NOT NULL,
+    sender     TEXT NOT NULL DEFAULT '',
+    kind       TEXT NOT NULL DEFAULT '',
+    text       TEXT NOT NULL DEFAULT '',
+    file_name  TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(chat_id, message_id)
+);
 ";
 
 const CHAT_SELECT: &str = "
@@ -112,7 +125,7 @@ impl Store {
         db.pragma_update(None, "journal_mode", "WAL")?;
         db.pragma_update(None, "synchronous", "NORMAL")?;
         db.execute_batch(SCHEMA)?;
-        Ok(Self { db })
+        Ok(Self { db, me: Vec::new() })
     }
 
     /// Runs `f` inside one transaction (history chunks insert thousands of rows).
@@ -187,6 +200,34 @@ impl Store {
         inserted
     }
 
+    pub fn set_me(&mut self, jids: Vec<String>) {
+        self.me = jids;
+    }
+
+    pub fn insert_quote(&self, chat_id: &str, message_id: &str, q: &Quote) {
+        let _ = self.db.execute(
+            "INSERT OR IGNORE INTO quotes(chat_id, message_id, quoted_id, sender, kind, text, file_name)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![chat_id, message_id, q.id, q.sender, q.kind, q.text, q.file_name],
+        );
+    }
+
+    /// Receipts only move forward (sent -> delivered -> read). Returns the ids that changed.
+    pub fn upgrade_status(&self, chat_id: &str, ids: &[String], status: u8) -> Vec<String> {
+        ids.iter()
+            .filter(|id| {
+                self.db
+                    .execute(
+                        "UPDATE messages SET status = ?3 WHERE chat_id = ?1 AND id = ?2 AND from_me = 1 AND status < ?3",
+                        params![chat_id, id, status],
+                    )
+                    .unwrap_or(0)
+                    > 0
+            })
+            .cloned()
+            .collect()
+    }
+
     pub fn increment_unread(&self, chat_id: &str) {
         let _ = self.db.execute("UPDATE chats SET unread = unread + 1 WHERE id = ?1", [chat_id]);
     }
@@ -220,7 +261,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes;",
         );
     }
 
@@ -377,6 +418,31 @@ impl Store {
         out
     }
 
+    pub fn message(&self, chat_id: &str, id: &str) -> Option<StoredMessage> {
+        self.db
+            .query_row(
+                "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status
+                 FROM messages WHERE chat_id = ?1 AND id = ?2",
+                [chat_id, id],
+                |r| {
+                    Ok(StoredMessage {
+                        id: r.get(0)?,
+                        from_me: r.get(1)?,
+                        sender: r.get(2)?,
+                        push_name: r.get(3)?,
+                        ts: r.get(4)?,
+                        kind: r.get(5)?,
+                        text: r.get(6)?,
+                        file_name: r.get(7)?,
+                        status: r.get(8)?,
+                    })
+                },
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     /// Newest stored message of a chat: (id, from_me, ts).
     pub fn newest(&self, chat_id: &str) -> Option<(String, bool, i64)> {
         self.db
@@ -406,8 +472,10 @@ impl Store {
     pub fn to_dto(&self, chat_id: &str, m: StoredMessage) -> MessageDto {
         let sender_name = if m.from_me { String::new() } else { self.person_name(&m.sender, &m.push_name) };
         let media = self.media_dto(chat_id, &m.id);
+        let reply = self.reply_dto(chat_id, &m.id);
         MessageDto {
             media,
+            reply,
             id: m.id,
             from_me: m.from_me,
             sender: m.sender,
@@ -477,7 +545,37 @@ impl Store {
         );
     }
 
-    fn media_dto(&self, chat_id: &str, message_id: &str) -> Option<MediaDto> {
+    /// The quote shown on top of a reply. Prefers our own copy of the quoted
+    /// message (full text, sender) over what the quote carried.
+    fn reply_dto(&self, chat_id: &str, message_id: &str) -> Option<ReplyDto> {
+        let (quoted_id, sender, kind, text, file_name): (String, String, String, String, String) = self
+            .db
+            .query_row(
+                "SELECT quoted_id, sender, kind, text, file_name FROM quotes WHERE chat_id = ?1 AND message_id = ?2",
+                [chat_id, message_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()?;
+        let (from_me, sender, push, kind, text, file_name) = match self.message(chat_id, &quoted_id) {
+            Some(m) => (m.from_me, m.sender, m.push_name, m.kind, m.text, m.file_name),
+            None => {
+                let bare = bare_jid(&sender);
+                (self.me.contains(&bare), self.canonical(&bare), String::new(), kind, text, file_name)
+            }
+        };
+        let sender_name = if from_me {
+            "You".to_string()
+        } else if sender.is_empty() {
+            self.person_name(chat_id, "")
+        } else {
+            self.person_name(&sender, &push)
+        };
+        Some(ReplyDto { id: quoted_id, from_me, sender_name, preview: preview(&kind, &text, &file_name), kind })
+    }
+
+    pub fn media_dto(&self, chat_id: &str, message_id: &str) -> Option<MediaDto> {
         self.db
             .query_row(
                 "SELECT mimetype, width, height, seconds, waveform, path FROM media WHERE chat_id = ?1 AND message_id = ?2",
@@ -528,6 +626,14 @@ pub fn unix_now() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// "123:4@s.whatsapp.net" (a device) -> "123@s.whatsapp.net".
+pub fn bare_jid(jid: &str) -> String {
+    match jid.split_once('@') {
+        Some((user, server)) => format!("{}@{server}", user.split(':').next().unwrap_or(user)),
+        None => jid.to_string(),
+    }
 }
 
 fn first_name(name: &str) -> String {

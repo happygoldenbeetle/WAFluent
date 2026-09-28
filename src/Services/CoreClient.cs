@@ -12,7 +12,10 @@ public sealed record ChatDto(
 
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
-    string? FileName, int Status, MediaDto? Media);
+    string? FileName, int Status, MediaDto? Media, ReplyDto? Reply);
+
+/// <summary>The message a reply quotes.</summary>
+public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview);
 
 /// <summary>Attachment details; <c>Path</c> is set once the file has been downloaded.</summary>
 public sealed record MediaDto(string Mime, int Width, int Height, int Seconds, int[]? Waveform, string? Path);
@@ -42,6 +45,9 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
     public event Action<string, string, string>? MediaReceived;      // chat, message, file path
     public event Action<string, string, string>? MediaFailed;        // chat, message, reason
+    public event Action<string, string, MessageDto>? Sent;           // chat, temp id, stored message
+    public event Action<string, string, string>? SendFailed;         // chat, temp id, reason
+    public event Action<string, IReadOnlyList<string>, int>? ReceiptReceived;   // chat, message ids, 2 delivered / 3 read
 
     public static string DataDirectory { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent");
@@ -91,6 +97,10 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>Fill in media details for messages stored before media support existed.</summary>
     public void BackfillMedia(string chatId) => Send(new { cmd = "backfillMedia", chatId });
+
+    /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
+    public void SendText(string chatId, string text, string? replyTo, string tempId) =>
+        Send(new { cmd = "sendText", chatId, text, replyTo, tempId });
 
     public void Logout() => Send(new { cmd = "logout" });
 
@@ -164,6 +174,24 @@ public sealed class CoreClient : IDisposable
                     var reason = root.GetProperty("reason").GetString() ?? "";
                     Post(() => MediaFailed?.Invoke(mediaChat, mediaMsg, reason));
                 }
+                break;
+            case "sent":
+                var sentChat = root.GetProperty("chatId").GetString() ?? "";
+                var sentTemp = root.GetProperty("tempId").GetString() ?? "";
+                var sentMessage = root.GetProperty("message").Deserialize<MessageDto>(Json);
+                if (sentMessage is not null) Post(() => Sent?.Invoke(sentChat, sentTemp, sentMessage));
+                break;
+            case "sendFailed":
+                var failedChat = root.GetProperty("chatId").GetString() ?? "";
+                var failedTemp = root.GetProperty("tempId").GetString() ?? "";
+                var failReason = root.GetProperty("reason").GetString() ?? "";
+                Post(() => SendFailed?.Invoke(failedChat, failedTemp, failReason));
+                break;
+            case "receipt":
+                var receiptChat = root.GetProperty("chatId").GetString() ?? "";
+                var ids = root.GetProperty("messageIds").Deserialize<List<string>>(Json) ?? [];
+                var status = root.GetProperty("status").GetInt32();
+                Post(() => ReceiptReceived?.Invoke(receiptChat, ids, status));
                 break;
             case "avatar":
                 var avatarChat = root.GetProperty("chatId").GetString() ?? "";

@@ -153,3 +153,77 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     // distribution and the like have no bubble of their own.
     None
 }
+
+/// The message a reply quotes: its id, who wrote it and what it showed.
+pub struct Quote {
+    pub id: String,
+    pub sender: String,
+    pub kind: &'static str,
+    pub text: String,
+    pub file_name: String,
+}
+
+/// `Some` when the message is a reply (swipe / "Reply" on another message).
+pub fn quote(message: &wa::Message) -> Option<Quote> {
+    let m = message.get_base_message();
+    let info = m.extended_text_message.as_option().and_then(|x| x.context_info.as_option())
+        .or_else(|| m.image_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.video_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.audio_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.document_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.sticker_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.location_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.contact_message.as_option().and_then(|x| x.context_info.as_option()))?;
+    let id = info.stanza_id.clone().filter(|id| !id.is_empty())?;
+    let quoted = info.quoted_message.as_option().and_then(content);
+    Some(Quote {
+        id,
+        sender: info.participant.clone().unwrap_or_default(),
+        kind: quoted.as_ref().map_or("", |c| c.kind),
+        text: quoted.as_ref().map(|c| c.text.clone()).unwrap_or_default(),
+        file_name: quoted.map(|c| c.file_name).unwrap_or_default(),
+    })
+}
+
+/// What a sent reply carries as its `quotedMessage`: enough for the other side to
+/// draw the quote (kind, caption/text, file name), without the attachment itself.
+pub fn quoted_message(kind: &str, text: &str, file_name: &str, mime: &str, seconds: u32) -> wa::Message {
+    let text_opt = (!text.is_empty()).then(|| text.to_string());
+    let mime_opt = (!mime.is_empty()).then(|| mime.to_string());
+    let mut m = wa::Message::default();
+    match kind {
+        "image" => {
+            m.image_message = MessageField::some(wa::message::ImageMessage { caption: text_opt, mimetype: mime_opt, ..Default::default() })
+        }
+        "video" | "gif" => {
+            m.video_message = MessageField::some(wa::message::VideoMessage {
+                caption: text_opt,
+                mimetype: mime_opt,
+                seconds: Some(seconds),
+                gif_playback: Some(kind == "gif"),
+                ..Default::default()
+            })
+        }
+        "voice" | "audio" => {
+            m.audio_message = MessageField::some(wa::message::AudioMessage {
+                mimetype: mime_opt,
+                seconds: Some(seconds),
+                ptt: Some(kind == "voice"),
+                ..Default::default()
+            })
+        }
+        "document" => {
+            m.document_message = MessageField::some(wa::message::DocumentMessage {
+                file_name: (!file_name.is_empty()).then(|| file_name.to_string()),
+                caption: text_opt,
+                mimetype: mime_opt,
+                ..Default::default()
+            })
+        }
+        "sticker" => m.sticker_message = MessageField::some(wa::message::StickerMessage { mimetype: mime_opt, ..Default::default() }),
+        "location" => m.location_message = MessageField::some(wa::message::LocationMessage { name: text_opt, ..Default::default() }),
+        "contact" => m.contact_message = MessageField::some(wa::message::ContactMessage { display_name: text_opt, ..Default::default() }),
+        _ => m.conversation = Some(text.to_string()),
+    }
+    m
+}

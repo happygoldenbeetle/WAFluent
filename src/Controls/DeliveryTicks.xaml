@@ -14,5 +14,12 @@
         <Path x:Name="ReadPath" Data="M0.5,5.5 L3.5,8.5 L9.5,1.5 M6,8.5 L12.5,1.5"
               Stroke="{ThemeResource ReadTickBrush}" StrokeThickness="1.4" Visibility="Collapsed"
               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+        <!-- Still sending: a small clock. -->
+        <Path x:Name="PendingPath" Data="M5.5,1 A4.5,4.5 0 1 1 5.49,1 Z M5.5,3.2 L5.5,5.7 L7.3,6.7"
+              Stroke="{ThemeResource SentTickBrush}" StrokeThickness="1.1" Visibility="Collapsed"
+              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+        <!-- Not sent: right-click the message to try again. -->
+        <FontIcon x:Name="FailedIcon" Glyph="&#xE783;" FontSize="11" HorizontalAlignment="Left" Visibility="Collapsed"
+                  Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
     </Grid>
 </UserControl>

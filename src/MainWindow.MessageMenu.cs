@@ -11,7 +11,7 @@ namespace WhatsAppNative;
 
 /// <summary>
 /// Right-click menu on message bubbles, built for the kind of message that was clicked.
-/// (Reply / react / forward / delete arrive with sending.)
+/// (React / forward / delete are still to come.)
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -32,6 +32,17 @@ public sealed partial class MainWindow
     {
         var menu = new MenuFlyout();
         var hasFile = MediaActions.Exists(m);
+
+        if (m.Delivery == Delivery.Failed)
+        {
+            menu.Items.Add(Item("Try sending again", Glyphs.Refresh, () => ViewModel.RetrySend(m)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
+        else if (m.Delivery != Delivery.Pending)
+        {
+            menu.Items.Add(Item("Reply", Glyphs.Reply, () => StartReply(m)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
 
         switch (m.Kind)
         {

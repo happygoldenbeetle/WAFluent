@@ -7,11 +7,13 @@ public static class SampleData
 {
     private static string? LocalImage(params string[] candidates) => candidates.FirstOrDefault(File.Exists);
 
+    private static string NewId() => Guid.NewGuid().ToString("N");
+
     private static Message In(string text, string time, string reaction = "") =>
-        new() { Text = text, Time = time, Reaction = reaction };
+        new() { Id = NewId(), Text = text, Time = time, Reaction = reaction };
 
     private static Message Out(string text, string time, Delivery d = Delivery.Read) =>
-        new() { Text = text, Time = time, IsOutgoing = true, Delivery = d };
+        new() { Id = NewId(), Text = text, Time = time, IsOutgoing = true, Delivery = d };
 
     private static Message Day(string label) => new() { Kind = MessageKind.DateDivider, Text = label };
 
@@ -39,12 +41,17 @@ public static class SampleData
                 Day("Today"),
                 new Message
                 {
+                    Id = "sample-photo",
                     Kind = MessageKind.Image, Text = "So beautiful here!", Time = "15:06", Reaction = "❤️",
                     Timestamp = DateTime.Today.AddHours(15).AddMinutes(6),
                     HasMedia = true,
                     MediaPath = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg"),
                 },
-                Out("Wow! Have great time. Enjoy.", "15:12")),
+                new Message
+                {
+                    Id = NewId(), Text = "Wow! Have great time. Enjoy.", Time = "15:12", IsOutgoing = true, Delivery = Delivery.Read,
+                    ReplyId = "sample-photo", ReplyName = "Alice Whitman", ReplyPreview = "So beautiful here!", ReplyGlyph = Glyphs.Photo,
+                }),
 
         new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", Preview = "Rebecca: @Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),

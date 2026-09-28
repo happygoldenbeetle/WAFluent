@@ -4,7 +4,7 @@ using WhatsAppNative.Models;
 
 namespace WhatsAppNative.Controls;
 
-/// <summary>Single grey tick (sent), double grey (delivered), double blue (read).</summary>
+/// <summary>Clock (sending), single grey tick (sent), double grey (delivered), double blue (read), red mark (failed).</summary>
 public sealed partial class DeliveryTicks : UserControl
 {
     public static readonly DependencyProperty DeliveryProperty = DependencyProperty.Register(
@@ -24,5 +24,7 @@ public sealed partial class DeliveryTicks : UserControl
         SinglePath.Visibility = Delivery == Delivery.Sent ? Visibility.Visible : Visibility.Collapsed;
         DoublePath.Visibility = Delivery == Delivery.Delivered ? Visibility.Visible : Visibility.Collapsed;
         ReadPath.Visibility = Delivery == Delivery.Read ? Visibility.Visible : Visibility.Collapsed;
+        PendingPath.Visibility = Delivery == Delivery.Pending ? Visibility.Visible : Visibility.Collapsed;
+        FailedIcon.Visibility = Delivery == Delivery.Failed ? Visibility.Visible : Visibility.Collapsed;
     }
 }

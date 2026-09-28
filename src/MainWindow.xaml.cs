@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
         ViewModel = new MainViewModel(_core);
 
         InitializeComponent();
+        SetupSwipe();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
         ExtendsContentIntoTitleBar = true;
@@ -161,7 +162,13 @@ public sealed partial class MainWindow : Window
 
     private void ComposerBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        // Enter sends; Shift+Enter inserts a new line.
+        // Esc drops the quote; Enter sends; Shift+Enter inserts a new line.
+        if (e.Key == VirtualKey.Escape && ViewModel.IsReplying)
+        {
+            ViewModel.CancelReply();
+            e.Handled = true;
+            return;
+        }
         if (e.Key != VirtualKey.Enter) return;
         var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
         if (shift.HasFlag(CoreVirtualKeyStates.Down)) return;

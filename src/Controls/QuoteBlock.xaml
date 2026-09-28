@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WhatsAppNative.Controls.QuoteBlock"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+
+    <!-- The quoted message on top of a reply (and above the composer while replying):
+         ▌Name
+         ▌📷 preview text -->
+    <Border CornerRadius="6" Background="{ThemeResource QuoteBrush}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="AuthorStates">
+                <VisualState x:Name="Other" />
+                <VisualState x:Name="Self">
+                    <VisualState.Setters>
+                        <Setter Target="Stripe.Fill" Value="{ThemeResource QuoteSelfBrush}" />
+                        <Setter Target="NameText.Foreground" Value="{ThemeResource QuoteSelfBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Rectangle x:Name="Stripe" Fill="{ThemeResource QuoteOtherBrush}" />
+            <StackPanel Grid.Column="1" Padding="8,7,10,8" Spacing="5">
+                <TextBlock x:Name="NameText" FontSize="12.5" FontWeight="SemiBold" TextLineBounds="Tight"
+                           Foreground="{ThemeResource QuoteOtherBrush}" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon x:Name="KindIcon" FontSize="12" VerticalAlignment="Top" Margin="0,1,0,0"
+                              Foreground="{ThemeResource MetaTextBrush}" />
+                    <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="12.5" MaxLines="2" TextWrapping="Wrap"
+                               TextTrimming="CharacterEllipsis" Foreground="{ThemeResource MetaTextBrush}" />
+                </Grid>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

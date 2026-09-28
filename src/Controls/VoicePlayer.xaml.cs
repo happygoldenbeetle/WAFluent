@@ -44,7 +44,11 @@ public sealed partial class VoicePlayer : UserControl
         Refresh();
     }
 
-    private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e) => Refresh();
+    private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Models.Message.Delivery) && Message is { } m) Ticks.Delivery = m.Delivery;
+        Refresh();
+    }
 
     /// <summary>WhatsApp sends 64 samples (0-100); resample to the bar count. Plain audio has none.</summary>
     private void BuildBars(Message message)

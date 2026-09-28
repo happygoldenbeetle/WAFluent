@@ -50,6 +50,9 @@ public sealed class MainViewModel : Observable
         core.AvatarReceived += OnAvatar;
         core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
+        core.Sent += OnSent;
+        core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) m.Delivery = Delivery.Failed; };
+        core.ReceiptReceived += OnReceipt;
     }
 
     // ───────────── Attachments ─────────────
@@ -141,8 +144,8 @@ public sealed class MainViewModel : Observable
         _ => "Connecting…",
     };
 
-    public bool CanSend => !IsLive;   // live sending arrives with the "send" step
-    public string ComposerPlaceholder => IsLive ? "Sending isn't available yet" : "Type a message";
+    public bool CanSend => true;
+    public string ComposerPlaceholder => "Type a message";
 
     private void OnStatus(string state, string? detail)
     {
@@ -187,6 +190,7 @@ public sealed class MainViewModel : Observable
         set
         {
             if (!Set(ref _selectedChat, value)) return;
+            CancelReply();   // a quote belongs to its chat
             if (value is not null) Open(value);
             Raise(nameof(HasSelection));
         }
@@ -383,21 +387,103 @@ public sealed class MainViewModel : Observable
         chat.Messages.Add(message);
     }
 
-    /// <summary>Adds an outgoing text message to the open chat (sample mode only for now).</summary>
+    // ───────────── Sending and replying ─────────────
+
+    private Message? _replyingTo;
+
+    /// <summary>The message the composer is replying to (swipe right or "Reply" on it).</summary>
+    public Message? ReplyingTo
+    {
+        get => _replyingTo;
+        private set
+        {
+            if (!Set(ref _replyingTo, value)) return;
+            Raise(nameof(IsReplying));
+            Raise(nameof(ReplyingToName));
+            Raise(nameof(ReplyingToPreview));
+            Raise(nameof(ReplyingToGlyph));
+            Raise(nameof(ReplyingToFromMe));
+        }
+    }
+
+    public bool IsReplying => _replyingTo is not null;
+    public string ReplyingToName => _replyingTo is null ? "" : AuthorName(_replyingTo);
+    public string ReplyingToPreview => _replyingTo is null ? "" : Format.QuotePreview(_replyingTo);
+    public string ReplyingToGlyph => _replyingTo is null ? "" : Format.QuoteGlyph(_replyingTo);
+    public bool ReplyingToFromMe => _replyingTo?.IsOutgoing ?? false;
+
+    public void BeginReply(Message message)
+    {
+        if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
+        ReplyingTo = message;
+    }
+
+    public void CancelReply() => ReplyingTo = null;
+
+    /// <summary>"You", the group member, or the person you're chatting with.</summary>
+    private string AuthorName(Message m) =>
+        m.IsOutgoing ? "You" : m.SenderName.Length > 0 ? m.SenderName : _selectedChat?.Name ?? "";
+
+    /// <summary>
+    /// Adds the message to the open chat right away (clock icon) and hands it to the core;
+    /// <see cref="OnSent"/> swaps in the real id and a tick. Sample mode just shows it as sent.
+    /// </summary>
     public bool Send(string text)
     {
         text = text.Trim();
-        if (!CanSend || _selectedChat is null || text.Length == 0) return false;
+        if (_selectedChat is not { } chat || text.Length == 0) return false;
 
         var now = DateTime.Now;
-        var time = now.ToString("H:mm");
-        _selectedChat.Messages.Add(new Message { Text = text, Time = time, Timestamp = now, IsOutgoing = true, Delivery = Delivery.Sent });
-        _selectedChat.Preview = text;
-        _selectedChat.Time = time;
-        _selectedChat.LastActivity = now;
-        _selectedChat.LastDelivery = Delivery.Sent;
+        var quote = _replyingTo;
+        var message = new Message
+        {
+            Id = "pending-" + Guid.NewGuid().ToString("N"),
+            Text = text,
+            Time = now.ToString("H:mm"),
+            Timestamp = now,
+            UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds(),
+            IsOutgoing = true,
+            Delivery = _core is null ? Delivery.Sent : Delivery.Pending,
+            ReplyId = quote?.Id ?? "",
+            ReplyName = quote is null ? "" : AuthorName(quote),
+            ReplyPreview = quote is null ? "" : Format.QuotePreview(quote),
+            ReplyGlyph = quote is null ? "" : Format.QuoteGlyph(quote),
+            ReplyFromMe = quote?.IsOutgoing ?? false,
+        };
+        Append(chat, message);
+        CancelReply();
+        _core?.SendText(chat.Id, text, message.HasReply ? message.ReplyId : null, message.Id);
+
+        chat.Preview = text;
+        chat.PreviewGlyph = "";
+        chat.Time = message.Time;
+        chat.LastActivity = now;
+        chat.LastDelivery = message.Delivery;
         Reorder();
         SyncVisible();
         return true;
+    }
+
+    /// <summary>Sends a message that failed again (same pending bubble).</summary>
+    public void RetrySend(Message message)
+    {
+        if (_core is null || _selectedChat is null || message.Delivery != Delivery.Failed) return;
+        message.Delivery = Delivery.Pending;
+        _core.SendText(_selectedChat.Id, message.Text, message.HasReply ? message.ReplyId : null, message.Id);
+    }
+
+    private void OnSent(string chatId, string tempId, MessageDto dto)
+    {
+        if (Find(chatId, tempId) is not { } message) return;
+        message.Id = dto.Id;
+        if (message.Delivery is Delivery.Pending or Delivery.Failed) message.Delivery = Format.ToDelivery(dto.Status);
+    }
+
+    private void OnReceipt(string chatId, IReadOnlyList<string> ids, int status)
+    {
+        var delivery = Format.ToDelivery(status);
+        foreach (var id in ids)
+            if (Find(chatId, id) is { Delivery: Delivery.Sent or Delivery.Delivered } m && delivery > m.Delivery)
+                m.Delivery = delivery;
     }
 }

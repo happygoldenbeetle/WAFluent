@@ -4,7 +4,8 @@ using System.Runtime.CompilerServices;
 
 namespace WhatsAppNative.Models;
 
-public enum Delivery { None, Sent, Delivered, Read }
+/// <summary>Sent → Delivered → Read in that order; Pending/Failed are local states before "Sent".</summary>
+public enum Delivery { None, Sent, Delivered, Read, Pending, Failed }
 
 public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker }
 
@@ -27,15 +28,17 @@ public sealed class Message : Observable
 {
     private string? _mediaPath;
     private bool _mediaFailed;
+    private Delivery _delivery;
 
-    public string Id { get; init; } = "";
+    /// <summary>WhatsApp message id; a temporary one while an outgoing message is being sent.</summary>
+    public string Id { get; set; } = "";
     public MessageKind Kind { get; init; }
     public bool IsOutgoing { get; init; }
     public string Text { get; init; } = "";
     public string Time { get; init; } = "";
     public DateTime Timestamp { get; init; }
     public long UnixTs { get; init; }
-    public Delivery Delivery { get; init; }
+    public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }
     public string Reaction { get; init; } = "";
 
     /// <summary>Shown above incoming messages in groups.</summary>
@@ -69,6 +72,15 @@ public sealed class Message : Observable
     /// <summary>Voice notes: length and 64 amplitude samples (0-100).</summary>
     public int Seconds { get; init; }
     public int[] Waveform { get; init; } = [];
+
+    // ───── Replies: the quoted message, shown on top of the bubble ─────
+
+    public string ReplyId { get; init; } = "";
+    public string ReplyName { get; init; } = "";
+    public string ReplyPreview { get; init; } = "";
+    public string ReplyGlyph { get; init; } = "";
+    public bool ReplyFromMe { get; init; }
+    public bool HasReply => ReplyId.Length > 0;
 
     // File messages
     public string FileName { get; init; } = "";

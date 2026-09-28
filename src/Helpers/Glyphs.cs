@@ -29,4 +29,5 @@ public static class Glyphs
     public static readonly string Info = G(0xE946);
     public static readonly string Refresh = G(0xE72C);
     public static readonly string Speed = G(0xE916);
+    public static readonly string Reply = G(0xE97A);
 }

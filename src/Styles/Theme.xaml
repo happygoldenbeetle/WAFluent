@@ -25,7 +25,15 @@
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00000000" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#FAFAFA" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#00FFFFFF" />
-            <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Light.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
+            <SolidColorBrush x:Key="QuoteBrush" Color="#0D0B141A" />
+            <SolidColorBrush x:Key="QuoteOtherBrush" Color="#6B4EAB" />
+            <SolidColorBrush x:Key="QuoteSelfBrush" Color="#008069" />
+            <!-- WhatsApp's classic doodle tile (beige, drawn in). -->
+            <SolidColorBrush x:Key="WallpaperColorBrush" Color="#E5DDD5" />
+            <BitmapImage x:Key="WallpaperTile" UriSource="ms-appx:///Assets/Wallpaper.Light.png" />
+            <x:Double x:Key="WallpaperTileOpacity">1</x:Double>
+            <x:Double x:Key="WallpaperTileWidth">412.5</x:Double>
+            <x:Double x:Key="WallpaperTileHeight">757.7</x:Double>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Dark">
@@ -48,7 +56,15 @@
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00FFFFFF" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#202020" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#00000000" />
-            <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Dark.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
+            <SolidColorBrush x:Key="QuoteBrush" Color="#26000000" />
+            <SolidColorBrush x:Key="QuoteOtherBrush" Color="#A791FF" />
+            <SolidColorBrush x:Key="QuoteSelfBrush" Color="#06CF9C" />
+            <!-- White doodles, faint over WhatsApp's dark green-grey. -->
+            <SolidColorBrush x:Key="WallpaperColorBrush" Color="#0B141A" />
+            <BitmapImage x:Key="WallpaperTile" UriSource="ms-appx:///Assets/Wallpaper.Dark.png" />
+            <x:Double x:Key="WallpaperTileOpacity">0.06</x:Double>
+            <x:Double x:Key="WallpaperTileWidth">412.5</x:Double>
+            <x:Double x:Key="WallpaperTileHeight">749.4</x:Double>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="HighContrast">
@@ -71,7 +87,14 @@
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
             <SolidColorBrush x:Key="ComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="DatePillBrush" Color="{ThemeResource SystemColorWindowColor}" />
-            <ImageBrush x:Key="WallpaperBrush" ImageSource="ms-appx:///Assets/Wallpaper.Dark.png" Stretch="None" AlignmentX="Left" AlignmentY="Top" />
+            <SolidColorBrush x:Key="QuoteBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="QuoteOtherBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="QuoteSelfBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="WallpaperColorBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <BitmapImage x:Key="WallpaperTile" UriSource="ms-appx:///Assets/Wallpaper.Dark.png" />
+            <x:Double x:Key="WallpaperTileOpacity">0</x:Double>
+            <x:Double x:Key="WallpaperTileWidth">412.5</x:Double>
+            <x:Double x:Key="WallpaperTileHeight">749.4</x:Double>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
