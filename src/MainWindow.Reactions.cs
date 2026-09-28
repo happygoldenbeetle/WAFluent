@@ -37,18 +37,18 @@ public sealed partial class MainWindow
         var choices = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
         var quick = _ui.QuickReactions;
         foreach (var emoji in quick)
-            choices.Children.Add(Choice(new TextBlock { Text = emoji, FontSize = 22 }, emoji == message.MyReaction,
+            choices.Children.Add(Choice(new TextBlock { Text = emoji, FontSize = 22, FontFamily = Controls.EmojiPicker.EmojiFont }, emoji == message.MyReaction,
                                         choice => PickReaction(menu, message, row, choice, emoji),
                                         emoji == message.MyReaction ? $"Remove {emoji} reaction" : $"React with {emoji}"));
 
         var custom = message.MyReaction.Length > 0 && !quick.Contains(message.MyReaction);
         choices.Children.Add(custom
-            ? Choice(new TextBlock { Text = message.MyReaction, FontSize = 22 }, true,
+            ? Choice(new TextBlock { Text = message.MyReaction, FontSize = 22, FontFamily = Controls.EmojiPicker.EmojiFont }, true,
                      choice => PickReaction(menu, message, row, choice, message.MyReaction), $"Remove {message.MyReaction} reaction")
             : Choice(new FontIcon { Glyph = "\uE710", FontSize = 16 }, false, choice =>
               {
                   // Only once the menu is gone: closing it hands focus back to where it came from.
-                  menu.Closed += (_, _) => PickEmoji(row, emoji => React(message, row, emoji, from: null));
+                  menu.Closed += (_, _) => OpenEmojiPicker(row, emoji => React(message, row, emoji, from: null), closeOnPick: true);
                   menu.Hide();
               }, "More reactions"));
 
@@ -193,7 +193,7 @@ public sealed partial class MainWindow
         pillVisual.Opacity = 0;
 
         var end = pill.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(pill.ActualWidth / 2, pill.ActualHeight / 2));
-        var flyer = new TextBlock { Text = emoji, FontSize = 22, IsHitTestVisible = false };
+        var flyer = new TextBlock { Text = emoji, FontSize = 22, FontFamily = Controls.EmojiPicker.EmojiFont, IsHitTestVisible = false };
         FxLayer.Children.Add(flyer);
         flyer.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var half = new Vector3((float)flyer.DesiredSize.Width / 2, (float)flyer.DesiredSize.Height / 2, 0);

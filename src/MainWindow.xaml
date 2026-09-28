@@ -6,7 +6,7 @@
     xmlns:controls="using:WhatsAppNative.Controls"
     xmlns:helpers="using:WhatsAppNative.Helpers"
     xmlns:models="using:WhatsAppNative.Models"
-    Title="WhatsApp Native">
+    Title="WAFluent">
 
     <Grid x:Name="Root">
         <Grid.Resources>
@@ -299,7 +299,7 @@
         <Grid x:Name="AppTitleBar" Background="Transparent">
             <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0,0,0" VerticalAlignment="Center">
                 <Image Source="ms-appx:///Assets/AppIcon.png" Width="16" Height="16" />
-                <TextBlock Text="WhatsApp Native" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
+                <TextBlock Text="WAFluent" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
             </StackPanel>
         </Grid>
 
@@ -533,6 +533,18 @@
                         </StackPanel>
                     </ScrollViewer>
 
+                    <!-- :shortcode: suggestions, just above the composer (MainWindow.Emoji.cs). -->
+                    <Border x:Name="ShortcodePanel" Grid.Row="1" Visibility="Collapsed"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,0,8"
+                            MinWidth="240" MaxWidth="360" Padding="4" CornerRadius="8" Translation="0,0,16"
+                            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
+                        <Border.Shadow>
+                            <ThemeShadow />
+                        </Border.Shadow>
+                        <StackPanel x:Name="ShortcodeList" />
+                    </Border>
+
                     <!-- Composer: docked bar; the mic becomes Send once there is text. -->
                     <Grid Grid.Row="2" Padding="10,6" ColumnSpacing="2"
                           Background="{ThemeResource ComposerBrush}"
@@ -579,6 +591,7 @@
                                  VerticalAlignment="Center" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="140"
                                  BorderThickness="0" Background="Transparent" Padding="6"
                                  TextChanged="ComposerBox_TextChanged"
+                                 SelectionChanged="ComposerBox_SelectionChanged"
                                  PreviewKeyDown="ComposerBox_PreviewKeyDown">
                             <TextBox.Resources>
                                 <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
@@ -604,7 +617,7 @@
                     <StackPanel Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
                                 Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
                         <Image Source="ms-appx:///Assets/AppIcon.png" Width="72" />
-                        <TextBlock Text="WhatsApp Native" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                        <TextBlock Text="WAFluent" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
                         <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </Grid>
@@ -782,12 +795,6 @@
             </Canvas>
         </Grid>
 
-        <!-- The Windows emoji panel types into this invisible box ("+" reactions, Settings). -->
-        <Canvas Grid.RowSpan="2" IsHitTestVisible="False">
-            <TextBox x:Name="EmojiCatcher" Width="40" Opacity="0" IsTabStop="False"
-                     AutomationProperties.AccessibilityView="Raw"
-                     TextChanged="EmojiCatcher_TextChanged" LostFocus="EmojiCatcher_LostFocus" />
-        </Canvas>
 
         <!-- A reaction flying from the menu to its pill (MainWindow.Reactions.cs). -->
         <Canvas x:Name="FxLayer" Grid.RowSpan="2" IsHitTestVisible="False" />

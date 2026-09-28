@@ -12,7 +12,7 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 ## How it works
 
 ```
-WhatsAppNative.exe (WinUI 3, C#)  ⇄  JSON lines over stdin/stdout  ⇄  core\wafluent-core.exe (Rust)
+WAFluent.exe (WinUI 3, C#)  ⇄  JSON lines over stdin/stdout  ⇄  core\wafluent-core.exe (Rust)
                                                                           └─ whatsapp-rust 0.7 → WhatsApp servers
 ```
 
@@ -29,7 +29,7 @@ Requires the .NET 10 SDK and stable Rust (`rustup`) on Windows 10 1904+ / Window
 ```powershell
 cd src
 dotnet build -p:Platform=x64      # also runs `cargo build` for core/
-.\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\WhatsAppNative.exe
+.\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\WAFluent.exe
 ```
 
 - Emoji use the iOS set when `src/Assets/Fonts/AppleColorEmoji.ttf` exists (not committed: it's Apple's artwork and 35 MB).

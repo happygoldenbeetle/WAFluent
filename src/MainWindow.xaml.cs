@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         SetupSwipe();
+        EmojiData.Warm();
         SetupChatListPane();
         BuildQuickReactionSlots();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
@@ -161,6 +162,7 @@ public sealed partial class MainWindow : Window
 
     private void ComposerBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        UpdateShortcodes();
         var hasText = ComposerBox.Text.Trim().Length > 0;
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
         MicButton.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
@@ -168,6 +170,12 @@ public sealed partial class MainWindow : Window
 
     private void ComposerBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // The :shortcode: list gets ↑ ↓ Enter Tab Esc first.
+        if (ShortcodeKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
         // Esc drops the quote; Enter sends; Shift+Enter inserts a new line.
         if (e.Key == VirtualKey.Escape && ViewModel.IsReplying)
         {
@@ -192,13 +200,6 @@ public sealed partial class MainWindow : Window
         ScrollToBottom();
     }
 
-    private void Emoji_Click(object sender, RoutedEventArgs e)
-    {
-        // Open the Windows emoji panel (Win + .) for the message box.
-        ComposerBox.Focus(FocusState.Programmatic);
-        OpenEmojiPanel();
-    }
-
     // ───────────── Helpers ─────────────
 
     private DateTime _ignoreScrollUntil;
@@ -221,6 +222,4 @@ public sealed partial class MainWindow : Window
             MessagesScroller.ChangeView(null, MessagesScroller.ScrollableHeight, null, disableAnimation: true);
         });
     }
-
-    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, nuint extraInfo);
 }

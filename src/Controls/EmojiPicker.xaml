@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="WhatsAppNative.Controls.EmojiPicker"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:WhatsAppNative.Controls">
+
+    <UserControl.Resources>
+        <!-- One emoji; a small corner mark when it comes in skin tones (right-click or hold for them). -->
+        <DataTemplate x:Key="CellTemplate" x:DataType="local:EmojiCell">
+            <Grid Width="42" Height="42" CornerRadius="6" Background="Transparent" Tag="{x:Bind}"
+                  AutomationProperties.Name="{x:Bind Name}"
+                  PointerEntered="Cell_PointerEntered" PointerExited="Cell_PointerExited"
+                  PointerPressed="Cell_PointerPressed" PointerReleased="Cell_PointerReleased"
+                  PointerCaptureLost="Cell_PointerReleased" PointerCanceled="Cell_PointerReleased"
+                  Tapped="Cell_Tapped" RightTapped="Cell_RightTapped">
+                <TextBlock Text="{x:Bind Glyph}" FontSize="27" FontFamily="{StaticResource EmojiFontFamily}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Polygon Points="0,5 5,5 5,0" Fill="{ThemeResource TextFillColorTertiaryBrush}"
+                         HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,3,3"
+                         Visibility="{x:Bind ToneMark}" />
+            </Grid>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid x:Name="Root" Width="384" Height="420" Tapped="Root_Tapped">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Category tabs; the green line slides under the current one. -->
+        <Grid Padding="8,6,8,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+            <StackPanel x:Name="Tabs" Orientation="Horizontal" />
+            <Canvas VerticalAlignment="Bottom" Height="2" IsHitTestVisible="False">
+                <Rectangle x:Name="TabLine" Width="24" Height="2" RadiusX="1" RadiusY="1"
+                           Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+            </Canvas>
+        </Grid>
+
+        <TextBox x:Name="SearchBox" Grid.Row="1" Margin="10,10,10,4" PlaceholderText="Search emoji"
+                 TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown"
+                 AutomationProperties.Name="Search emoji" />
+
+        <Grid Grid.Row="2">
+            <ScrollViewer x:Name="Scroller" Padding="8,0,8,8" HorizontalScrollMode="Disabled">
+                <StackPanel>
+                    <TextBlock x:Name="SectionTitle" FontSize="12" Margin="4,6,0,4"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ItemsRepeater x:Name="Cells" ItemTemplate="{StaticResource CellTemplate}">
+                        <ItemsRepeater.Layout>
+                            <UniformGridLayout MinItemWidth="42" MinItemHeight="42" MinRowSpacing="0" MinColumnSpacing="0" />
+                        </ItemsRepeater.Layout>
+                    </ItemsRepeater>
+                    <TextBlock x:Name="EmptyText" Text="No emoji found" Visibility="Collapsed" Margin="4,12,0,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Skin tones for one emoji, floating above it. -->
+            <Canvas x:Name="ToneLayer">
+                <Border x:Name="ToneBar" Visibility="Collapsed" Padding="4" CornerRadius="8"
+                        Background="{ThemeResource SolidBackgroundFillColorTertiaryBrush}"
+                        BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
+                        Translation="0,0,16">
+                    <Border.Shadow>
+                        <ThemeShadow />
+                    </Border.Shadow>
+                    <StackPanel x:Name="ToneChoices" Orientation="Horizontal" Spacing="2" />
+                </Border>
+            </Canvas>
+        </Grid>
+    </Grid>
+</UserControl>

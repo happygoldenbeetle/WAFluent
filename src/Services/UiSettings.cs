@@ -29,6 +29,12 @@ public sealed class UiSettings
 
     private string[] _quick = ["❤️", "👍", "😂", "😮", "😢"];
 
+    /// <summary>Emoji keyboard: most recent first, exactly as used (skin tone included).</summary>
+    public List<string> RecentEmoji { get; set; } = [];
+
+    /// <summary>Emoji keyboard: the skin tone you last picked for each emoji (base emoji -> variant).</summary>
+    public Dictionary<string, string> SkinTones { get; set; } = [];
+
     public static UiSettings Load()
     {
         try

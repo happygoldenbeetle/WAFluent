@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:WhatsAppNative.Controls"
-    Title="WhatsApp call">
+    Title="WAFluent call">
 
     <Grid x:Name="Root">
         <Grid.RowDefinitions>
