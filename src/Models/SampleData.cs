@@ -53,7 +53,7 @@ public static class SampleData
                     ReplyId = "sample-photo", ReplyName = "Alice Whitman", ReplyPreview = "So beautiful here!", ReplyGlyph = Glyphs.Photo,
                 }),
 
-        new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", Preview = "Rebecca: @Chris R?", Time = "14:43", Unread = 1, HasMention = true }
+        new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),
 
         new Chat { Name = "Stasa Benko", Status = "last seen today at 13:56", Preview = "Aww no problem.", Time = "13:56", Unread = 2, HasStatus = true }

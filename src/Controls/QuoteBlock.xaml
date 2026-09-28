@@ -3,6 +3,7 @@
     x:Class="WhatsAppNative.Controls.QuoteBlock"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:WhatsAppNative.Controls"
     IsTabStop="False">
 
     <!-- The quoted message on top of a reply (and above the composer while replying):
@@ -27,8 +28,10 @@
             </Grid.ColumnDefinitions>
             <Rectangle x:Name="Stripe" Fill="{ThemeResource QuoteOtherBrush}" />
             <StackPanel Grid.Column="1" Padding="8,7,10,8" Spacing="5">
-                <TextBlock x:Name="NameText" FontSize="12.5" FontWeight="SemiBold" TextLineBounds="Tight"
-                           Foreground="{ThemeResource QuoteOtherBrush}" TextTrimming="CharacterEllipsis" />
+                <controls:Redact HorizontalAlignment="Left">
+                    <TextBlock x:Name="NameText" FontSize="12.5" FontWeight="SemiBold" TextLineBounds="Tight"
+                               Foreground="{ThemeResource QuoteOtherBrush}" TextTrimming="CharacterEllipsis" />
+                </controls:Redact>
                 <Grid ColumnSpacing="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

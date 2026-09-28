@@ -17,6 +17,9 @@ public sealed class UiSettings
     /// <summary>The chat list was dragged shut (or double-clicked closed).</summary>
     public bool ChatListCollapsed { get; set; }
 
+    /// <summary>Blur profile photos, names and numbers (Controls/Redact).</summary>
+    public bool DeveloperMode { get; set; }
+
     /// <summary>The five reactions in the message menu; the first is also the double-click reaction.</summary>
     public string[] QuickReactions
     {

@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
         SetupSwipe();
         SetupChatListPane();
         BuildQuickReactionSlots();
+        DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
+        ApplyDeveloperMode();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
         ExtendsContentIntoTitleBar = true;

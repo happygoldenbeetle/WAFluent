@@ -20,27 +20,37 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
-                                     Size="48" ShowRing="{x:Bind HasStatus}" />
+                    <controls:Redact VeilRadius="24">
+                        <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
+                                         Size="48" ShowRing="{x:Bind HasStatus}" />
+                    </controls:Redact>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <controls:Redact HorizontalAlignment="Left">
+                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        </controls:Redact>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <controls:DeliveryTicks Delivery="{x:Bind LastDelivery, Mode=OneWay}" Margin="0,0,4,0"
+                            <!-- Groups: who sent the last message ("Maya: "), blurred in developer mode. -->
+                            <controls:Redact Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewSender), Mode=OneWay}" Margin="0,0,3,0">
+                                <TextBlock Text="{x:Bind PreviewSender, Mode=OneWay}" FontSize="13" MaxLines="1"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </controls:Redact>
+                            <controls:DeliveryTicks Grid.Column="1" Delivery="{x:Bind LastDelivery, Mode=OneWay}" Margin="0,0,4,0"
                                                     Visibility="{x:Bind helpers:Ui.HasDelivery(LastDelivery), Mode=OneWay}" />
-                            <FontIcon Grid.Column="1" Glyph="{x:Bind PreviewGlyph, Mode=OneWay}" FontSize="13" Margin="0,0,5,0"
+                            <FontIcon Grid.Column="2" Glyph="{x:Bind PreviewGlyph, Mode=OneWay}" FontSize="13" Margin="0,0,5,0"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewGlyph), Mode=OneWay}" />
-                            <TextBlock Grid.Column="2" Text="{x:Bind Preview, Mode=OneWay}" FontSize="13"
+                            <TextBlock Grid.Column="3" Text="{x:Bind Preview, Mode=OneWay}" FontSize="13"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                        Visibility="{x:Bind helpers:Ui.Collapsed(IsTyping)}" />
-                            <TextBlock Grid.Column="2" Text="typing…" FontSize="13" FontWeight="SemiBold"
+                            <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="typing…" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(IsTyping)}" />
                         </Grid>
@@ -56,7 +66,7 @@
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
                         <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
-                            <FontIcon Glyph="&#xE718;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            <FontIcon Glyph="&#xE841;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                       Visibility="{x:Bind IsPinned, Mode=OneWay}" />
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
@@ -84,9 +94,11 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <!-- Group chats: who wrote it. -->
-                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,8"
-                                               TextLineBounds="Tight" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                               TextTrimming="CharacterEllipsis" Visibility="{x:Bind ShowSender}" />
+                                    <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="{x:Bind ShowSender}">
+                                        <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                                   TextLineBounds="Tight" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </controls:Redact>
                                     <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
                                     <controls:QuoteBlock Grid.Row="1" Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
@@ -170,9 +182,10 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,4,10,4">
                                 <StackPanel>
-                                    <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,2"
-                                               Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                               Visibility="{x:Bind ShowSender}" />
+                                    <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,2" Visibility="{x:Bind ShowSender}">
+                                        <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                    </controls:Redact>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -190,9 +203,10 @@
                     <DataTemplate x:DataType="models:Message">
                         <!-- Stickers float without a bubble, like WhatsApp. -->
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Spacing="2">
-                            <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                       Visibility="{x:Bind ShowSender}" />
+                            <controls:Redact HorizontalAlignment="Left" Visibility="{x:Bind ShowSender}">
+                                <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            </controls:Redact>
                             <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent"
                                   Tag="{x:Bind}" Tapped="Media_Tapped">
                                 <ProgressRing Width="28" Height="28" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
@@ -388,11 +402,20 @@
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                     </Grid>
 
-                    <ListView x:Name="ChatList" Grid.Row="3" Margin="4,0,4,0"
+                    <!-- Right padding keeps the selected row's highlight clear of the scroll bar. -->
+                    <ListView x:Name="ChatList" Grid.Row="3" Margin="4,0,0,0" Padding="0,0,12,0"
                               ItemsSource="{x:Bind ViewModel.Chats}"
                               ItemTemplate="{StaticResource ChatItemTemplate}"
                               SingleSelectionFollowsFocus="False"
-                              SelectionChanged="ChatList_SelectionChanged" />
+                              SelectionChanged="ChatList_SelectionChanged">
+                        <ListView.Resources>
+                            <!-- No green bar on the selected chat; the row highlight is enough. -->
+                            <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                            <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+                            <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+                        </ListView.Resources>
+                    </ListView>
 
                     <StackPanel x:Name="SectionPlaceholder" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed"
                                 HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
@@ -409,6 +432,12 @@
                                            Text="Shown when you right-click a message, next to + for any emoji. Double-click a message to react with the first one. Click an emoji to change it." />
                                 <StackPanel x:Name="QuickReactionSlots" Orientation="Horizontal" Spacing="6" />
                                 <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="DeveloperModeSwitch" Header="Developer mode" OffContent="Off" OnContent="On"
+                                              Toggled="DeveloperMode_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Blurs profile photos, names and numbers, for screenshots and screen sharing. Messages stay readable." />
                             </StackPanel>
                             <Button x:Name="LogoutButton" Content="Log out" Visibility="Collapsed" Click="Logout_Click" />
                         </StackPanel>
@@ -437,11 +466,14 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
-                                         Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}"
-                                         Size="36" VerticalAlignment="Center" />
+                        <controls:Redact VeilRadius="18" VerticalAlignment="Center">
+                            <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
+                                             Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36" />
+                        </controls:Redact>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            <controls:Redact HorizontalAlignment="Left">
+                                <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            </controls:Redact>
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.Status, Mode=OneWay}" FontSize="12"
                                        Visibility="{x:Bind helpers:Ui.NotEmpty(ViewModel.SelectedChat.Status), Mode=OneWay}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />

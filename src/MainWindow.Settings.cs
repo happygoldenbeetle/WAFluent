@@ -98,6 +98,20 @@ public sealed partial class MainWindow
         }
     }
 
+    private void DeveloperMode_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.DeveloperMode == DeveloperModeSwitch.IsOn) return;
+        _ui.DeveloperMode = DeveloperModeSwitch.IsOn;
+        _ui.Save();
+        ApplyDeveloperMode();
+    }
+
+    private void ApplyDeveloperMode()
+    {
+        Controls.Redact.SetEnabled(_ui.DeveloperMode);
+        ViewModel.HideProfilePhoto = _ui.DeveloperMode;   // your own photo on the rail
+    }
+
     private void ResetQuickReactions_Click(object sender, RoutedEventArgs e)
     {
         _ui.QuickReactions = [.. DefaultQuickReactions];

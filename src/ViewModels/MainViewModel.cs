@@ -99,10 +99,23 @@ public sealed class MainViewModel : Observable
     // ───────────── Profile pictures ─────────────
 
     private static readonly Uri ProfilePlaceholder = new("ms-appx:///Assets/ProfilePlaceholder.png");
-    private ImageSource _profileIcon = new BitmapImage(ProfilePlaceholder);
+    private static readonly ImageSource Placeholder = new BitmapImage(ProfilePlaceholder);
+    private ImageSource _profileIcon = Placeholder;
+    private bool _hideProfilePhoto;
 
-    /// <summary>Your own picture, round-cropped for the rail (placeholder until known).</summary>
-    public ImageSource ProfileIcon { get => _profileIcon; private set => Set(ref _profileIcon, value); }
+    /// <summary>Your own picture, round-cropped for the rail (placeholder until known, or in developer mode).</summary>
+    public ImageSource ProfileIcon
+    {
+        get => _hideProfilePhoto ? Placeholder : _profileIcon;
+        private set { _profileIcon = value; Raise(nameof(ProfileIcon)); }
+    }
+
+    /// <summary>Developer mode: the rail shows the placeholder instead of your photo.</summary>
+    public bool HideProfilePhoto
+    {
+        get => _hideProfilePhoto;
+        set { if (Set(ref _hideProfilePhoto, value)) Raise(nameof(ProfileIcon)); }
+    }
 
     private async void OnAvatar(string chatId, string? path)
     {
@@ -276,7 +289,8 @@ public sealed class MainViewModel : Observable
         chat.PinnedAt = dto.PinnedAt;
         chat.LastActivity = Format.FromUnix(dto.LastTs);
         chat.Time = Format.ListTime(chat.LastActivity);
-        chat.Preview = dto.LastSender is { Length: > 0 } who ? $"{who}: {dto.Preview}" : dto.Preview;
+        chat.PreviewSender = dto.LastSender is { Length: > 0 } who ? who + ":" : "";
+        chat.Preview = dto.Preview;
         chat.PreviewGlyph = Format.PreviewGlyph(dto.PreviewKind);
         chat.LastDelivery = dto.LastFromMe ? Format.ToDelivery(dto.LastStatus) : Delivery.None;
 
@@ -475,6 +489,7 @@ public sealed class MainViewModel : Observable
         _core?.SendText(chat.Id, text, message.HasReply ? message.ReplyId : null, message.Id);
 
         chat.Preview = text;
+        chat.PreviewSender = "";
         chat.PreviewGlyph = "";
         chat.Time = message.Time;
         chat.LastActivity = now;

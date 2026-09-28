@@ -163,6 +163,10 @@ public sealed class Chat : Observable
 
     public required string Name { get => _name; set => Set(ref _name, value); }
     public string Preview { get => _preview; set => Set(ref _preview, value); }
+
+    private string _previewSender = "";
+    /// <summary>Groups: "Maya:" before the preview (kept apart so developer mode can blur it).</summary>
+    public string PreviewSender { get => _previewSender; set => Set(ref _previewSender, value); }
     public string PreviewGlyph { get => _previewGlyph; set => Set(ref _previewGlyph, value); }   // e.g. a camera icon before the preview
     public string Time { get => _time; set => Set(ref _time, value); }
     public bool IsPinned { get => _isPinned; set => Set(ref _isPinned, value); }
