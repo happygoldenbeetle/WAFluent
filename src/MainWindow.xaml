@@ -453,18 +453,18 @@
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New chat" AutomationProperties.Name="New chat">
                                 <FontIcon Glyph="&#xE932;" FontSize="16" />
                             </Button>
-                            <Button x:Name="FilterButton" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Filter" AutomationProperties.Name="Filter chats"
-                                    Click="Filter_Click">
-                                <PathIcon Data="M1,3 H15 V4.3 H1 Z M3.5,7.4 H12.5 V8.7 H3.5 Z M6,11.8 H10 V13.1 H6 Z" />
-                            </Button>
                         </StackPanel>
                     </Grid>
 
-                    <AutoSuggestBox x:Name="SearchBox" Grid.Row="1" Margin="16,0,16,8"
-                                    PlaceholderText="Search or start a new chat"
-                                    QueryIcon="Find"
-                                    AutomationProperties.Name="Search chats"
-                                    TextChanged="Search_TextChanged" />
+                    <StackPanel Grid.Row="1">
+                        <AutoSuggestBox x:Name="SearchBox" Margin="16,0,16,8"
+                                        PlaceholderText="Search or start a new chat"
+                                        QueryIcon="Find"
+                                        AutomationProperties.Name="Search chats"
+                                        TextChanged="Search_TextChanged" />
+                        <!-- All · Unread · Favourites · ⌄ (Groups), like WhatsApp for Windows (MainWindow.ChatMenu.cs). -->
+                        <StackPanel x:Name="FilterChips" Orientation="Horizontal" Spacing="8" Margin="16,0,16,8" />
+                    </StackPanel>
 
                     <!-- Reconnecting / syncing while chats are already on screen. -->
                     <Grid Grid.Row="2" Margin="16,0,16,8" Padding="12,8" ColumnSpacing="10" CornerRadius="6"

@@ -13,6 +13,8 @@
             <SolidColorBrush x:Key="ChatAccentTextBrush" Color="#017561" />
             <!-- Block / Clear / Delete: bright red. -->
             <SolidColorBrush x:Key="DangerBrush" Color="#E81123" />
+            <SolidColorBrush x:Key="ChipStrokeBrush" Color="#26000000" />
+            <SolidColorBrush x:Key="ChipSelectedBrush" Color="#14000000" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F5F5F5F5" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#E6FFFFFF" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#1A000000" />
@@ -47,6 +49,8 @@
             <SolidColorBrush x:Key="ChatAccentBrush" Color="#25D366" />
             <SolidColorBrush x:Key="ChatAccentTextBrush" Color="#21C063" />
             <SolidColorBrush x:Key="DangerBrush" Color="#FF3B3B" />
+            <SolidColorBrush x:Key="ChipStrokeBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ChipSelectedBrush" Color="#1FFFFFFF" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F20F0F0F" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#CC202020" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#99000000" />
@@ -81,6 +85,8 @@
             <SolidColorBrush x:Key="ChatAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="ChatAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChipStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChipSelectedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
@@ -109,6 +115,23 @@
             <x:Double x:Key="WallpaperTileHeight">749.4</x:Double>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+
+    <!-- Chat list filter chips (All / Unread / Favourites / ⌄): outlined when off, filled and bold when on. -->
+    <Style x:Key="ChipStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Padding" Value="12,4,12,5" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="CornerRadius" Value="15" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChipStrokeBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+    </Style>
+    <Style x:Key="ChipSelectedStyle" TargetType="Button" BasedOn="{StaticResource ChipStyle}">
+        <Setter Property="Background" Value="{ThemeResource ChipSelectedBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChipSelectedBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
 
     <!-- Borderless icon button with the standard hover/pressed fill. -->
     <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">

@@ -21,6 +21,7 @@ public sealed partial class MainWindow
     private void SetupChatMenus()
     {
         ViewModel.UseFavourites(_ui.Favourites);
+        BuildFilterChips();
         ViewModel.FavouritesChanged += _ui.Save;
         ViewModel.Toast += ShowToast;
 
@@ -169,21 +170,47 @@ public sealed partial class MainWindow
 
     // ───────────── Filter ─────────────
 
-    private void Filter_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Filter chips under the search box: All, Unread, Favourites, and a ⌄ chip whose menu
+    /// holds Groups (it turns into a "Groups ⌄" chip while that filter is on).
+    /// </summary>
+    private void BuildFilterChips()
     {
-        var menu = new MenuFlyout();
-        foreach (var (filter, text) in new[] { (ChatFilter.All, "All chats"), (ChatFilter.Unread, "Unread"),
-                                               (ChatFilter.Favourites, "Favourites"), (ChatFilter.Groups, "Groups") })
+        FilterChips.Children.Clear();
+        foreach (var (filter, text) in new[] { (ChatFilter.All, "All"), (ChatFilter.Unread, "Unread"), (ChatFilter.Favourites, "Favourites") })
+            FilterChips.Children.Add(Chip(text, ViewModel.Filter == filter, _ => SetFilter(filter)));
+
+        var groups = ViewModel.Filter == ChatFilter.Groups;
+        var more = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        if (groups) more.Children.Add(new TextBlock { Text = "Groups", VerticalAlignment = VerticalAlignment.Center });
+        more.Children.Add(new FontIcon { Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
+        FilterChips.Children.Add(Chip(more, groups, chip =>
         {
-            var option = new RadioMenuFlyoutItem { Text = text, GroupName = "chat-filter", IsChecked = ViewModel.Filter == filter };
-            option.Click += (_, _) =>
-            {
-                ViewModel.Filter = filter;
-                ListTitle.Text = filter == ChatFilter.All ? "Chats" : text;
-            };
+            var menu = new MenuFlyout();
+            var option = new ToggleMenuFlyoutItem { Text = "Groups", IsChecked = groups, Icon = new FontIcon { Glyph = "\uE716" } };
+            option.Click += (_, _) => SetFilter(groups ? ChatFilter.All : ChatFilter.Groups);
             menu.Items.Add(option);
-        }
-        menu.ShowAt(FilterButton);
+            menu.ShowAt(chip, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });
+        }, "More filters"));
+    }
+
+    private void SetFilter(ChatFilter filter)
+    {
+        ViewModel.Filter = filter;
+        BuildFilterChips();
+    }
+
+    /// <summary>A pill: filled and bold when on, outlined and grey when off.</summary>
+    private static Button Chip(object content, bool on, Action<Button> clicked, string? name = null)
+    {
+        var chip = new Button
+        {
+            Content = content is string text ? new TextBlock { Text = text } : content,
+            Style = (Style)Application.Current.Resources[on ? "ChipSelectedStyle" : "ChipStyle"],   // Styles/Theme.xaml
+        };
+        if (name is not null) Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(chip, name);
+        chip.Click += (_, _) => clicked(chip);
+        return chip;
     }
 
     // ───────────── Starred view, pinned banner ─────────────

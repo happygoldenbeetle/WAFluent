@@ -118,6 +118,8 @@ public sealed partial class MainWindow : Window
 
         ListActions.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
+        FilterChips.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
+        if (section == "Archived" && ViewModel.Filter != ChatFilter.All) SetFilter(ChatFilter.All);
         ChatList.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
         StarredList.Visibility = isStarred ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
