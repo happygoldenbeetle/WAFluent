@@ -7,6 +7,12 @@
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#F0EFED" />
+            <!-- WhatsApp green for pings and chat content (badges, unread times, sender names...);
+                 stays green with "Use Windows accent colour", which only recolours controls. -->
+            <SolidColorBrush x:Key="ChatAccentBrush" Color="#008069" />
+            <SolidColorBrush x:Key="ChatAccentTextBrush" Color="#017561" />
+            <!-- Block / Clear / Delete: bright red. -->
+            <SolidColorBrush x:Key="DangerBrush" Color="#E81123" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F5F5F5F5" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#E6FFFFFF" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#1A000000" />
@@ -38,6 +44,9 @@
 
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="#1C1C1C" />
+            <SolidColorBrush x:Key="ChatAccentBrush" Color="#25D366" />
+            <SolidColorBrush x:Key="ChatAccentTextBrush" Color="#21C063" />
+            <SolidColorBrush x:Key="DangerBrush" Color="#FF3B3B" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F20F0F0F" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#CC202020" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#99000000" />
@@ -69,6 +78,9 @@
 
         <ResourceDictionary x:Key="HighContrast">
             <SolidColorBrush x:Key="ChatPaneBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="DangerBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />

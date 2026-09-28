@@ -12,7 +12,7 @@
     -->
     <Grid Width="300">
         <!-- Theme-aware bar colours, read from these hidden shapes (ThemeResource updates them). -->
-        <Rectangle x:Name="PlayedSwatch" Visibility="Collapsed" Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+        <Rectangle x:Name="PlayedSwatch" Visibility="Collapsed" Fill="{ThemeResource ChatAccentBrush}" />
         <Rectangle x:Name="UnplayedSwatch" Visibility="Collapsed" Fill="{ThemeResource MetaTextBrush}" />
 
         <Grid Margin="0,16" ColumnSpacing="10" VerticalAlignment="Center">
@@ -37,7 +37,7 @@
                             Background="Transparent" Tapped="Bars_Tapped" />
                 <Canvas IsHitTestVisible="False">
                     <Ellipse x:Name="Knob" Width="12" Height="12" Canvas.Top="10" Visibility="Collapsed"
-                             Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+                             Fill="{ThemeResource ChatAccentBrush}" />
                 </Canvas>
             </Grid>
 

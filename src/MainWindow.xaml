@@ -53,7 +53,7 @@
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
                                        Visibility="{x:Bind helpers:Ui.Collapsed(IsTyping)}" />
                             <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="typing…" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       Foreground="{ThemeResource ChatAccentTextBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(IsTyping)}" />
                         </Grid>
                     </StackPanel>
@@ -64,7 +64,7 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Collapsed(HasUnread), Mode=OneWay}" />
                             <TextBlock Text="{x:Bind Time, Mode=OneWay}" FontSize="12"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       Foreground="{ThemeResource ChatAccentTextBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
                         <!-- Bell and pin measured to the same ink height and centre line (13 px bell, 14 px pin
@@ -82,9 +82,9 @@
                                 </Path.RenderTransform>
                             </Path>
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
-                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       Foreground="{ThemeResource ChatAccentTextBrush}"
                                        Visibility="{x:Bind helpers:Ui.Both(HasMention, HasUnread), Mode=OneWay}" />
-                            <InfoBadge Value="{x:Bind Unread, Mode=OneWay}"
+                            <InfoBadge Value="{x:Bind Unread, Mode=OneWay}" Background="{ThemeResource ChatAccentBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>
@@ -102,7 +102,7 @@
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
                                   Visibility="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
-                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
@@ -118,7 +118,7 @@
                                     <!-- Group chats: who wrote it. -->
                                     <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
-                                                   TextLineBounds="Tight" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                   TextLineBounds="Tight" Foreground="{ThemeResource ChatAccentTextBrush}"
                                                    TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
                                     <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
@@ -163,7 +163,7 @@
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
                                   Visibility="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
-                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
@@ -230,7 +230,7 @@
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
                                   Visibility="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
-                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
@@ -238,7 +238,7 @@
                                 <StackPanel>
                                     <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,2" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                                   Foreground="{ThemeResource ChatAccentTextBrush}" />
                                     </controls:Redact>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
@@ -263,13 +263,13 @@
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
                                   Visibility="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
-                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Spacing="2">
                             <controls:Redact HorizontalAlignment="Left" Visibility="{x:Bind ShowSender}">
                                 <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
-                                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                           Foreground="{ThemeResource ChatAccentTextBrush}" />
                             </controls:Redact>
                             <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent"
                                   Tag="{x:Bind}" Tapped="Media_Tapped">
@@ -299,7 +299,7 @@
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
                                   Visibility="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
-                                <Ellipse Fill="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
@@ -386,7 +386,7 @@
                         <FontIcon Glyph="&#xE8BD;" />
                     </NavigationViewItem.Icon>
                     <NavigationViewItem.InfoBadge>
-                        <InfoBadge Value="{x:Bind ViewModel.UnreadChats, Mode=OneWay}"
+                        <InfoBadge Value="{x:Bind ViewModel.UnreadChats, Mode=OneWay}" Background="{ThemeResource ChatAccentBrush}"
                                    Visibility="{x:Bind helpers:Ui.Positive(ViewModel.UnreadChats), Mode=OneWay}" />
                     </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
@@ -543,7 +543,7 @@
                                 <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On"
                                               Toggled="SystemAccent_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="Replaces WhatsApp green (buttons, badges, your bubbles) with the colour from Windows Settings › Personalization › Colors." />
+                                           Text="Buttons, switches and the left bar use the colour from Windows Settings › Personalization › Colors. Unread badges and chats stay WhatsApp green." />
                             </StackPanel>
                             <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="DeveloperModeSwitch" Header="Developer mode" OffContent="Off" OnContent="On"
@@ -624,7 +624,7 @@
                         </Grid.ColumnDefinitions>
                         <FontIcon Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         <StackPanel Grid.Column="1">
-                            <TextBlock Text="Pinned message" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Pinned message" FontSize="12" Foreground="{ThemeResource ChatAccentTextBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.PinnedMessagePreview, Mode=OneWay}" FontSize="13"
                                        TextTrimming="CharacterEllipsis" MaxLines="1" />
                         </StackPanel>

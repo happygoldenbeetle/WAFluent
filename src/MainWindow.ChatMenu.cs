@@ -130,7 +130,7 @@ public sealed partial class MainWindow
         if (await dialog.ShowAsync() == ContentDialogResult.Primary) confirmed();
     }
 
-    private static readonly Windows.UI.Color Red = Windows.UI.Color.FromArgb(255, 0xC4, 0x2B, 0x1C);
+    private static readonly Windows.UI.Color Red = Windows.UI.Color.FromArgb(255, 0xE8, 0x11, 0x23);   // bright red
 
     /// <summary>
     /// The dialog's primary (and secondary) buttons red with white text; Cancel keeps the plain
@@ -144,20 +144,20 @@ public sealed partial class MainWindow
         SolidColorBrush Brush(byte r, byte g, byte b) => new(Windows.UI.Color.FromArgb(255, r, g, b));
         var white = Brush(255, 255, 255);
         dialog.Resources["AccentButtonBackground"] = Brush(Red.R, Red.G, Red.B);
-        dialog.Resources["AccentButtonBackgroundPointerOver"] = Brush(0xD1, 0x3B, 0x2C);
-        dialog.Resources["AccentButtonBackgroundPressed"] = Brush(0xA8, 0x25, 0x18);
+        dialog.Resources["AccentButtonBackgroundPointerOver"] = Brush(0xF1, 0x2B, 0x3C);
+        dialog.Resources["AccentButtonBackgroundPressed"] = Brush(0xC5, 0x0F, 0x1F);
         dialog.Resources["AccentButtonForeground"] = white;
         dialog.Resources["AccentButtonForegroundPointerOver"] = white;
         dialog.Resources["AccentButtonForegroundPressed"] = Brush(0xF2, 0xD0, 0xCC);
         dialog.Resources["AccentButtonBorderBrush"] = Brush(Red.R, Red.G, Red.B);
-        dialog.Resources["AccentButtonBorderBrushPointerOver"] = Brush(0xD1, 0x3B, 0x2C);
-        dialog.Resources["AccentButtonBorderBrushPressed"] = Brush(0xA8, 0x25, 0x18);
+        dialog.Resources["AccentButtonBorderBrushPointerOver"] = Brush(0xF1, 0x2B, 0x3C);
+        dialog.Resources["AccentButtonBorderBrushPressed"] = Brush(0xC5, 0x0F, 0x1F);
     }
 
     /// <summary>A red menu item (Block, Clear chat, Delete chat), hover and press included.</summary>
     private static MenuFlyoutItem Danger(MenuFlyoutItem item)
     {
-        var red = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+        var red = (Brush)Application.Current.Resources["DangerBrush"];
         item.Foreground = red;
         item.Resources["MenuFlyoutItemForeground"] = red;
         item.Resources["MenuFlyoutItemForegroundPointerOver"] = red;

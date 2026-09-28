@@ -187,7 +187,7 @@ public sealed partial class MainWindow
     private static Button Row(string? glyph, string text, string? detail = null, string? trailing = null, bool danger = false,
                               Action? action = null, IconElement? icon = null, FlyoutBase? flyout = null)
     {
-        var color = danger ? (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"] : null;
+        var color = danger ? (Brush)Application.Current.Resources["DangerBrush"] : null;
         var grid = new Grid { ColumnSpacing = 22 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
