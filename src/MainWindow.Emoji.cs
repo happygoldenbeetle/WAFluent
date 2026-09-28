@@ -49,7 +49,18 @@ public sealed partial class MainWindow
         _emojiCloseOnPick = closeOnPick;
         _emojiPicker!.Reset(focusSearch: true);
         _emojiFlyout.Placement = placement;
-        _emojiFlyout.ShowAt(anchor);
+        if (_emojiFlyout.IsOpen) _emojiFlyout.Hide();
+        try
+        {
+            _emojiFlyout.ShowAt(anchor);
+        }
+        catch (ArgumentException)
+        {
+            // The anchor left the tree (a recycled message row, a closed menu's item): show it by the composer.
+            _emojiFlyout.Placement = FlyoutPlacementMode.TopEdgeAlignedLeft;
+            try { _emojiFlyout.ShowAt(ComposerBox.XamlRoot is null ? Root : ComposerBox); }
+            catch (ArgumentException) { }   // still closing from the last time: the next click works
+        }
     }
 
     private void Emoji_Click(object sender, RoutedEventArgs e)
