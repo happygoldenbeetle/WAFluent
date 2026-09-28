@@ -37,6 +37,7 @@ dotnet build -p:Platform=x64      # also runs `cargo build` for core/
   Extract `system/fonts/NotoColorEmoji.ttf` from the iOS-emoji Magisk module zip and save it under that name; without it Windows' emoji are used.
 - `--sample` shows placeholder chats instead of connecting (also used automatically when the core isn't built).
 - `--theme light|dark` forces a theme.
+- `--panel info|contact` opens Contact info or New contact for the open chat at start.
 - `-p:SkipCore=true` builds the UI without compiling the Rust core.
 
 The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX install or runtime download is needed.

@@ -162,16 +162,40 @@ public sealed partial class MainViewModel
         SyncVisible();
     }
 
-    public void SaveContact(Chat chat, string first, string last)
+    public void SaveContact(Chat chat, string first, string last, bool syncToPhone)
     {
         if (_core is null || chat.Id.Length == 0)
         {
             chat.Name = $"{first} {last}".Trim();
             chat.IsSaved = true;
+            Notify(true, $"Saved {chat.Name} to your contacts");
             return;
         }
-        _core.SaveContact(chat.Id, first, last);
+        _core.SaveContact(chat.Id, first, last, syncToPhone);
     }
+
+    public void ReportContact(Chat chat)
+    {
+        if (_core is not null && chat.Id.Length > 0) _core.ReportContact(chat.Id);
+        else Notify(true, "Reported to WhatsApp");
+    }
+
+    /// <summary>Exports everything this PC has of the chat (the core writes the file; sample: what's loaded).</summary>
+    public void ExportChat(Chat chat, string path)
+    {
+        if (_core is not null && chat.Id.Length > 0)
+        {
+            _core.ExportChat(chat.Id, path);
+            return;
+        }
+        var lines = chat.Messages.Where(m => m.Kind != MessageKind.DateDivider)
+            .Select(m => $"{m.Timestamp:dd/MM/yyyy, HH:mm} - {(m.IsOutgoing ? "You" : m.SenderName.Length > 0 ? m.SenderName : chat.Name)}: {Format.QuotePreview(m)}");
+        File.WriteAllLines(path, lines);
+        Notify(true, $"Exported {chat.Messages.Count(m => m.Kind != MessageKind.DateDivider)} messages");
+    }
+
+    /// <summary>Photos, stickers, voice notes and files among the loaded messages.</summary>
+    public int MediaCount(Chat chat) => chat.Messages.Count(m => m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice or MessageKind.File);
 
     public void CloseChat() => SelectedChat = null;
 

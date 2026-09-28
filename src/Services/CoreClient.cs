@@ -8,7 +8,9 @@ namespace WhatsAppNative.Services;
 public sealed record ChatDto(
     string Id, string Name, bool IsGroup, int Unread, bool Pinned, bool Archived, bool Muted,
     long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender,
-    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto? PinnedMessage);
+    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto? PinnedMessage, string? PushName, PhoneDto? Phone);
+
+public sealed record PhoneDto(string Region, string Code, string National);
 
 public sealed record PinnedDto(string Id, string Preview);
 
@@ -121,7 +123,14 @@ public sealed class CoreClient : IDisposable
     /// <summary>archive | unarchive | mute (untilMs, null = always) | unmute | markRead | markUnread | clear | delete | block | unblock.</summary>
     public void ChatAction(string chatId, string action, long? untilMs = null) => Send(new { cmd = "chatAction", chatId, action, untilMs });
 
-    public void SaveContact(string chatId, string firstName, string lastName) => Send(new { cmd = "saveContact", chatId, firstName, lastName });
+    public void SaveContact(string chatId, string firstName, string lastName, bool syncToPhone) =>
+        Send(new { cmd = "saveContact", chatId, firstName, lastName, syncToPhone });
+
+    public void ReportContact(string chatId) => Send(new { cmd = "reportContact", chatId });
+
+    /// <summary>Writes the whole chat as text to <paramref name="path"/> (times in this PC's zone).</summary>
+    public void ExportChat(string chatId, string path) =>
+        Send(new { cmd = "exportChat", chatId, path, utcOffsetMinutes = (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalMinutes });
 
     public void Forward(string chatId, string messageId, IReadOnlyList<string> to) => Send(new { cmd = "forward", chatId, messageId, to });
 

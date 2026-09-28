@@ -40,7 +40,7 @@ public static class Glyphs
     public static readonly string Heart = G(0xEB51);
     public static readonly string HeartFill = G(0xEB52);
     public static readonly string CloseCircle = G(0xEA39);
-    public static readonly string Block = G(0xE8F8);
+    public static readonly string Block = G(0xE733);
     public static readonly string Clear = G(0xE894);
     public static readonly string Delete = G(0xE74D);
     public static readonly string Forward = G(0xE72D);
@@ -48,4 +48,10 @@ public static class Glyphs
     public static readonly string Select = G(0xE762);
     public static readonly string Report = G(0xE8E0);
     public static readonly string CheckMark = G(0xE73E);
+    public static readonly string Phone2 = G(0xE717);
+    public static readonly string VideoCall = G(0xE714);
+    public static readonly string Media = G(0xE8B9);
+    public static readonly string Lock = G(0xE72E);
+    public static readonly string Export = G(0xE896);
+    public static readonly string Search = G(0xE721);
 }

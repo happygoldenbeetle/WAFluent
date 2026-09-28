@@ -31,7 +31,7 @@ public static class SampleData
         new Chat { Name = "Jason Ballmer", Status = "online", Preview = "Video", PreviewGlyph = Glyphs.Video, Time = "15:26", Unread = 3 }
             .With(Day("Today"), In("Check this out", "15:25"), In("You have to see the ending", "15:25"), In("🎥 Video", "15:26")),
 
-        new Chat { Name = "Alice Whitman", Status = "online", Preview = "Wow! Have great time. Enjoy.", Time = "15:12", LastDelivery = Delivery.Read }
+        new Chat { Name = "Alice Whitman", Status = "online", Preview = "Thanks! Could you send me the photos from Saturday", Time = "15:20" }
             .With(
                 Day("Yesterday"),
                 In("Did you get a chance to pull everything together?", "17:40"),
@@ -51,7 +51,8 @@ public static class SampleData
                 {
                     Id = NewId(), Text = "Wow! Have great time. Enjoy.", Time = "15:12", IsOutgoing = true, Delivery = Delivery.Read,
                     ReplyId = "sample-photo", ReplyName = "Alice Whitman", ReplyPreview = "So beautiful here!", ReplyGlyph = Glyphs.Photo,
-                }),
+                },
+                In("Thanks! Could you send me the photos from Saturday when you get a moment? I'd like to put a few of them in the album before Mum's birthday on Sunday.", "15:20")),
 
         new Chat { Name = "Baking Club", IsGroup = true, Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),

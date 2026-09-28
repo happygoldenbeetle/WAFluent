@@ -82,9 +82,26 @@ pub struct ChatDto {
     pub blocked: bool,
     /// The contact is in your address book (1:1 chats).
     pub saved: bool,
+    /// The name they gave themselves (shown as "~name" under their number or contact name).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push_name: Option<String>,
+    /// 1:1 chats: their number split for the New contact form.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phone: Option<PhoneDto>,
     /// The message pinned in this chat, if any: its id and a one-line preview.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned_message: Option<PinnedDto>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PhoneDto {
+    /// ISO region ("PK").
+    pub region: String,
+    /// Calling code with "+" ("+92").
+    pub code: String,
+    /// The rest, spaced ("302 9328645").
+    pub national: String,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -161,6 +178,10 @@ pub struct MediaDto {
     pub path: Option<String>,
 }
 
+fn yes() -> bool {
+    true
+}
+
 /// UI -> Core.
 #[derive(Deserialize, Debug)]
 #[serde(tag = "cmd", rename_all = "camelCase", rename_all_fields = "camelCase")]
@@ -181,7 +202,18 @@ pub enum Command {
     /// clear | delete | block | unblock. Synced with the phone.
     ChatAction { chat_id: String, action: String, until_ms: Option<i64> },
     /// Save a 1:1 contact to your phone's address book.
-    SaveContact { chat_id: String, first_name: String, last_name: String },
+    SaveContact {
+        chat_id: String,
+        first_name: String,
+        last_name: String,
+        /// Also add to the phone's address book (otherwise a WhatsApp-only contact).
+        #[serde(default = "yes")]
+        sync_to_phone: bool,
+    },
+    /// Report a contact to WhatsApp (Contact info → Report).
+    ReportContact { chat_id: String },
+    /// Write the chat as text ("28/09/2026, 21:15 - Name: text") to `path`.
+    ExportChat { chat_id: String, path: String, utc_offset_minutes: i32 },
     /// Send copies of a message to other chats.
     Forward { chat_id: String, message_id: String, to: Vec<String> },
     PinMessage { chat_id: String, message_id: String, pin: bool },

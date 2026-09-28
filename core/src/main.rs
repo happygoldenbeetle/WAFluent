@@ -254,10 +254,15 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::chat_action(&ctx, &client, chat_id, action, until_ms).await });
         }
-        Command::SaveContact { chat_id, first_name, last_name } => {
+        Command::SaveContact { chat_id, first_name, last_name, sync_to_phone } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { actions::save_contact(&ctx, &client, chat_id, first_name, last_name).await });
+            tokio::spawn(async move { actions::save_contact(&ctx, &client, chat_id, first_name, last_name, sync_to_phone).await });
         }
+        Command::ReportContact { chat_id } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::report_contact(&ctx, &client, chat_id).await });
+        }
+        Command::ExportChat { chat_id, path, utc_offset_minutes } => actions::export_chat(ctx, &chat_id, &path, utc_offset_minutes),
         Command::Forward { chat_id, message_id, to } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, to).await });

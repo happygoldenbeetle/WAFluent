@@ -68,8 +68,9 @@
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
                         <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
-                            <FontIcon Glyph="&#xE74F;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                      Visibility="{x:Bind IsMuted, Mode=OneWay}" />
+                            <!-- Muted: a filled bell with a slash, like the phone (Material "notifications_off"). -->
+                            <Path Width="13" Height="13" Stretch="Uniform" Fill="{ThemeResource TextFillColorSecondaryBrush}"
+                                  Visibility="{x:Bind IsMuted, Mode=OneWay}" Data="M20,18.69 L7.84,6.14 L5.27,3.49 L4,4.76 L6.8,7.56 L6.8,7.57 C6.28,8.56 6,9.73 6,10.99 V15.99 L4,17.99 V18.99 H17.73 L19.73,20.99 L21,19.72 Z M12,22 C13.11,22 14,21.11 14,20 H10 C10,21.11 10.89,22 12,22 Z M18,14.68 V11 C18,7.92 16.36,5.36 13.5,4.68 V4 C13.5,3.17 12.83,2.5 12,2.5 C11.17,2.5 10.5,3.17 10.5,4 V4.68 C9.5,4.92 8.62,5.4 7.92,6.07 Z" />
                             <!-- A tilted pushpin, head and needle, like the phone (Material "push_pin" outline, filled). -->
                             <Path Width="13" Height="13" Stretch="Uniform" RenderTransformOrigin="0.5,0.5"
                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsPinned, Mode=OneWay}"
@@ -123,8 +124,12 @@
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
+                                    <!-- Full line spacing between lines; the negative margins trim only the space above the
+                                         first line's capitals (5.3) and below the last baseline (3.5), so the 10 px padding
+                                         reads evenly around the words. (TextLineBounds="Tight" trims every line and makes
+                                         wrapped lines overlap.) -->
                                     <TextBlock Grid.Row="2" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                               TextLineBounds="Tight" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}">
+                                               Margin="0,-5.3,0,-3.5" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}">
                                         <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                     </TextBlock>
                                     <!-- Time on the same baseline as the last line of text. -->
@@ -191,7 +196,7 @@
                                     <!-- Caption: 10 px from the picture and the bubble edges (4 bubble + 6 here). -->
                                     <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
                                         <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                                   TextLineBounds="Tight">
+                                                   Margin="0,-5.3,0,-3.5">
                                             <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
                                         </TextBlock>
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
@@ -428,6 +433,7 @@
                     <!-- Width comes from ui.json (MainWindow.ChatListPane.cs). -->
                     <ColumnDefinition x:Name="ChatListColumn" Width="340" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
                 <!-- ───────────── Chat list pane ───────────── -->
@@ -565,12 +571,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <controls:Redact VeilRadius="18" VerticalAlignment="Center">
+                        <controls:Redact VeilRadius="18" VerticalAlignment="Center" Tapped="Header_Tapped">
                             <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
                                              Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36"
                                              IsGroup="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=False}" />
                         </controls:Redact>
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <!-- Click the photo or the name for Contact / Group info (MainWindow.ContactInfo.cs). -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Background="Transparent" Tapped="Header_Tapped">
                             <controls:Redact HorizontalAlignment="Left">
                                 <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             </controls:Redact>
@@ -760,6 +767,108 @@
                         <TextBlock Text="WAFluent" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
                         <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
                     </StackPanel>
+                </Grid>
+
+                <!-- ───────────── Contact / group info, and New contact (MainWindow.ContactInfo.cs) ───────────── -->
+                <Grid x:Name="InfoPanel" Grid.Column="2" Width="380" Visibility="Collapsed"
+                      Background="{ThemeResource ChatHeaderBackgroundBrush}"
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="58" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="12" Padding="10,0,0,0" VerticalAlignment="Center">
+                        <Button Style="{StaticResource IconButtonStyle}" AutomationProperties.Name="Close" Click="InfoClose_Click">
+                            <FontIcon Glyph="&#xE711;" FontSize="14" />
+                        </Button>
+                        <TextBlock x:Name="InfoTitle" Text="Contact info" FontSize="16" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Contact info -->
+                    <ScrollViewer x:Name="ContactInfoView" Grid.Row="1">
+                        <StackPanel Padding="16,8,16,24">
+                            <controls:Redact VeilRadius="80" HorizontalAlignment="Center">
+                                <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
+                                                 Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="160"
+                                                 IsGroup="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=False}" />
+                            </controls:Redact>
+                            <controls:Redact HorizontalAlignment="Center" Margin="0,16,0,0">
+                                <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontSize="24" TextAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </controls:Redact>
+                            <controls:Redact HorizontalAlignment="Center" Margin="0,4,0,0"
+                                             Visibility="{x:Bind helpers:Ui.NotEmpty(ViewModel.SelectedChat.PushNameLine), Mode=OneWay, FallbackValue=Collapsed}">
+                                <TextBlock Text="{x:Bind ViewModel.SelectedChat.PushNameLine, Mode=OneWay}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </controls:Redact>
+                            <StackPanel x:Name="InfoActions" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="0,18,0,8" />
+                            <StackPanel x:Name="InfoRows" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- New contact -->
+                    <Grid x:Name="NewContactView" Grid.Row="1" Visibility="Collapsed" Padding="16,8,16,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ScrollViewer>
+                            <Grid ColumnSpacing="16" RowSpacing="18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="24" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <FontIcon Glyph="&#xE77B;" FontSize="18" VerticalAlignment="Bottom" Margin="0,0,0,8"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBox x:Name="FirstNameBox" Grid.Column="1" Header="First name" TextChanged="ContactName_TextChanged" />
+                                <TextBox x:Name="LastNameBox" Grid.Row="1" Grid.Column="1" Header="Last name" />
+
+                                <FontIcon Grid.Row="2" Glyph="&#xE717;" FontSize="18" VerticalAlignment="Top" Margin="0,34,0,0"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <StackPanel Grid.Row="2" Grid.Column="1" Spacing="6">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="110" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- The chat's own number: its country is fixed. -->
+                                        <ComboBox x:Name="CountryBox" Header="Country" HorizontalAlignment="Stretch" IsEnabled="False" />
+                                        <Grid Grid.Column="1">
+                                            <TextBox x:Name="PhoneBox" Header="Phone" IsReadOnly="True" />
+                                            <FontIcon Glyph="&#xE73E;" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                      Margin="0,0,10,9" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                                        </Grid>
+                                    </Grid>
+                                    <TextBlock Text="This phone number is on WhatsApp." FontSize="13"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+
+                                <FontIcon Grid.Row="3" Glyph="&#xE895;" FontSize="18" VerticalAlignment="Top" Margin="0,4,0,0"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Grid Grid.Row="3" Grid.Column="1" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="Sync contact to phone" />
+                                        <TextBlock Text="This contact will be added to your phone's address book." FontSize="13" TextWrapping="Wrap"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="SyncToPhoneSwitch" Grid.Column="1" OnContent="" OffContent="" MinWidth="0"
+                                                  VerticalAlignment="Center" AutomationProperties.Name="Sync contact to phone" />
+                                </Grid>
+                            </Grid>
+                        </ScrollViewer>
+                        <Button x:Name="SaveContactButton" Grid.Row="1" Content="Save" Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Stretch" Height="40" IsEnabled="False" Click="SaveContact_Click" />
+                    </Grid>
                 </Grid>
 
                 <!-- Drag the edge to resize the chat list, past the minimum to close it; double-click toggles. -->

@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         SetupChatListPane();
         BuildQuickReactionSlots();
         SetupChatMenus();
+        SetupInfoPanel();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         ApplyDeveloperMode();
 

@@ -165,6 +165,20 @@ public sealed class Chat : Observable
     /// <summary>Favourites are kept on this PC (ui.json).</summary>
     public bool IsFavourite { get => _isFavourite; set => Set(ref _isFavourite, value); }
 
+    private string _pushName = "";
+    /// <summary>The name they gave themselves; Contact info shows it as "~name" under the number.</summary>
+    public string PushName
+    {
+        get => _pushName;
+        set { if (Set(ref _pushName, value)) Raise(nameof(PushNameLine)); }
+    }
+    public string PushNameLine => _pushName.Length > 0 && _pushName != Name ? "~" + _pushName : "";
+
+    /// <summary>1:1 chats: the number split for the New contact form ("PK", "+92", "302 9328645").</summary>
+    public string PhoneRegion { get; set; } = "";
+    public string PhoneCode { get; set; } = "";
+    public string PhoneNational { get; set; } = "";
+
     /// <summary>The message pinned in this chat (banner under the header).</summary>
     public string PinnedMessageId
     {

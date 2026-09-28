@@ -53,23 +53,12 @@ public sealed partial class MainWindow
         var person = !chat.IsGroup;
 
         if (person && !chat.IsSaved)
-            menu.Items.Add(Item("Add to contacts", Glyphs.AddContact, () => _ = AddToContactsAsync(chat)));
+            menu.Items.Add(Item("Add to contacts", Glyphs.AddContact, () => OpenNewContact(chat)));
         menu.Items.Add(chat.IsArchived
             ? Item("Unarchive chat", Glyphs.Archive, () => ViewModel.ChatAction(chat, "unarchive"))
             : Item("Archive chat", Glyphs.Archive, () => ViewModel.ChatAction(chat, "archive")));
 
-        if (chat.IsMuted)
-        {
-            menu.Items.Add(Item("Unmute notifications", Glyphs.Volume, () => ViewModel.ChatAction(chat, "unmute")));
-        }
-        else
-        {
-            var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = new FontIcon { Glyph = Glyphs.Mute } };
-            mute.Items.Add(Item("8 hours", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromHours(8))));
-            mute.Items.Add(Item("1 week", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromDays(7))));
-            mute.Items.Add(Item("Always", null, () => ViewModel.ChatAction(chat, "mute")));
-            menu.Items.Add(mute);
-        }
+        menu.Items.Add(MuteMenu(chat));
 
         if (chat.IsPinned)
             menu.Items.Add(Item("Unpin chat", Glyphs.Unpin, () => ViewModel.SetPinned(chat, false)));
@@ -95,9 +84,11 @@ public sealed partial class MainWindow
                 : Item("Block", Glyphs.Block, () => _ = ConfirmAsync($"Block {chat.Name}?",
                     "Blocked contacts can't call you or send you messages. They won't be told.", "Block",
                     () => ViewModel.ChatAction(chat, "block"))));
-        menu.Items.Add(Item("Clear chat", Glyphs.Clear, () => _ = ConfirmAsync("Clear this chat?",
+        var clear = Item("Clear chat", null, () => _ = ConfirmAsync("Clear this chat?",
             "All messages in this chat will be removed, here and on your phone.", "Clear chat",
-            () => ViewModel.ChatAction(chat, "clear"))));
+            () => ViewModel.ChatAction(chat, "clear")));
+        clear.Icon = Icons.MinusCircle(16);
+        menu.Items.Add(clear);
         menu.Items.Add(Item("Delete chat", Glyphs.Delete, () => _ = ConfirmAsync($"Delete chat with {chat.Name}?",
             "The chat and its messages will be removed, here and on your phone.", "Delete chat",
             () => ViewModel.ChatAction(chat, "delete"))));
@@ -108,27 +99,20 @@ public sealed partial class MainWindow
             menu.ShowAt(item);
     }
 
-    private async Task AddToContactsAsync(Chat chat)
+    /// <summary>Mute for 8 hours / 1 week / always, or unmute: filled bells like the phone.</summary>
+    private MenuFlyoutItemBase MuteMenu(Chat chat)
     {
-        var first = new TextBox { Header = "First name", Text = "" };
-        var last = new TextBox { Header = "Last name" };
-        var panel = new StackPanel { Spacing = 12, MinWidth = 320 };
-        panel.Children.Add(new TextBlock { Text = chat.Name, Opacity = 0.7 });
-        panel.Children.Add(first);
-        panel.Children.Add(last);
-        var dialog = new ContentDialog
+        if (chat.IsMuted)
         {
-            XamlRoot = Content.XamlRoot,
-            Title = "Add to contacts",
-            Content = panel,
-            PrimaryButtonText = "Save",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-        first.TextChanged += (_, _) => dialog.IsPrimaryButtonEnabled = first.Text.Trim().Length > 0;
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-            ViewModel.SaveContact(chat, first.Text.Trim(), last.Text.Trim());
+            var unmute = Item("Unmute notifications", null, () => ViewModel.ChatAction(chat, "unmute"));
+            unmute.Icon = Icons.Bell();
+            return unmute;
+        }
+        var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = Icons.BellOff() };
+        mute.Items.Add(Item("8 hours", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromHours(8))));
+        mute.Items.Add(Item("1 week", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromDays(7))));
+        mute.Items.Add(Item("Always", null, () => ViewModel.ChatAction(chat, "mute")));
+        return mute;
     }
 
     /// <summary>A yes/no question before something that can't be undone.</summary>

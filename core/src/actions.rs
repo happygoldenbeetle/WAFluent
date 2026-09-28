@@ -120,14 +120,14 @@ fn verb(action: &str) -> &'static str {
 }
 
 /// Saves the person to your phone's contacts (WhatsApp needs their phone number).
-pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, first: String, last: String) {
+pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, first: String, last: String, sync_to_phone: bool) {
     let full = format!("{} {}", first.trim(), last.trim()).trim().to_string();
     let Some(pn) = ctx.db().phone_jid(&chat_id).and_then(|j| j.parse::<Jid>().ok()) else {
         notice(ctx, false, "This contact's phone number isn't known yet.");
         return;
     };
     let first = (!first.trim().is_empty()).then(|| first.trim().to_string());
-    match client.chat_actions().save_contact(&pn, Some(full.clone()), first, true).await {
+    match client.chat_actions().save_contact(&pn, Some(full.clone()), first, sync_to_phone).await {
         Ok(()) => {
             {
                 let db = ctx.db();
@@ -263,6 +263,48 @@ pub async fn delete_message(ctx: &Ctx, client: &Arc<Client>, chat_id: String, me
         Err(e) => {
             warn!("delete for me in {chat_id} failed: {e}");
             notice(ctx, false, "Couldn't delete the message.");
+        }
+    }
+}
+
+/// Contact info → Report: the contact, with their newest message as evidence.
+pub async fn report_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
+    use whatsapp_rust::wacore::types::spam_report::{SpamFlow, SpamReportRequest};
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let (message_id, ts) = ctx.db().newest_incoming(&chat_id).unwrap_or_default();
+    let request = SpamReportRequest {
+        message_id,
+        message_timestamp: ts.max(0) as u64,
+        from_jid: Some(jid),
+        spam_flow: SpamFlow::ContactInfo,
+        ..Default::default()
+    };
+    match client.send_spam_report(request).await {
+        Ok(_) => notice(ctx, true, "Reported to WhatsApp"),
+        Err(e) => {
+            warn!("report contact {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't send the report.");
+        }
+    }
+}
+
+/// Writes the whole chat (everything stored on this PC) as WhatsApp's export text.
+pub fn export_chat(ctx: &Ctx, chat_id: &str, path: &str, utc_offset_minutes: i32) {
+    use whatsapp_rust::wacore::chrono::{DateTime, FixedOffset};
+    let zone = FixedOffset::east_opt(utc_offset_minutes * 60).unwrap_or_else(|| FixedOffset::east_opt(0).unwrap());
+    let lines = ctx.db().export_lines(chat_id);
+    let mut out = String::new();
+    for (ts, who, text) in &lines {
+        let when = DateTime::from_timestamp(*ts, 0)
+            .map(|t| t.with_timezone(&zone).format("%d/%m/%Y, %H:%M").to_string())
+            .unwrap_or_default();
+        out.push_str(&format!("{when} - {who}: {text}\n"));
+    }
+    match std::fs::write(path, out) {
+        Ok(()) => notice(ctx, true, format!("Exported {} messages", lines.len())),
+        Err(e) => {
+            warn!("export {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't write the export file.");
         }
     }
 }

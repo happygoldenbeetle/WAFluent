@@ -305,6 +305,10 @@ public sealed partial class MainViewModel : Observable
         chat.IsBlocked = dto.Blocked;
         chat.IsSaved = dto.Saved || dto.IsGroup;
         chat.IsFavourite = _favourites.Contains(dto.Id);
+        chat.PushName = dto.PushName ?? "";
+        chat.PhoneRegion = dto.Phone?.Region ?? "";
+        chat.PhoneCode = dto.Phone?.Code ?? "";
+        chat.PhoneNational = dto.Phone?.National ?? "";
         chat.PinnedMessageId = dto.PinnedMessage?.Id ?? "";
         chat.PinnedMessagePreview = dto.PinnedMessage?.Preview ?? "";
         return chat;

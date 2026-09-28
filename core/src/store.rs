@@ -4,7 +4,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::extract::{Media, Quote};
-use crate::protocol::{ChatDto, MediaDto, MessageDto, PinnedDto, ReplyDto, StarredDto};
+use crate::protocol::{ChatDto, MediaDto, MessageDto, PhoneDto, PinnedDto, ReplyDto, StarredDto};
 
 pub struct Store {
     db: Connection,
@@ -427,6 +427,77 @@ impl Store {
             .collect()
     }
 
+    /// The name someone gave themselves, if we've seen it.
+    pub fn push_name_of(&self, jid: &str) -> Option<String> {
+        self.db
+            .query_row(
+                "SELECT push_name FROM names WHERE push_name != '' AND (jid = ?1 OR jid IN (SELECT alt FROM aliases WHERE chat_id = ?1)) LIMIT 1",
+                [jid],
+                |r| r.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    /// Every message of a chat, oldest first, for export: (ts, from_me, sender name, text line).
+    pub fn export_lines(&self, chat_id: &str) -> Vec<(i64, String, String)> {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status FROM messages WHERE chat_id = ?1 ORDER BY ts, rowid",
+        ) else {
+            return Vec::new();
+        };
+        let rows: Vec<StoredMessage> = stmt
+            .query_map([chat_id], |r| {
+                Ok(StoredMessage {
+                    id: r.get(0)?,
+                    from_me: r.get(1)?,
+                    sender: r.get(2)?,
+                    push_name: r.get(3)?,
+                    ts: r.get(4)?,
+                    kind: r.get(5)?,
+                    text: r.get(6)?,
+                    file_name: r.get(7)?,
+                    status: r.get(8)?,
+                })
+            })
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|m| {
+                let who = if m.from_me {
+                    "You".to_string()
+                } else if m.sender.is_empty() {
+                    self.person_name(chat_id, "")
+                } else {
+                    self.person_name(&m.sender, &m.push_name)
+                };
+                let text = match m.kind.as_str() {
+                    "text" => m.text.clone(),
+                    "deleted" => "This message was deleted".into(),
+                    kind => {
+                        let label = preview(kind, "", &m.file_name);
+                        if m.text.is_empty() { format!("<{label}>") } else { format!("<{label}> {}", m.text) }
+                    }
+                };
+                (m.ts, who, text)
+            })
+            .collect()
+    }
+
+    /// The newest message they sent (reports quote it).
+    pub fn newest_incoming(&self, chat_id: &str) -> Option<(String, i64)> {
+        self.db
+            .query_row(
+                "SELECT id, ts FROM messages WHERE chat_id = ?1 AND from_me = 0 ORDER BY ts DESC LIMIT 1",
+                [chat_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     fn has_full_name(&self, jid: &str) -> bool {
         self.db
             .query_row(
@@ -573,6 +644,8 @@ impl Store {
                 let kind = kind.unwrap_or_default();
                 let from_me = from_me.unwrap_or(false);
                 let saved = !is_group && self.has_full_name(&id);
+                let push = if is_group { None } else { self.push_name_of(&id) };
+                let phone = if is_group { None } else { self.phone_number(&id).and_then(|n| phone_parts(&n)) };
                 let pinned_message = (!pinned_msg.is_empty()).then(|| PinnedDto {
                     preview: self.message(&id, &pinned_msg).map(|m| preview(&m.kind, &m.text, &m.file_name)).unwrap_or_default(),
                     id: pinned_msg.clone(),
@@ -599,6 +672,8 @@ impl Store {
                     avatar: avatar.filter(|p| !p.is_empty()),
                     blocked,
                     saved,
+                    push_name: push,
+                    phone,
                     pinned_message,
                 }
             })
@@ -923,6 +998,16 @@ pub fn bare_jid(jid: &str) -> String {
         Some((user, server)) => format!("{}@{server}", user.split(':').next().unwrap_or(user)),
         None => jid.to_string(),
     }
+}
+
+/// "923029328645" -> PK / +92 / "302 9328645".
+fn phone_parts(digits: &str) -> Option<PhoneDto> {
+    let number = phonenumber::parse(None, format!("+{digits}")).ok()?;
+    let code = format!("+{}", number.country().code());
+    let region = number.country().id().map(|id| format!("{id:?}")).unwrap_or_default();
+    let full = format_phone(digits);
+    let national = full.strip_prefix(&code).map(|s| s.trim().to_string()).unwrap_or(full);
+    Some(PhoneDto { region, code, national })
 }
 
 /// "923331234567" -> "+92 333 1234567" (international format for the number's country).
