@@ -22,7 +22,7 @@
 
                     <controls:Redact VeilRadius="24">
                         <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
-                                         Size="48" ShowRing="{x:Bind HasStatus}" />
+                                         Size="48" ShowRing="{x:Bind HasStatus}" IsGroup="{x:Bind IsGroup}" />
                     </controls:Redact>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
@@ -475,7 +475,8 @@
                         </Grid.ColumnDefinitions>
                         <controls:Redact VeilRadius="18" VerticalAlignment="Center">
                             <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
-                                             Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36" />
+                                             Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36"
+                                             IsGroup="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=False}" />
                         </controls:Redact>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <controls:Redact HorizontalAlignment="Left">

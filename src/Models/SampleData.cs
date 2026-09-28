@@ -53,13 +53,13 @@ public static class SampleData
                     ReplyId = "sample-photo", ReplyName = "Alice Whitman", ReplyPreview = "So beautiful here!", ReplyGlyph = Glyphs.Photo,
                 }),
 
-        new Chat { Name = "Baking Club", Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
+        new Chat { Name = "Baking Club", IsGroup = true, Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),
 
         new Chat { Name = "Stasa Benko", Status = "last seen today at 13:56", Preview = "Aww no problem.", Time = "13:56", Unread = 2, HasStatus = true }
             .With(Day("Today"), Out("Sorry, can't make it tonight 😞", "13:50"), In("Aww", "13:55"), In("Aww no problem.", "13:56")),
 
-        new Chat { Name = "Family Foodies", Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = Glyphs.Photo, Time = "11:21", LastDelivery = Delivery.Read }
+        new Chat { Name = "Family Foodies", IsGroup = true, Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = Glyphs.Photo, Time = "11:21", LastDelivery = Delivery.Read }
             .With(Day("Today"), In("Who made the lasagna??", "11:02"), Out("📷 Dinner last night", "11:21")),
 
         new Chat { Name = "Mark Rogers", Status = "typing…", IsTyping = true, Preview = "typing…", Time = "10:56" }
