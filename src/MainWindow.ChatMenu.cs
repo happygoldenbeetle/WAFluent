@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
 using WhatsAppNative.Helpers;
 using WhatsAppNative.Models;
@@ -79,19 +80,19 @@ public sealed partial class MainWindow
 
         menu.Items.Add(new MenuFlyoutSeparator());
         if (person)
-            menu.Items.Add(chat.IsBlocked
+            menu.Items.Add(Danger(chat.IsBlocked
                 ? Item("Unblock", Glyphs.Block, () => ViewModel.ChatAction(chat, "unblock"))
                 : Item("Block", Glyphs.Block, () => _ = ConfirmAsync($"Block {chat.Name}?",
                     "Blocked contacts can't call you or send you messages. They won't be told.", "Block",
-                    () => ViewModel.ChatAction(chat, "block"))));
+                    () => ViewModel.ChatAction(chat, "block")))));
         var clear = Item("Clear chat", null, () => _ = ConfirmAsync("Clear this chat?",
             "All messages in this chat will be removed, here and on your phone.", "Clear chat",
             () => ViewModel.ChatAction(chat, "clear")));
         clear.Icon = Icons.MinusCircle(16);
-        menu.Items.Add(clear);
-        menu.Items.Add(Item("Delete chat", Glyphs.Delete, () => _ = ConfirmAsync($"Delete chat with {chat.Name}?",
+        menu.Items.Add(Danger(clear));
+        menu.Items.Add(Danger(Item("Delete chat", Glyphs.Delete, () => _ = ConfirmAsync($"Delete chat with {chat.Name}?",
             "The chat and its messages will be removed, here and on your phone.", "Delete chat",
-            () => ViewModel.ChatAction(chat, "delete"))));
+            () => ViewModel.ChatAction(chat, "delete")))));
 
         if (e.TryGetPosition(item, out var point))
             menu.ShowAt(item, new FlyoutShowOptions { Position = point });
@@ -99,23 +100,21 @@ public sealed partial class MainWindow
             menu.ShowAt(item);
     }
 
-    /// <summary>Mute for 8 hours / 1 week / always, or unmute: filled bells like the phone.</summary>
+    /// <summary>Mute for 8 hours / 1 week / always, or unmute (outline bells, like the other menu icons).</summary>
     private MenuFlyoutItemBase MuteMenu(Chat chat)
     {
         if (chat.IsMuted)
         {
-            var unmute = Item("Unmute notifications", null, () => ViewModel.ChatAction(chat, "unmute"));
-            unmute.Icon = Icons.Bell();
-            return unmute;
+            return Item("Unmute notifications", Glyphs.Ringer, () => ViewModel.ChatAction(chat, "unmute"));
         }
-        var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = Icons.BellOff() };
+        var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = new FontIcon { Glyph = Glyphs.RingerSilent } };
         mute.Items.Add(Item("8 hours", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromHours(8))));
         mute.Items.Add(Item("1 week", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromDays(7))));
         mute.Items.Add(Item("Always", null, () => ViewModel.ChatAction(chat, "mute")));
         return mute;
     }
 
-    /// <summary>A yes/no question before something that can't be undone.</summary>
+    /// <summary>A yes/no question before something that can't be undone: the action in red, Cancel grey.</summary>
     private async Task ConfirmAsync(string title, string text, string action, Action confirmed)
     {
         var dialog = new ContentDialog
@@ -125,9 +124,47 @@ public sealed partial class MainWindow
             Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = action,
             CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
+            DefaultButton = ContentDialogButton.None,
         };
+        DangerButtons(dialog);
         if (await dialog.ShowAsync() == ContentDialogResult.Primary) confirmed();
+    }
+
+    private static readonly Windows.UI.Color Red = Windows.UI.Color.FromArgb(255, 0xC4, 0x2B, 0x1C);
+
+    /// <summary>
+    /// The dialog's primary (and secondary) buttons red with white text; Cancel keeps the plain
+    /// grey style. The accent button style reads these resources, so only those buttons change.
+    /// </summary>
+    internal static void DangerButtons(ContentDialog dialog, bool secondaryToo = false)
+    {
+        var accent = (Style)Application.Current.Resources["AccentButtonStyle"];
+        dialog.PrimaryButtonStyle = accent;
+        if (secondaryToo) dialog.SecondaryButtonStyle = accent;
+        SolidColorBrush Brush(byte r, byte g, byte b) => new(Windows.UI.Color.FromArgb(255, r, g, b));
+        var white = Brush(255, 255, 255);
+        dialog.Resources["AccentButtonBackground"] = Brush(Red.R, Red.G, Red.B);
+        dialog.Resources["AccentButtonBackgroundPointerOver"] = Brush(0xD1, 0x3B, 0x2C);
+        dialog.Resources["AccentButtonBackgroundPressed"] = Brush(0xA8, 0x25, 0x18);
+        dialog.Resources["AccentButtonForeground"] = white;
+        dialog.Resources["AccentButtonForegroundPointerOver"] = white;
+        dialog.Resources["AccentButtonForegroundPressed"] = Brush(0xF2, 0xD0, 0xCC);
+        dialog.Resources["AccentButtonBorderBrush"] = Brush(Red.R, Red.G, Red.B);
+        dialog.Resources["AccentButtonBorderBrushPointerOver"] = Brush(0xD1, 0x3B, 0x2C);
+        dialog.Resources["AccentButtonBorderBrushPressed"] = Brush(0xA8, 0x25, 0x18);
+    }
+
+    /// <summary>A red menu item (Block, Clear chat, Delete chat), hover and press included.</summary>
+    private static MenuFlyoutItem Danger(MenuFlyoutItem item)
+    {
+        var red = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+        item.Foreground = red;
+        item.Resources["MenuFlyoutItemForeground"] = red;
+        item.Resources["MenuFlyoutItemForegroundPointerOver"] = red;
+        item.Resources["MenuFlyoutItemForegroundPressed"] = red;
+        item.Resources["MenuFlyoutItemKeyboardAcceleratorTextForeground"] = red;
+        if (item.Icon is { } icon) icon.Foreground = red;
+        return item;
     }
 
     // ───────────── Filter ─────────────

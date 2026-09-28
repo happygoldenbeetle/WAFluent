@@ -133,7 +133,7 @@ public sealed partial class MainWindow
         InfoRows.Children.Add(Row(Glyphs.Media, "Media, links and docs", trailing: ViewModel.MediaCount(chat).ToString()));
         InfoRows.Children.Add(Divider());
         InfoRows.Children.Add(Row(Glyphs.Star, "Starred messages", action: () => Nav.SelectedItem = Nav.FooterMenuItems[0]));
-        InfoRows.Children.Add(Row(null, "Notification settings", icon: chat.IsMuted ? Icons.BellOff(20) : Icons.Bell(20),
+        InfoRows.Children.Add(Row(chat.IsMuted ? Glyphs.RingerSilent : Glyphs.Ringer, "Notification settings",
                                   detail: chat.IsMuted ? "Muted" : null, flyout: NotificationMenu(chat)));
         InfoRows.Children.Add(Row(Glyphs.Lock, "Encryption", detail: "Messages are end-to-end encrypted."));
         InfoRows.Children.Add(Divider());

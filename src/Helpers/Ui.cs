@@ -23,7 +23,7 @@ public static class Ui
 
     /// <summary>Select mode: picked rows get a faint green wash.</summary>
     public static Brush SelectionTint(bool selected) =>
-        new SolidColorBrush(selected ? Windows.UI.Color.FromArgb(0x33, 0x00, 0xA8, 0x84) : Microsoft.UI.Colors.Transparent);
+        new SolidColorBrush(selected ? Windows.UI.Color.FromArgb(0x33, AppColors.Accent.R, AppColors.Accent.G, AppColors.Accent.B) : Microsoft.UI.Colors.Transparent);
 
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;

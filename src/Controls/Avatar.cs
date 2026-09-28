@@ -25,9 +25,9 @@ public sealed partial class Avatar : UserControl
         Color.FromArgb(255, 0x98, 0x6F, 0x0B), Color.FromArgb(255, 0x00, 0x7C, 0x9A),
     ];
 
-    private static readonly SolidColorBrush RingBrush = new(Color.FromArgb(255, 0x1D, 0xAA, 0x61));
 
-    private readonly Ellipse _ring = new() { Stroke = RingBrush, StrokeThickness = 2 };
+
+    private readonly Ellipse _ring = new() { Stroke = Helpers.AppColors.StatusRing, StrokeThickness = 2 };
     private readonly Ellipse _circle = new();
     private readonly TextBlock _initials = new()
     {

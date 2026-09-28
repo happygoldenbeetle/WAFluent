@@ -171,6 +171,8 @@ public sealed partial class MainWindow
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };
+        dialog.DefaultButton = ContentDialogButton.None;
+        DangerButtons(dialog, secondaryToo: true);
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.None) return;
         var forEveryone = mine && result == ContentDialogResult.Primary;

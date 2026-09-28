@@ -67,16 +67,18 @@
                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                        Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
                         </Grid>
-                        <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="5">
+                        <!-- Bell and pin measured to the same ink height and centre line (13 px bell, 14 px pin
+                             tilted 45° and dropped 1 px), 8 px apart. -->
+                        <StackPanel Height="16" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
                             <!-- Muted: a filled bell with a slash, like the phone (Material "notifications_off"). -->
                             <Path Width="13" Height="13" Stretch="Uniform" Fill="{ThemeResource TextFillColorSecondaryBrush}"
                                   Visibility="{x:Bind IsMuted, Mode=OneWay}" Data="M20,18.69 L7.84,6.14 L5.27,3.49 L4,4.76 L6.8,7.56 L6.8,7.57 C6.28,8.56 6,9.73 6,10.99 V15.99 L4,17.99 V18.99 H17.73 L19.73,20.99 L21,19.72 Z M12,22 C13.11,22 14,21.11 14,20 H10 C10,21.11 10.89,22 12,22 Z M18,14.68 V11 C18,7.92 16.36,5.36 13.5,4.68 V4 C13.5,3.17 12.83,2.5 12,2.5 C11.17,2.5 10.5,3.17 10.5,4 V4.68 C9.5,4.92 8.62,5.4 7.92,6.07 Z" />
                             <!-- A tilted pushpin, head and needle, like the phone (Material "push_pin" outline, filled). -->
-                            <Path Width="13" Height="13" Stretch="Uniform" RenderTransformOrigin="0.5,0.5"
+                            <Path Width="14" Height="14" Stretch="Uniform" RenderTransformOrigin="0.5,0.5"
                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsPinned, Mode=OneWay}"
                                   Data="M16,9 V4 H17 C17.55,4 18,3.55 18,3 C18,2.45 17.55,2 17,2 H7 C6.45,2 6,2.45 6,3 C6,3.55 6.45,4 7,4 H8 V9 C8,10.66 6.66,12 5,12 V14 H10.97 V21 L11.97,22 L12.97,21 V14 H19 V12 C17.34,12 16,10.66 16,9 Z">
                                 <Path.RenderTransform>
-                                    <RotateTransform Angle="45" />
+                                    <CompositeTransform Rotation="45" TranslateY="1" />
                                 </Path.RenderTransform>
                             </Path>
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
@@ -104,8 +106,8 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <!-- Tight line bounds: the text box runs from cap height to baseline, so equal
-                                 padding means the words sit optically centred (descenders use the bottom pad). -->
+                            <!-- 10 px all round; the text's margins below trim the space above the first line's
+                                 capitals and under the last baseline, so the words sit optically centred. -->
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -538,6 +540,12 @@
                                 <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
                             </StackPanel>
                             <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On"
+                                              Toggled="SystemAccent_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Replaces WhatsApp green (buttons, badges, your bubbles) with the colour from Windows Settings › Personalization › Colors." />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="DeveloperModeSwitch" Header="Developer mode" OffContent="Off" OnContent="On"
                                               Toggled="DeveloperMode_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -571,13 +579,16 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <controls:Redact VeilRadius="18" VerticalAlignment="Center" Tapped="Header_Tapped">
-                            <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
-                                             Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36"
-                                             IsGroup="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=False}" />
-                        </controls:Redact>
+                        <controls:ClickArea VerticalAlignment="Center" Tapped="Header_Tapped">
+                            <controls:Redact VeilRadius="18">
+                                <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
+                                                 Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36"
+                                                 IsGroup="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=False}" />
+                            </controls:Redact>
+                        </controls:ClickArea>
                         <!-- Click the photo or the name for Contact / Group info (MainWindow.ContactInfo.cs). -->
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Background="Transparent" Tapped="Header_Tapped">
+                        <controls:ClickArea Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Tapped="Header_Tapped">
+                        <StackPanel>
                             <controls:Redact HorizontalAlignment="Left">
                                 <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                             </controls:Redact>
@@ -585,6 +596,7 @@
                                        Visibility="{x:Bind helpers:Ui.NotEmpty(ViewModel.SelectedChat.Status), Mode=OneWay}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
+                        </controls:ClickArea>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call"
                                     Click="VideoCall_Click">
@@ -924,7 +936,7 @@
                                 <Image Source="{x:Bind ViewModel.QrImage, Mode=OneWay}" Stretch="Uniform"
                                        Visibility="{x:Bind ViewModel.ShowQr, Mode=OneWay}"
                                        AutomationProperties.Name="Pairing QR code" />
-                                <ProgressRing Width="44" Height="44" Foreground="#00A884"
+                                <ProgressRing Width="44" Height="44" Foreground="{ThemeResource AccentFillColorDefaultBrush}"
                                               IsActive="{x:Bind ViewModel.ShowLinkProgress, Mode=OneWay}"
                                               Visibility="{x:Bind ViewModel.ShowLinkProgress, Mode=OneWay}" />
                             </Grid>

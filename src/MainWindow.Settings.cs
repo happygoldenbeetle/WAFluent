@@ -47,6 +47,22 @@ public sealed partial class MainWindow
         }
     }
 
+    private void SystemAccent_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.UseSystemAccent == SystemAccentSwitch.IsOn) return;
+        _ui.UseSystemAccent = SystemAccentSwitch.IsOn;
+        _ui.Save();
+        Helpers.AppColors.Apply(_ui.UseSystemAccent);
+    }
+
+    /// <summary>Brushes that took the accent when they were created pick up the new one on a theme refresh.</summary>
+    private void RefreshTheme()
+    {
+        var requested = Root.RequestedTheme;
+        Root.RequestedTheme = Root.ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+        Root.RequestedTheme = requested;
+    }
+
     private void DeveloperMode_Toggled(object sender, RoutedEventArgs e)
     {
         if (_ui.DeveloperMode == DeveloperModeSwitch.IsOn) return;

@@ -25,7 +25,7 @@ public static class SampleData
 
     public static List<Chat> Create() =>
     [
-        new Chat { Name = "Maya Kasuma", Status = "last seen today at 14:54", Preview = "Yes! OK", Time = "14:54", IsPinned = true }
+        new Chat { Name = "Maya Kasuma", Status = "last seen today at 14:54", Preview = "Yes! OK", Time = "14:54", IsPinned = true, IsMuted = true }
             .With(Day("Today"), Out("Coffee after the review?", "14:50"), In("Yes! OK", "14:54")),
 
         new Chat { Name = "Jason Ballmer", Status = "online", Preview = "Video", PreviewGlyph = Glyphs.Video, Time = "15:26", Unread = 3 }

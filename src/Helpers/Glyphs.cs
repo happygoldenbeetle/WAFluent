@@ -54,4 +54,6 @@ public static class Glyphs
     public static readonly string Lock = G(0xE72E);
     public static readonly string Export = G(0xE896);
     public static readonly string Search = G(0xE721);
+    public static readonly string Ringer = G(0xEA8F);        // outline bell
+    public static readonly string RingerSilent = G(0xE7ED);  // outline bell with a slash
 }

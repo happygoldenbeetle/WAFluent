@@ -36,6 +36,8 @@ public sealed partial class MainWindow : Window
         SetupChatMenus();
         SetupInfoPanel();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
+        SystemAccentSwitch.IsOn = _ui.UseSystemAccent;
+        Helpers.AppColors.Changed += RefreshTheme;
         ApplyDeveloperMode();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
@@ -78,8 +80,9 @@ public sealed partial class MainWindow : Window
             Content = "WAFluent will be unlinked from your phone and the chats saved on this PC will be removed.",
             PrimaryButtonText = "Log out",
             CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
+            DefaultButton = ContentDialogButton.None,
         };
+        DangerButtons(dialog);
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         ViewModel.Logout();
         Nav.SelectedItem = Nav.MenuItems[0];

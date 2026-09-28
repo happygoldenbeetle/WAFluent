@@ -27,6 +27,8 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        Helpers.AppColors.Apply(Services.UiSettings.Load().UseSystemAccent);
+        Helpers.AppColors.FollowWindows(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         _window = new MainWindow();
         _window.Activate();
     }
