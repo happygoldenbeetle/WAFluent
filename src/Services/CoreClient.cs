@@ -8,7 +8,7 @@ namespace WhatsAppNative.Services;
 public sealed record ChatDto(
     string Id, string Name, bool IsGroup, int Unread, bool Pinned, bool Archived, bool Muted,
     long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender,
-    string? Avatar);
+    string? Avatar, long PinnedAt);
 
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
@@ -105,6 +105,9 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>React to a message; "" removes your reaction. Answered by ReactionsReceived.</summary>
     public void React(string chatId, string messageId, string emoji) => Send(new { cmd = "react", chatId, messageId, emoji });
+
+    /// <summary>Pin or unpin a chat on the phone too; the core answers with the chat's stored state.</summary>
+    public void SetPinned(string chatId, bool pinned) => Send(new { cmd = "setPinned", chatId, pinned });
 
     public void Logout() => Send(new { cmd = "logout" });
 

@@ -30,7 +30,8 @@ pub struct ChatMeta<'a> {
     pub name: &'a str,
     pub is_group: bool,
     pub unread: u32,
-    pub pinned: bool,
+    /// Pin time (Unix seconds), 0 when not pinned.
+    pub pinned: i64,
     pub archived: bool,
     pub mute_end: i64,
 }
@@ -105,6 +106,11 @@ CREATE TABLE IF NOT EXISTS reactions(
     ts         INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(chat_id, message_id, reactor)
 );
+-- Phone numbers behind LIDs, for showing +92 333 1234567 (display only).
+CREATE TABLE IF NOT EXISTS numbers(
+    lid    TEXT PRIMARY KEY,
+    number TEXT NOT NULL
+);
 -- Replies: the message each one quotes, as the quote itself described it.
 CREATE TABLE IF NOT EXISTS quotes(
     chat_id    TEXT NOT NULL,
@@ -174,9 +180,9 @@ impl Store {
              ON CONFLICT(id) DO UPDATE SET
                 name     = CASE WHEN excluded.name != '' THEN excluded.name ELSE chats.name END,
                 unread   = excluded.unread,
-                pinned   = excluded.pinned,
-                archived = excluded.archived,
-                mute_end = excluded.mute_end",
+                pinned   = CASE WHEN excluded.pinned > 0 THEN excluded.pinned ELSE chats.pinned END,
+                archived = MAX(chats.archived, excluded.archived),
+                mute_end = CASE WHEN excluded.mute_end != 0 THEN excluded.mute_end ELSE chats.mute_end END",
             params![meta.id, meta.name, meta.is_group, meta.unread, meta.pinned, meta.archived, meta.mute_end],
         );
     }
@@ -269,6 +275,58 @@ impl Store {
             .collect()
     }
 
+    /// App-state (phone) chat settings. `pinned_at` 0 = unpinned.
+    pub fn set_pinned(&self, chat_id: &str, pinned_at: i64) {
+        let _ = self.db.execute("UPDATE chats SET pinned = ?2 WHERE id = ?1", params![chat_id, pinned_at]);
+    }
+
+    pub fn set_archived(&self, chat_id: &str, archived: bool) {
+        let _ = self.db.execute("UPDATE chats SET archived = ?2 WHERE id = ?1", params![chat_id, archived]);
+    }
+
+    pub fn set_mute_end(&self, chat_id: &str, mute_end: i64) {
+        let _ = self.db.execute("UPDATE chats SET mute_end = ?2 WHERE id = ?1", params![chat_id, mute_end]);
+    }
+
+    /// 1:1 chats kept under a LID with no phone-number alias yet.
+    pub fn lid_chats_without_number(&self) -> Vec<String> {
+        let Ok(mut stmt) = self.db.prepare(
+            "SELECT id FROM chats WHERE id LIKE '%@lid'
+               AND NOT EXISTS (SELECT 1 FROM aliases WHERE chat_id = chats.id AND alt LIKE '%@s.whatsapp.net')
+               AND NOT EXISTS (SELECT 1 FROM aliases WHERE alt = chats.id AND chat_id LIKE '%@s.whatsapp.net')
+               AND NOT EXISTS (SELECT 1 FROM numbers WHERE lid = chats.id)",
+        ) else {
+            return Vec::new();
+        };
+        stmt.query_map([], |r| r.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
+    }
+
+    pub fn set_number(&self, lid: &str, number: &str) {
+        let _ = self.db.execute(
+            "INSERT INTO numbers(lid, number) VALUES(?1, ?2) ON CONFLICT(lid) DO UPDATE SET number = excluded.number",
+            params![lid, number],
+        );
+    }
+
+    pub fn clear_pins(&self) {
+        let _ = self.db.execute("UPDATE chats SET pinned = 0", []);
+    }
+
+    pub fn pinned_count(&self) -> u32 {
+        self.db.query_row("SELECT COUNT(*) FROM chats WHERE pinned > 0", [], |r| r.get(0)).unwrap_or(0)
+    }
+
+    /// Small key/value flags (one-time migrations).
+    pub fn flag(&self, key: &str) -> bool {
+        let _ = self.db.execute("CREATE TABLE IF NOT EXISTS flags(key TEXT PRIMARY KEY)", []);
+        self.db.query_row("SELECT 1 FROM flags WHERE key = ?1", [key], |_| Ok(())).is_ok()
+    }
+
+    pub fn set_flag(&self, key: &str) {
+        let _ = self.db.execute("CREATE TABLE IF NOT EXISTS flags(key TEXT PRIMARY KEY)", []);
+        let _ = self.db.execute("INSERT OR IGNORE INTO flags(key) VALUES(?1)", [key]);
+    }
+
     pub fn increment_unread(&self, chat_id: &str) {
         let _ = self.db.execute("UPDATE chats SET unread = unread + 1 WHERE id = ?1", [chat_id]);
     }
@@ -302,7 +360,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers;",
         );
     }
 
@@ -359,7 +417,7 @@ impl Store {
                 r.get::<_, String>(1)?,
                 r.get::<_, bool>(2)?,
                 r.get::<_, u32>(3)?,
-                r.get::<_, bool>(4)?,
+                r.get::<_, i64>(4)?,
                 r.get::<_, bool>(5)?,
                 r.get::<_, i64>(6)?,
                 r.get::<_, i64>(7)?,
@@ -379,7 +437,7 @@ impl Store {
                 let kind = kind.unwrap_or_default();
                 let from_me = from_me.unwrap_or(false);
                 let last_sender = match (&sender, is_group && !from_me) {
-                    (Some(s), true) => Some(first_name(&self.person_name(s, push_name.as_deref().unwrap_or("")))),
+                    (Some(s), true) => Some(short_name(&self.person_name(s, push_name.as_deref().unwrap_or("")))),
                     _ => None,
                 };
                 ChatDto {
@@ -392,7 +450,8 @@ impl Store {
                     id,
                     is_group,
                     unread,
-                    pinned,
+                    pinned: pinned > 0,
+                    pinned_at: pinned,
                     archived,
                     last_ts,
                     last_sender,
@@ -642,7 +701,8 @@ impl Store {
             .flatten()
     }
 
-    /// Best available name: address book, then their push name, then the number.
+    /// Best available name: your address book, then the phone number ("+92 333 1234567"),
+    /// then the name they gave themselves (only when WhatsApp hides the number).
     pub fn person_name(&self, jid: &str, fallback_push: &str) -> String {
         let found: Option<(String, String)> = self
             .db
@@ -656,12 +716,43 @@ impl Store {
             .optional()
             .ok()
             .flatten();
+        if let Some((full, _)) = found.as_ref().filter(|(full, _)| !full.is_empty()) {
+            return full.clone();
+        }
+        if let Some(number) = self.phone_number(jid) {
+            return format_phone(&number);
+        }
         match found {
-            Some((full, _)) if !full.is_empty() => full,
             Some((_, push)) if !push.is_empty() => push,
             _ if !fallback_push.is_empty() => fallback_push.to_string(),
             _ => pretty_jid(jid),
         }
+    }
+
+    /// The phone number behind a JID: its own user part, or for a LID the phone-number JID it maps to.
+    fn phone_number(&self, jid: &str) -> Option<String> {
+        let pn = if jid.ends_with("@s.whatsapp.net") {
+            Some(jid.to_string())
+        } else if jid.ends_with("@lid") {
+            self.db
+                .query_row(
+                    "SELECT alt FROM aliases WHERE chat_id = ?1 AND alt LIKE '%@s.whatsapp.net'
+                     UNION ALL
+                     SELECT chat_id FROM aliases WHERE alt = ?1 AND chat_id LIKE '%@s.whatsapp.net'
+                     UNION ALL
+                     SELECT number || '@s.whatsapp.net' FROM numbers WHERE lid = ?1
+                     LIMIT 1",
+                    [jid],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()
+                .ok()
+                .flatten()
+        } else {
+            None
+        }?;
+        let user = pn.split('@').next()?.split(':').next()?;
+        user.chars().all(|c| c.is_ascii_digit()).then(|| user.to_string())
     }
 }
 
@@ -680,7 +771,20 @@ pub fn bare_jid(jid: &str) -> String {
     }
 }
 
-fn first_name(name: &str) -> String {
+/// "923331234567" -> "+92 333 1234567" (international format for the number's country).
+pub fn format_phone(digits: &str) -> String {
+    let plus = format!("+{digits}");
+    match phonenumber::parse(None, &plus) {
+        Ok(number) => number.format().mode(phonenumber::Mode::International).to_string(),
+        Err(_) => plus,
+    }
+}
+
+/// First name for "Maya: hello" previews; phone numbers stay whole.
+fn short_name(name: &str) -> String {
+    if name.starts_with('+') {
+        return name.to_string();
+    }
     name.split_whitespace().next().unwrap_or(name).to_string()
 }
 

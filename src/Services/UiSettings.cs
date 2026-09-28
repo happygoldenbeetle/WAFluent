@@ -17,6 +17,15 @@ public sealed class UiSettings
     /// <summary>The chat list was dragged shut (or double-clicked closed).</summary>
     public bool ChatListCollapsed { get; set; }
 
+    /// <summary>The five reactions in the message menu; the first is also the double-click reaction.</summary>
+    public string[] QuickReactions
+    {
+        get => _quick;
+        set => _quick = value is { Length: 5 } && value.All(e => !string.IsNullOrWhiteSpace(e)) ? value : _quick;
+    }
+
+    private string[] _quick = ["❤️", "👍", "😂", "😮", "😢"];
+
     public static UiSettings Load()
     {
         try

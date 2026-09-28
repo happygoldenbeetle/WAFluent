@@ -249,6 +249,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id).await });
         }
+        Command::SetPinned { chat_id, pinned } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { set_pinned(&ctx, &client, chat_id, pinned).await });
+        }
         Command::React { chat_id, message_id, emoji } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { react(&ctx, &client, chat_id, message_id, emoji).await });
@@ -341,6 +345,106 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
     }
 }
 
+/// Applies one app-state change to a chat and refreshes the list.
+async fn chat_setting(ctx: &Ctx, client: &Arc<Client>, jid: &Jid, apply: impl FnOnce(&Store, &str)) {
+    let id = chat_for(ctx, client, jid).await;
+    let chat = {
+        let db = ctx.db();
+        apply(&db, &id);
+        db.chat(&id)
+    };
+    if let Some(chat) = chat {
+        ctx.send(Out::Chat { chat });
+    }
+    ctx.chats_dirty.notify_one();
+}
+
+/// The stored chat for a JID. The phone may name a chat by phone number while we keep
+/// it under its LID (or the reverse): try the other form from the LID<->number map.
+async fn chat_for(ctx: &Ctx, client: &Arc<Client>, jid: &Jid) -> String {
+    let raw = jid.to_non_ad_string();
+    let id = ctx.db().canonical(&raw);
+    if ctx.db().chat(&id).is_some() {
+        return id;
+    }
+    if let Ok(Some(entry)) = client.get_lid_pn_entry(jid).await {
+        let other = if raw.ends_with("@lid") {
+            format!("{}@s.whatsapp.net", entry.phone_number)
+        } else {
+            format!("{}@lid", entry.lid)
+        };
+        let db = ctx.db();
+        let other = db.canonical(&other);
+        if db.chat(&other).is_some() {
+            db.add_alias(&raw, &other);
+            return other;
+        }
+    }
+    id
+}
+
+/// LID-only chats show a phone number once we know it: copy the connection's
+/// LID<->number map (display only; it doesn't merge chats).
+async fn learn_phone_numbers(ctx: &Ctx, client: &Arc<Client>) {
+    let lids = ctx.db().lid_chats_without_number();
+    let mut learned = 0;
+    for lid in lids {
+        let Ok(jid) = lid.parse::<Jid>() else { continue };
+        if let Ok(Some(entry)) = client.get_lid_pn_entry(&jid).await {
+            ctx.db().set_number(&lid, &entry.phone_number);
+            learned += 1;
+        }
+    }
+    if learned > 0 {
+        info!("phone numbers learned for {learned} chats");
+        ctx.chats_dirty.notify_one();
+    }
+}
+
+/// Pins (regular_low) and mutes (regular_high) were ignored before; pull the full
+/// state from the phone once so the list matches it. Later changes arrive as events.
+/// The stored collection versions are reset first: regular_low was stuck on a patch
+/// the server keeps resending ("expected 15, got 14"), so no pin change got through.
+fn resync_chat_settings_once(ctx: &Ctx, client: &Arc<Client>) {
+    const FLAG: &str = "chat_settings_synced_v3";
+    let (ctx, client) = (ctx.clone(), Arc::clone(client));
+    tokio::spawn(async move {
+        learn_phone_numbers(&ctx, &client).await;
+        if ctx.db().flag(FLAG) {
+            return;
+        }
+        use whatsapp_rust::sync_task::MajorSyncTask;
+        use whatsapp_rust::wacore::appstate::patch_decode::WAPatchName;
+        use whatsapp_rust::wacore::appstate::hash::HashState;
+        ctx.db().clear_pins();
+        let backend = client.persistence_manager().backend();
+        for name in [WAPatchName::RegularLow, WAPatchName::RegularHigh] {
+            if let Err(e) = backend.set_version(name.as_str(), HashState::default()).await {
+                warn!("could not reset {}: {e}", name.as_str());
+            }
+            let _ = backend.clear_mutation_macs(name.as_str()).await;
+            client.process_sync_task(MajorSyncTask::AppStateSync { name, full_sync: true }).await;
+        }
+        ctx.db().set_flag(FLAG);
+        info!("chat settings resynced: {} pinned", ctx.db().pinned_count());
+        ctx.chats_dirty.notify_one();
+    });
+}
+
+async fn set_pinned(ctx: &Ctx, client: &Arc<Client>, chat_id: String, pinned: bool) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let actions = client.chat_actions();
+    let result = if pinned { actions.pin_chat(&jid).await } else { actions.unpin_chat(&jid).await };
+    match result {
+        Ok(()) => ctx.db().set_pinned(&chat_id, if pinned { store::unix_now() } else { 0 }),
+        Err(e) => warn!("pin {chat_id} failed: {e}"),
+    }
+    // The stored state goes back either way (a failure puts the old one back).
+    if let Some(chat) = ctx.db().chat(&chat_id) {
+        ctx.send(Out::Chat { chat });
+    }
+}
+
 /// Sends your reaction; the stored reactions go back to the UI either way
 /// (so a failed send puts the old state back).
 async fn react(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, emoji: String) {
@@ -392,6 +496,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.db().set_me([&own.pn, &own.lid].into_iter().flatten().map(|j| j.to_non_ad_string()).collect());
             ctx.status("connected", None);
             ctx.chats_dirty.notify_one();
+            resync_chat_settings_once(ctx, client);
             avatars::queue_stale(ctx);
         }
         Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
@@ -427,6 +532,24 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 ctx.status("syncing", Some(format!("Loading your chats… {p}%")));
             }
             ctx.chats_dirty.notify_one();
+        }
+        // Chat settings from the phone (app-state sync): pins, archive, mute.
+        Event::PinUpdate(update) => {
+            let pinned = update.action.pinned.unwrap_or(false);
+            let at = update.timestamp.timestamp();
+            chat_setting(ctx, client, &update.jid, |db, id| db.set_pinned(id, if pinned { at } else { 0 })).await;
+        }
+        Event::ArchiveUpdate(update) => {
+            let archived = update.action.archived.unwrap_or(false);
+            chat_setting(ctx, client, &update.jid, |db, id| db.set_archived(id, archived)).await;
+        }
+        Event::MuteUpdate(update) => {
+            let end = match (update.action.muted.unwrap_or(false), update.action.mute_end_timestamp) {
+                (false, _) => 0,
+                (true, Some(t)) if t > 0 => t / if t > 100_000_000_000 { 1000 } else { 1 },
+                (true, _) => -1,
+            };
+            chat_setting(ctx, client, &update.jid, |db, id| db.set_mute_end(id, end)).await;
         }
         Event::Receipt(receipt) => {
             use whatsapp_rust::wacore::types::presence::ReceiptType;
@@ -648,7 +771,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
         name,
         is_group,
         unread,
-        pinned: conv.pinned.unwrap_or(0) > 0,
+        pinned: conv.pinned.unwrap_or(0) as i64,
         archived: conv.archived.unwrap_or(false),
         mute_end: conv.mute_end_time.map(|t| t as i64).unwrap_or(0),
     });

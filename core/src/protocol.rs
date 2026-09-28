@@ -52,6 +52,8 @@ pub struct ChatDto {
     pub is_group: bool,
     pub unread: u32,
     pub pinned: bool,
+    /// When it was pinned (Unix seconds, 0 = not pinned): newest pin first, like the phone.
+    pub pinned_at: i64,
     pub archived: bool,
     pub muted: bool,
     /// Unix seconds of the last message (0 if none).
@@ -139,6 +141,8 @@ pub enum Command {
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },
+    /// Pin or unpin a chat. Synced with the phone (WhatsApp allows three pins).
+    SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.
     React { chat_id: String, message_id: String, emoji: String },
     /// Local only for now: clears the unread badge, sends no read receipts.

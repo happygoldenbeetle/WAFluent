@@ -12,7 +12,8 @@
         <Grid.Resources>
             <!-- ───────────── Chat list item ───────────── -->
             <DataTemplate x:Key="ChatItemTemplate" x:DataType="models:Chat">
-                <Grid Padding="0,9" ColumnSpacing="12">
+                <Grid Padding="0,9" ColumnSpacing="12" Background="Transparent"
+                      Tag="{x:Bind}" ContextRequested="Chat_ContextRequested">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -397,9 +398,21 @@
                                 HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                         <FontIcon x:Name="SectionPlaceholderIcon" FontSize="40" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                         <TextBlock x:Name="SectionPlaceholderText" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        <Button x:Name="LogoutButton" Content="Log out" HorizontalAlignment="Center" Margin="0,8,0,0"
-                                Visibility="Collapsed" Click="Logout_Click" />
                     </StackPanel>
+
+                    <!-- Settings (MainWindow.Settings.cs) -->
+                    <ScrollViewer x:Name="SettingsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" Padding="16,4,16,16">
+                        <StackPanel Spacing="20">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Quick reactions" FontWeight="SemiBold" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Shown when you right-click a message, next to + for any emoji. Double-click a message to react with the first one. Click an emoji to change it." />
+                                <StackPanel x:Name="QuickReactionSlots" Orientation="Horizontal" Spacing="6" />
+                                <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
+                            </StackPanel>
+                            <Button x:Name="LogoutButton" Content="Log out" Visibility="Collapsed" Click="Logout_Click" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </Grid>
 
                 <!-- ───────────── Conversation pane ───────────── -->
@@ -728,6 +741,13 @@
                 <Image x:Name="FlyImage" Stretch="Uniform" Visibility="Collapsed" />
             </Canvas>
         </Grid>
+
+        <!-- The Windows emoji panel types into this invisible box ("+" reactions, Settings). -->
+        <Canvas Grid.RowSpan="2" IsHitTestVisible="False">
+            <TextBox x:Name="EmojiCatcher" Width="40" Opacity="0" IsTabStop="False"
+                     AutomationProperties.AccessibilityView="Raw"
+                     TextChanged="EmojiCatcher_TextChanged" LostFocus="EmojiCatcher_LostFocus" />
+        </Canvas>
 
         <!-- A reaction flying from the menu to its pill (MainWindow.Reactions.cs). -->
         <Canvas x:Name="FxLayer" Grid.RowSpan="2" IsHitTestVisible="False" />

@@ -3,6 +3,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using WhatsAppNative.Models;
@@ -16,60 +17,126 @@ namespace WhatsAppNative;
 /// </summary>
 public sealed partial class MainWindow
 {
-    private static readonly string[] QuickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
     private const double ChoiceSize = 38;
 
     /// <summary>A menu item that just shows what's in its Tag (here: the emoji row).</summary>
     private static readonly Lazy<ControlTemplate> RowTemplate = new(() => (ControlTemplate)XamlReader.Load(
         """
         <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="MenuFlyoutItem">
-            <ContentPresenter Content="{TemplateBinding Tag}" Margin="6,2,6,4" />
+            <ContentPresenter Content="{TemplateBinding Tag}" Margin="6,6,6,2" />
         </ControlTemplate>
         """));
 
-    /// <summary>The emoji row at the top of <paramref name="menu"/>, for <paramref name="row"/>'s message.</summary>
+    /// <summary>
+    /// The emoji row at the top of <paramref name="menu"/>: your five quick reactions (Settings)
+    /// and "+" for any emoji. Your current reaction has a dot under it; a custom one takes the
+    /// "+" slot so it can be taken back.
+    /// </summary>
     private MenuFlyoutItem ReactionRow(MenuFlyout menu, Message message, FrameworkElement row)
     {
         var choices = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
-        foreach (var emoji in QuickReactions)
-        {
-            var mine = emoji == message.MyReaction;
-            var choice = new Button
-            {
-                Width = ChoiceSize,
-                Height = ChoiceSize,
-                Padding = new Thickness(0),
-                CornerRadius = new CornerRadius(ChoiceSize / 2),
-                BorderThickness = new Thickness(0),
-                // Your current reaction sits on a soft circle.
-                Background = new SolidColorBrush(mine
-                    ? Windows.UI.Color.FromArgb(0x40, 0x00, 0xA8, 0x84)   // WhatsApp green, faint
-                    : Microsoft.UI.Colors.Transparent),
-                Content = new TextBlock { Text = emoji, FontSize = 22, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center },
-            };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(choice, mine ? $"Remove {emoji} reaction" : $"React with {emoji}");
-            if (mine) ToolTipService.SetToolTip(choice, "Remove");
-            choice.Click += (_, _) => PickReaction(menu, message, row, choice, emoji);
-            choice.PointerEntered += (_, _) => Hover(choice, true);
-            choice.PointerExited += (_, _) => Hover(choice, false);
-            ElementCompositionPreview.SetIsTranslationEnabled(choice, true);
-            ElementCompositionPreview.GetElementVisual(choice).Opacity = 0;   // until the pop-in starts
-            choices.Children.Add(choice);
-        }
+        var quick = _ui.QuickReactions;
+        foreach (var emoji in quick)
+            choices.Children.Add(Choice(new TextBlock { Text = emoji, FontSize = 22 }, emoji == message.MyReaction,
+                                        choice => PickReaction(menu, message, row, choice, emoji),
+                                        emoji == message.MyReaction ? $"Remove {emoji} reaction" : $"React with {emoji}"));
+
+        var custom = message.MyReaction.Length > 0 && !quick.Contains(message.MyReaction);
+        choices.Children.Add(custom
+            ? Choice(new TextBlock { Text = message.MyReaction, FontSize = 22 }, true,
+                     choice => PickReaction(menu, message, row, choice, message.MyReaction), $"Remove {message.MyReaction} reaction")
+            : Choice(new FontIcon { Glyph = "\uE710", FontSize = 16 }, false, choice =>
+              {
+                  // Only once the menu is gone: closing it hands focus back to where it came from.
+                  menu.Closed += (_, _) => PickEmoji(row, emoji => React(message, row, emoji, from: null));
+                  menu.Hide();
+              }, "More reactions"));
 
         menu.Opened += (_, _) => PopIn(choices);
         return new MenuFlyoutItem { Template = RowTemplate.Value, Tag = choices, IsTabStop = false };
     }
 
-    private void PickReaction(MenuFlyout menu, Message message, FrameworkElement row, Button choice, string emoji)
+    /// <summary>One slot: the emoji (or +), a dot under it when it's your reaction. No hover fill, just a swell.</summary>
+    private static Button Choice(FrameworkElement face, bool active, Action<Button> picked, string name)
+    {
+        face.HorizontalAlignment = HorizontalAlignment.Center;
+        face.VerticalAlignment = VerticalAlignment.Center;
+        var content = new Grid { Width = ChoiceSize, Height = ChoiceSize + 6 };
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(ChoiceSize) });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(6) });
+        content.Children.Add(face);
+        if (active)
+        {
+            var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
+            {
+                Width = 4,
+                Height = 4,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Fill = (Brush)Application.Current.Resources["AccentFillColorDefaultBrush"],
+            };
+            Grid.SetRow(dot, 1);
+            content.Children.Add(dot);
+        }
+
+        // A Button (a menu item swallows clicks on anything else), with every fill see-through.
+        var slot = new Button { Content = content, Padding = new Thickness(0), BorderThickness = new Thickness(0) };
+        var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        foreach (var key in new[] { "ButtonBackground", "ButtonBackgroundPointerOver", "ButtonBackgroundPressed",
+                                    "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed" })
+            slot.Resources[key] = clear;
+
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(slot, name);
+        slot.Click += (_, _) => picked(slot);
+        slot.PointerEntered += (_, _) => Hover(face, true);
+        slot.PointerExited += (_, _) => Hover(face, false);
+        ElementCompositionPreview.SetIsTranslationEnabled(slot, true);
+        ElementCompositionPreview.GetElementVisual(slot).Opacity = 0;   // until the pop-in starts
+        return slot;
+    }
+
+    private void PickReaction(MenuFlyout menu, Message message, FrameworkElement row, FrameworkElement choice, string emoji)
     {
         var start = choice.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(ChoiceSize / 2, ChoiceSize / 2));
         menu.Hide();
-        if (!ViewModel.React(message, emoji)) return;   // taken back: the pill just updates
+        React(message, row, emoji, start);
+    }
 
+    /// <summary>Reacts (or takes the reaction back) and flies the emoji into the pill from <paramref name="from"/>.</summary>
+    private void React(Message message, FrameworkElement row, string emoji, Windows.Foundation.Point? from)
+    {
+        if (!ViewModel.React(message, emoji)) return;   // taken back: the pill just updates
         row.UpdateLayout();
-        if (FindDescendant(row, el => el.Name == "ReactionPill") is { ActualWidth: > 0 } pill)
-            FlyReaction(emoji, start, pill);
+        if (FindDescendant(row, el => el.Name == "ReactionPill") is not { ActualWidth: > 0 } pill) return;
+        if (from is { } start) FlyReaction(emoji, start, pill);
+        else PopPill(pill);
+    }
+
+    /// <summary>Double-click a message: react with your first quick reaction.</summary>
+    private void Messages_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
+        if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
+        if (IsInside<Button>(e.OriginalSource as DependencyObject, row)) return;   // play button, file buttons...
+        e.Handled = true;
+        ClearSelection(row);   // the double-click also selected a word
+
+        var first = _ui.QuickReactions[0];
+        var at = e.GetPosition(Root);
+        if (message.MyReaction == first)
+        {
+            row.UpdateLayout();
+            if (FindDescendant(row, el => el.Name == "ReactionPill") is { ActualWidth: > 0 } pill) PopPill(pill);
+            return;
+        }
+        React(message, row, first, at);
+    }
+
+    private static bool IsInside<T>(DependencyObject? source, DependencyObject stop)
+    {
+        for (var d = source; d is not null && d != stop; d = VisualTreeHelper.GetParent(d))
+            if (d is T) return true;
+        return false;
     }
 
     // ───────────── Animations ─────────────
@@ -78,7 +145,7 @@ public sealed partial class MainWindow
     private static void PopIn(Panel choices)
     {
         var i = 0;
-        foreach (var choice in choices.Children.OfType<Button>())
+        foreach (var choice in choices.Children.OfType<FrameworkElement>())
         {
             var v = ElementCompositionPreview.GetElementVisual(choice);
             var c = v.Compositor;
@@ -102,14 +169,21 @@ public sealed partial class MainWindow
         }
     }
 
-    /// <summary>Hovered emoji swell and lift a little.</summary>
-    private static void Hover(Button choice, bool over)
+    /// <summary>Hovered emoji swell a little (within the menu's padding, so nothing gets clipped).</summary>
+    private static void Hover(FrameworkElement face, bool over)
     {
-        var v = ElementCompositionPreview.GetElementVisual(choice);
-        v.CenterPoint = new Vector3((float)ChoiceSize / 2, (float)ChoiceSize / 2, 0);
-        var c = v.Compositor;
-        v.StartAnimation("Scale", Spring(c, null, over ? new Vector3(1.3f, 1.3f, 1) : Vector3.One, 0.5f, 40));
-        v.StartAnimation("Translation", Spring(c, null, over ? new Vector3(0, -3, 0) : Vector3.Zero, 0.6f, 40));
+        var v = ElementCompositionPreview.GetElementVisual(face);
+        v.CenterPoint = new Vector3((float)face.ActualWidth / 2, (float)face.ActualHeight / 2, 0);
+        v.StartAnimation("Scale", Spring(v.Compositor, null, over ? new Vector3(1.2f, 1.2f, 1) : Vector3.One, 0.5f, 40));
+    }
+
+    /// <summary>The pill bounces (a reaction landed, or double-click on your existing one).</summary>
+    private static void PopPill(FrameworkElement pill)
+    {
+        var v = ElementCompositionPreview.GetElementVisual(pill);
+        v.CenterPoint = new Vector3((float)pill.ActualWidth / 2, (float)pill.ActualHeight / 2, 0);
+        v.Opacity = 1;
+        v.StartAnimation("Scale", Spring(v.Compositor, new Vector3(0.4f, 0.4f, 1), Vector3.One, 0.4f, 50));
     }
 
     /// <summary>The emoji arcs from the menu down into the pill, which then pops.</summary>
@@ -155,9 +229,7 @@ public sealed partial class MainWindow
         batch.Completed += (_, _) =>
         {
             FxLayer.Children.Remove(flyer);
-            pillVisual.CenterPoint = new Vector3((float)pill.ActualWidth / 2, (float)pill.ActualHeight / 2, 0);
-            pillVisual.Opacity = 1;
-            pillVisual.StartAnimation("Scale", Spring(c, new Vector3(0.4f, 0.4f, 1), Vector3.One, 0.4f, 50));
+            PopPill(pill);
         };
     }
 

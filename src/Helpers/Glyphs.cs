@@ -30,4 +30,6 @@ public static class Glyphs
     public static readonly string Refresh = G(0xE72C);
     public static readonly string Speed = G(0xE916);
     public static readonly string Reply = G(0xE97A);
+    public static readonly string Pin = G(0xE718);
+    public static readonly string Unpin = G(0xE77A);
 }

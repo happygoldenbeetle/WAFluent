@@ -204,6 +204,18 @@ public sealed class MainViewModel : Observable
 
     public bool HasSelection => _selectedChat is not null;
 
+    public int PinnedCount => _allChats.Count(c => c.IsPinned && !_archived.Contains(c.Id));
+
+    /// <summary>Pins/unpins right away; the core syncs it to the phone and sends back the result.</summary>
+    public void SetPinned(Chat chat, bool pinned)
+    {
+        chat.IsPinned = pinned;
+        chat.PinnedAt = pinned ? DateTimeOffset.Now.ToUnixTimeSeconds() : 0;
+        Reorder();
+        SyncVisible();
+        if (chat.Id.Length > 0) _core?.SetPinned(chat.Id, pinned);
+    }
+
     /// <summary>Number of chats with unread messages (the badge on the Chats rail item).</summary>
     public int UnreadChats => _allChats.Count(c => c.HasUnread);
 
@@ -261,6 +273,7 @@ public sealed class MainViewModel : Observable
         chat.Name = dto.Name;
         chat.AvatarPath = dto.Avatar;
         chat.IsPinned = dto.Pinned;
+        chat.PinnedAt = dto.PinnedAt;
         chat.LastActivity = Format.FromUnix(dto.LastTs);
         chat.Time = Format.ListTime(chat.LastActivity);
         chat.Preview = dto.LastSender is { Length: > 0 } who ? $"{who}: {dto.Preview}" : dto.Preview;
@@ -275,10 +288,11 @@ public sealed class MainViewModel : Observable
         return chat;
     }
 
-    /// <summary>Pinned first, then most recent, like WhatsApp.</summary>
+    /// <summary>Pinned first (newest pin on top), then most recent, like WhatsApp.</summary>
     private void Reorder()
     {
-        var ordered = _allChats.OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.LastActivity).ToList();
+        var ordered = _allChats.OrderByDescending(c => c.IsPinned).ThenByDescending(c => c.IsPinned ? c.PinnedAt : 0)
+                               .ThenByDescending(c => c.LastActivity).ToList();
         _allChats.Clear();
         _allChats.AddRange(ordered);
     }

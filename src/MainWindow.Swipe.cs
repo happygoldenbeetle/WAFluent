@@ -40,6 +40,8 @@ public sealed partial class MainWindow
         Messages.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(Swipe_PointerReleased), handledEventsToo: true);
         Messages.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(Swipe_PointerEnded), handledEventsToo: true);
         Messages.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(Swipe_PointerEnded), handledEventsToo: true);
+        // Double-click to react (MainWindow.Reactions.cs); text blocks handle double-clicks themselves.
+        Messages.AddHandler(UIElement.DoubleTappedEvent, new DoubleTappedEventHandler(Messages_DoubleTapped), handledEventsToo: true);
 
         var hint = ElementCompositionPreview.GetElementVisual(ReplyHint);
         hint.Opacity = 0;

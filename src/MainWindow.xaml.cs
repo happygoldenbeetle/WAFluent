@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         SetupSwipe();
         SetupChatListPane();
+        BuildQuickReactionSlots();
 
         SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
         ExtendsContentIntoTitleBar = true;
@@ -105,8 +106,10 @@ public sealed partial class MainWindow : Window
         ListActions.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
         SearchBox.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
         ChatList.Visibility = isChats ? Visibility.Visible : Visibility.Collapsed;
-        SectionPlaceholder.Visibility = isChats ? Visibility.Collapsed : Visibility.Visible;
-        LogoutButton.Visibility = section == "Settings" && ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
+        var isSettings = section == "Settings";
+        SectionPlaceholder.Visibility = isChats || isSettings ? Visibility.Collapsed : Visibility.Visible;
+        SettingsPanel.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
+        LogoutButton.Visibility = ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
         (SectionPlaceholderIcon.Glyph, SectionPlaceholderText.Text) = section switch
         {
             "Calls" => (Glyphs.Phone, "No recent calls"),
@@ -191,12 +194,7 @@ public sealed partial class MainWindow : Window
     {
         // Open the Windows emoji panel (Win + .) for the message box.
         ComposerBox.Focus(FocusState.Programmatic);
-        const byte VK_LWIN = 0x5B, VK_OEM_PERIOD = 0xBE;
-        const uint KEYUP = 0x2;
-        keybd_event(VK_LWIN, 0, 0, 0);
-        keybd_event(VK_OEM_PERIOD, 0, 0, 0);
-        keybd_event(VK_OEM_PERIOD, 0, KEYUP, 0);
-        keybd_event(VK_LWIN, 0, KEYUP, 0);
+        OpenEmojiPanel();
     }
 
     // ───────────── Helpers ─────────────

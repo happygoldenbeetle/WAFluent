@@ -143,6 +143,9 @@ public sealed class Chat : Observable
     public bool HasStatus { get; init; }   // unseen status update: green ring around the avatar
     public DateTime LastActivity { get; set; }
 
+    /// <summary>When the chat was pinned (Unix seconds): the newest pin sits on top.</summary>
+    public long PinnedAt { get; set; }
+
     /// <summary>True once this chat's history has been fetched from the core.</summary>
     public bool MessagesLoaded { get; set; }
 
