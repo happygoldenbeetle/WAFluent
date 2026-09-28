@@ -8,9 +8,9 @@ using Microsoft.UI.Xaml.Media.Imaging;
 namespace WhatsAppNative;
 
 /// <summary>
-/// Settings → Theme (System / Light / Dark) and Settings → Minimize to tray: minimizing hides
-/// the window to a tray icon (H.NotifyIcon.WinUI) whose right-click menu is a WinUI menu.
-/// Click the icon to bring the window back.
+/// Settings → Theme (System / Light / Dark) and Settings → Minimize to tray: minimizing or
+/// closing hides the window to a tray icon (H.NotifyIcon.WinUI) whose right-click menu is a
+/// WinUI menu; Quit there ends the app. Click the icon to bring the window back.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -60,6 +60,7 @@ public sealed partial class MainWindow
     private readonly List<RadioMenuFlyoutItem> _trayThemeItems = new();
     private ToggleMenuFlyoutItem? _trayDeveloperMode;
     private bool _hiddenToTray;
+    private bool _quitting;
 
     private void SetupTray()
     {
@@ -70,6 +71,14 @@ public sealed partial class MainWindow
             _ui.MinimizeToTray = MinimizeToTraySwitch.IsOn;
             _ui.Save();
             UpdateTrayIcon();
+        };
+
+        // X with the setting on: into the tray too. Only the tray's Quit ends the app.
+        AppWindow.Closing += (_, e) =>
+        {
+            if (!_ui.MinimizeToTray || _quitting) return;
+            e.Cancel = true;
+            HideToTray();
         };
 
         // Minimized with the setting on: off the taskbar, into the tray.
@@ -145,6 +154,7 @@ public sealed partial class MainWindow
         var quit = new MenuFlyoutItem { Text = "Quit WAFluent", Icon = new FontIcon { Glyph = "" } };
         quit.Click += (_, _) =>
         {
+            _quitting = true;
             _tray?.Dispose();
             _tray = null;
             Close();

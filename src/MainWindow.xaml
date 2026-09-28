@@ -534,9 +534,9 @@
                         <StackPanel Spacing="20">
                             <ComboBox x:Name="ThemeBox" Header="Theme" MinWidth="200" />
                             <StackPanel Spacing="4">
-                                <ToggleSwitch x:Name="MinimizeToTraySwitch" Header="Minimize to tray" OffContent="Off" OnContent="On" />
+                                <ToggleSwitch x:Name="MinimizeToTraySwitch" Header="Minimize and close to tray" OffContent="Off" OnContent="On" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="Minimizing hides WAFluent to the notification area; click its icon to bring it back. Right-click the icon for more." />
+                                           Text="Minimizing or closing hides WAFluent to the notification area; click its icon to bring it back. Right-click the icon for more, including Quit." />
                             </StackPanel>
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Quick reactions" FontWeight="SemiBold" />
