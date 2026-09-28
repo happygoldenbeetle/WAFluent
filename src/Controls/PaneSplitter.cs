@@ -40,11 +40,15 @@ public sealed partial class PaneSplitter : Grid
             Opacity = 0,
             OpacityTransition = new ScalarTransition { Duration = TimeSpan.FromMilliseconds(150) },
         };
-        _line.SetValue(Shape.FillProperty, Application.Current.Resources["AccentFillColorDefaultBrush"]);
+        _line.Fill = Helpers.Themed.Brush("AccentFillColorDefaultBrush");
         Children.Add(_line);
         AutomationProperties.SetName(this, "Resize chat list");
 
-        PointerEntered += (_, _) => _line.Opacity = 1;
+        PointerEntered += (_, _) =>
+        {
+            _line.Fill = Helpers.Themed.Brush("AccentFillColorDefaultBrush");   // current theme and accent
+            _line.Opacity = 1;
+        };
         PointerExited += (_, _) => { if (!_dragging) _line.Opacity = 0; };
         PointerPressed += OnPressed;
         PointerMoved += OnMoved;

@@ -45,6 +45,7 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 ## Credits
 
 Emoji names, categories and shortcodes: [emojibase](https://github.com/milesj/emojibase) (MIT), trimmed by `tools/make-emoji-data.py`.
+Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
 
 ## Layout
 

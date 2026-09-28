@@ -17,6 +17,12 @@ public sealed class UiSettings
     /// <summary>The chat list was dragged shut (or double-clicked closed).</summary>
     public bool ChatListCollapsed { get; set; }
 
+    /// <summary>System (follows Windows), Light or Dark.</summary>
+    public string Theme { get; set; } = "System";
+
+    /// <summary>Minimizing hides the window to a tray icon.</summary>
+    public bool MinimizeToTray { get; set; }
+
     /// <summary>The Windows accent colour instead of WhatsApp green (Helpers/AppColors).</summary>
     public bool UseSystemAccent { get; set; }
 

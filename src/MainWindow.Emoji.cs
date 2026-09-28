@@ -133,7 +133,7 @@ public sealed partial class MainWindow
                 ColumnSpacing = 10,
                 CornerRadius = new CornerRadius(4),
                 Background = i == _suggestion
-                    ? (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"]
+                    ? Helpers.Themed.Brush("SubtleFillColorSecondaryBrush")
                     : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

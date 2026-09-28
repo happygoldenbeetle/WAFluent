@@ -158,7 +158,7 @@ public sealed partial class MainWindow
     /// <summary>A red menu item (Block, Clear chat, Delete chat), hover and press included.</summary>
     private static MenuFlyoutItem Danger(MenuFlyoutItem item)
     {
-        var red = (Brush)Application.Current.Resources["DangerBrush"];
+        var red = Helpers.Themed.Brush("DangerBrush");
         item.Foreground = red;
         item.Resources["MenuFlyoutItemForeground"] = red;
         item.Resources["MenuFlyoutItemForegroundPointerOver"] = red;

@@ -203,7 +203,7 @@ public sealed partial class EmojiPicker : UserControl
 
     private void Cell_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is Grid cell) cell.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+        if (sender is Grid cell) cell.Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush");
     }
 
     private void Cell_PointerExited(object sender, PointerRoutedEventArgs e)
@@ -221,7 +221,7 @@ public sealed partial class EmojiPicker : UserControl
         {
             var choice = new Grid { Width = 40, Height = 40, CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
             choice.Children.Add(new TextBlock { Text = glyph, FontSize = 26, FontFamily = EmojiFont, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
-            choice.PointerEntered += (_, _) => choice.Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"];
+            choice.PointerEntered += (_, _) => choice.Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush");
             choice.PointerExited += (_, _) => choice.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             choice.Tapped += (_, e) =>
             {
@@ -239,7 +239,7 @@ public sealed partial class EmojiPicker : UserControl
                 ToneChoices.Children.Add(new Microsoft.UI.Xaml.Shapes.Rectangle
                 {
                     Width = 1, Margin = new Thickness(3, 8, 3, 8),
-                    Fill = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"],
+                    Fill = Helpers.Themed.Brush("DividerStrokeColorDefaultBrush"),
                 });
         }
 

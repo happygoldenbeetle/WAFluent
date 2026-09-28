@@ -173,7 +173,7 @@ public sealed partial class MainWindow
             CornerRadius = new CornerRadius(25),
             Content = new FontIcon { Glyph = glyph, FontSize = 18 },
             BorderThickness = new Thickness(0),
-            Background = (Brush)Application.Current.Resources["SubtleFillColorSecondaryBrush"],
+            Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush"),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
         button.Click += (_, _) => action();
@@ -187,7 +187,7 @@ public sealed partial class MainWindow
     private static Button Row(string? glyph, string text, string? detail = null, string? trailing = null, bool danger = false,
                               Action? action = null, IconElement? icon = null, FlyoutBase? flyout = null)
     {
-        var color = danger ? (Brush)Application.Current.Resources["DangerBrush"] : null;
+        var color = danger ? Helpers.Themed.Brush("DangerBrush") : null;
         var grid = new Grid { ColumnSpacing = 22 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -196,7 +196,7 @@ public sealed partial class MainWindow
         var mark = icon ?? new FontIcon { Glyph = glyph ?? "", FontSize = 18 };
         mark.VerticalAlignment = VerticalAlignment.Center;
         if (color is not null) mark.Foreground = color;
-        else mark.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        else mark.Foreground = Helpers.Themed.Brush("TextFillColorSecondaryBrush");
         grid.Children.Add(mark);
 
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
@@ -207,7 +207,7 @@ public sealed partial class MainWindow
             texts.Children.Add(new TextBlock
             {
                 Text = detail, FontSize = 13, TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Foreground = Helpers.Themed.Brush("TextFillColorSecondaryBrush"),
             });
         Grid.SetColumn(texts, 1);
         grid.Children.Add(texts);
@@ -217,7 +217,7 @@ public sealed partial class MainWindow
             var right = new TextBlock
             {
                 Text = trailing, VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                Foreground = Helpers.Themed.Brush("TextFillColorSecondaryBrush"),
             };
             Grid.SetColumn(right, 2);
             grid.Children.Add(right);
@@ -243,7 +243,7 @@ public sealed partial class MainWindow
     {
         Height = 1,
         Margin = new Thickness(0, 8, 0, 8),
-        Fill = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"],
+        Fill = Helpers.Themed.Brush("DividerStrokeColorDefaultBrush"),
     };
 
     private async Task ExportChatAsync(Chat chat)

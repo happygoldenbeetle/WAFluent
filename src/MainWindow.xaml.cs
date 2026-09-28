@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
         BuildQuickReactionSlots();
         SetupChatMenus();
         SetupInfoPanel();
+        SetupTheme();
+        SetupTray();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         SystemAccentSwitch.IsOn = _ui.UseSystemAccent;
         Helpers.AppColors.Changed += RefreshTheme;
@@ -95,6 +97,7 @@ public sealed partial class MainWindow : Window
         var i = Array.IndexOf(args, "--theme");
         if (i < 0 || i + 1 >= args.Length) return;
         Root.RequestedTheme = args[i + 1].Equals("light", StringComparison.OrdinalIgnoreCase) ? ElementTheme.Light : ElementTheme.Dark;
+        _themeFromArgs = true;   // wins over Settings → Theme for this run
     }
 
     // ───────────── Rail + chat list ─────────────

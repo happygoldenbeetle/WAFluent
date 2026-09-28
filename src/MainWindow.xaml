@@ -532,6 +532,12 @@
                     <!-- Settings (MainWindow.Settings.cs) -->
                     <ScrollViewer x:Name="SettingsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" Padding="16,4,16,16">
                         <StackPanel Spacing="20">
+                            <ComboBox x:Name="ThemeBox" Header="Theme" MinWidth="200" />
+                            <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="MinimizeToTraySwitch" Header="Minimize to tray" OffContent="Off" OnContent="On" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Minimizing hides WAFluent to the notification area; click its icon to bring it back. Right-click the icon for more." />
+                            </StackPanel>
                             <StackPanel Spacing="10">
                                 <TextBlock Text="Quick reactions" FontWeight="SemiBold" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"

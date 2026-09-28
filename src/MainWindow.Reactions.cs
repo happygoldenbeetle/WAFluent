@@ -73,7 +73,7 @@ public sealed partial class MainWindow
                 Height = 4,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
-                Fill = (Brush)Application.Current.Resources["ChatAccentBrush"],
+                Fill = Helpers.Themed.Brush("ChatAccentBrush"),
             };
             Grid.SetRow(dot, 1);
             content.Children.Add(dot);
