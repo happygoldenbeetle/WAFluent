@@ -42,7 +42,7 @@ public sealed partial class MainWindow
     ];
 
     /// <summary>
-    /// The + button: WhatsApp's attach menu, filled icons in their colours on a solid panel.
+    /// The + button: WhatsApp's attach menu, filled icons in their colours on the emoji panel's frosted background.
     /// The items don't send anything yet (sending media is still to come).
     /// </summary>
     private void Attach_Click(object sender, RoutedEventArgs e)
