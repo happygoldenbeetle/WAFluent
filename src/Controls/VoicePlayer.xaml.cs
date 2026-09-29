@@ -91,7 +91,7 @@ public sealed partial class VoicePlayer : UserControl
 
     private void Refresh()
     {
-        if (Message is not { } m) return;
+        if (Message is not { } m || _dragging) return;
         var isCurrent = AudioPlayback.Current == m;
         var playing = isCurrent && AudioPlayback.IsPlaying;
 
@@ -115,11 +115,7 @@ public sealed partial class VoicePlayer : UserControl
         var fraction = duration > TimeSpan.Zero ? Math.Clamp(position / duration, 0, 1) : 0;
         Canvas.SetLeft(Knob, Math.Max(0, fraction * Bars.ActualWidth - Knob.Width / 2));
 
-        var played = (int)Math.Round(BarCount * fraction);
-        if (played == _playedBars) return;
-        _playedBars = played;
-        for (var i = 0; i < _bars.Count; i++)
-            _bars[i].Fill = i < played ? PlayedSwatch.Fill : UnplayedSwatch.Fill;
+        PaintBars((int)Math.Round(BarCount * fraction));
     }
 
     private void Play_Click(object sender, RoutedEventArgs e)
@@ -127,10 +123,60 @@ public sealed partial class VoicePlayer : UserControl
         if (Message is { } m) AudioPlayback.Toggle(m);
     }
 
-    private void Bars_Tapped(object sender, TappedRoutedEventArgs e)
+    // ───── Dragging the playhead ─────
+
+    private bool _dragging;
+    private double _dragFraction;
+
+    private void Wave_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (Message is not { HasMediaFile: true } m || Bars.ActualWidth <= 0) return;
-        AudioPlayback.Seek(m, e.GetPosition(Bars).X / Bars.ActualWidth);
+        if (Message is not { HasMediaFile: true } || Bars.ActualWidth <= 0) return;
+        _dragging = Wave.CapturePointer(e.Pointer);
+        e.Handled = true;
+        DragTo(e);
+    }
+
+    private void Wave_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        e.Handled = true;
+        DragTo(e);
+    }
+
+    private void Wave_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_dragging) return;
+        e.Handled = true;
+        Wave.ReleasePointerCapture(e.Pointer);   // -> CaptureLost -> EndDrag
+    }
+
+    private void Wave_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndDrag();
+
+    /// <summary>While dragging only the dot and bars move; the note jumps there on release.</summary>
+    private void DragTo(PointerRoutedEventArgs e)
+    {
+        if (Message is not { } m) return;
+        _dragFraction = Math.Clamp(e.GetCurrentPoint(Bars).Position.X / Bars.ActualWidth, 0, 1);
+        var duration = AudioPlayback.Current == m ? AudioPlayback.Duration : TimeSpan.FromSeconds(m.Seconds);
+        DurationText.Text = Format.Duration(duration * _dragFraction);
+        Canvas.SetLeft(Knob, Math.Max(0, _dragFraction * Bars.ActualWidth - Knob.Width / 2));
+        PaintBars((int)Math.Round(BarCount * _dragFraction));
+    }
+
+    private void EndDrag()
+    {
+        if (!_dragging) return;
+        _dragging = false;
+        if (Message is { } m) AudioPlayback.Seek(m, _dragFraction);
+        Refresh();
+    }
+
+    private void PaintBars(int played)
+    {
+        if (played == _playedBars) return;
+        _playedBars = played;
+        for (var i = 0; i < _bars.Count; i++)
+            _bars[i].Fill = i < played ? PlayedSwatch.Fill : UnplayedSwatch.Fill;
     }
 
     private void Rate_Click(object sender, RoutedEventArgs e) => AudioPlayback.CycleRate();

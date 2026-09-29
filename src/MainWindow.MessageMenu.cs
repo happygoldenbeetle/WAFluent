@@ -21,19 +21,20 @@ public sealed partial class MainWindow
         e.Handled = true;
 
         // Right-click on an email address or link: its own menu, not the message's.
-        if (e.OriginalSource is TextBlock text && e.TryGetPosition(text, out var at) && Controls.LinkText.HitTest(text, at) is { } link)
+        if (LinkUnderPointer(bubble, e) is var (text, at, link))
         {
             var linkMenu = new MenuFlyout();
             if (link.IsEmail)
             {
-                linkMenu.Items.Add(Item("Send email", Glyphs.Mail, () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(link.Uri))));
+                linkMenu.Items.Add(Item("Send email", Glyphs.Mail, () => Controls.LinkText.Open(link)));
                 linkMenu.Items.Add(Item("Copy email", Glyphs.Copy, () => MediaActions.CopyText(link.Text)));
             }
             else
             {
-                linkMenu.Items.Add(Item("Open link", Glyphs.OpenExternal, () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(link.Uri))));
+                linkMenu.Items.Add(Item("Open link", Glyphs.OpenExternal, () => Controls.LinkText.Open(link)));
                 linkMenu.Items.Add(Item("Copy link", Glyphs.Copy, () => MediaActions.CopyText(link.Text)));
             }
+            linkMenu.ShouldConstrainToRootBounds = true;
             linkMenu.ShowAt(text, new FlyoutShowOptions { Position = at });
             return;
         }
@@ -46,6 +47,49 @@ public sealed partial class MainWindow
             menu.ShowAt(bubble, new FlyoutShowOptions { Position = point });
         else
             menu.ShowAt(bubble);   // keyboard (menu key / Shift+F10)
+    }
+
+    /// <summary>The email address or link the right-click landed on, if any (in the text or a caption).</summary>
+    private static (TextBlock Text, Windows.Foundation.Point At, Controls.LinkText.Target Link)? LinkUnderPointer(FrameworkElement bubble, ContextRequestedEventArgs e)
+    {
+        foreach (var text in Descendants(bubble).OfType<TextBlock>())
+        {
+            if (Controls.LinkText.GetMessage(text) is null || !e.TryGetPosition(text, out var at)) continue;
+            if (at.X < 0 || at.Y < -4 || at.X > text.ActualWidth || at.Y > text.ActualHeight + 4) continue;
+            if (Controls.LinkText.HitTest(text, at) is { } link) return (text, at, link);
+        }
+        return null;
+    }
+
+#if DEBUG
+    /// <summary>
+    /// Debug self-check (WAFLUENT_SELFTEST=links): hit-tests the middle of every link on screen
+    /// and a point beside it, writing the results to %TEMP%\wafluent-selftest.txt.
+    /// </summary>
+    private void SelfTestLinks()
+    {
+        var lines = new List<string>();
+        foreach (var text in Descendants(Messages).OfType<TextBlock>().Where(t => Controls.LinkText.GetMessage(t) is not null))
+            foreach (var link in text.Inlines.OfType<Microsoft.UI.Xaml.Documents.Hyperlink>())
+            {
+                var start = link.ContentStart.GetPositionAtOffset(2, Microsoft.UI.Xaml.Documents.LogicalDirection.Forward).GetCharacterRect(Microsoft.UI.Xaml.Documents.LogicalDirection.Forward);
+                var inside = new Windows.Foundation.Point(start.X + 3, start.Y + start.Height / 2);
+                var before = link.ContentStart.GetCharacterRect(Microsoft.UI.Xaml.Documents.LogicalDirection.Forward);
+                var outside = new Windows.Foundation.Point(Math.Max(0, before.X - 30), before.Y + before.Height / 2);
+                lines.Add($"link rect {start} inside -> {Controls.LinkText.HitTest(text, inside)?.Uri ?? "none"}; 30px before -> {Controls.LinkText.HitTest(text, outside)?.Uri ?? "none"}");
+            }
+        File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines.Count > 0 ? lines : ["no links on screen"]);
+    }
+#endif
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var d in Descendants(child)) yield return d;
+        }
     }
 
     private MenuFlyout BuildMessageMenu(Message m, FrameworkElement bubble, string? selection)

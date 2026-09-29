@@ -156,7 +156,12 @@ public sealed class Message : Observable
     public bool HasContactPhone => Contacts.Any(c => c.Phones.Count > 0);
 
     /// <summary>Polls: options with their votes (yours and everyone's, synced with the phone).</summary>
-    public IReadOnlyList<PollOption> PollOptions { get; set; } = [];
+    private IReadOnlyList<PollOption> _pollOptions = [];
+    public IReadOnlyList<PollOption> PollOptions
+    {
+        get => _pollOptions;
+        set { _pollOptions = value; Raise(nameof(PollOptions)); Raise(nameof(HasVotes)); }
+    }
     public bool PollMulti { get; set; }
     public string PollHint => PollMulti ? "Select one or more" : "Select one";
     public int PollVoters => PollOptions.SelectMany(o => o.Voters).Distinct().Count();

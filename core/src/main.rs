@@ -1131,10 +1131,12 @@ fn poll_creator(client: &Client, chat_id: &str, creator: &str) -> Option<Jid> {
 /// A vote arrived (someone's, or yours from the phone): decrypt it with the poll's secret.
 async fn poll_vote(ctx: &Ctx, client: &Arc<Client>, info: &MessageInfo, vote: extract::PollVote) {
     let chat_id = ctx.db().canonical(&info.source.chat.to_non_ad_string());
-    let Some((secret, creator, options)) = ctx.db().poll(&chat_id, &vote.poll_id) else {
+    let Some((secret, creator, options)) = poll_meta(ctx, &chat_id, &vote.poll_id) else {
         warn!("vote for unknown poll {chat_id}/{}", vote.poll_id);
         return;
     };
+    let late = whatsapp_rust::wacore::time::now_millis() - if vote.ts > 0 { vote.ts } else { info.timestamp.timestamp_millis() };
+    info!("vote on {chat_id}/{} from {} (from me: {}), arrived {late} ms after it was cast", vote.poll_id, info.source.sender, info.source.is_from_me);
     let Some(creator) = poll_creator(client, &chat_id, &creator) else { return };
     let voter = info.source.sender.to_non_ad();
     let ciphertext = whatsapp_rust::features::PollVoteCiphertext { enc_payload: &vote.payload, enc_iv: &vote.iv };
@@ -1152,19 +1154,101 @@ async fn poll_vote(ctx: &Ctx, client: &Arc<Client>, info: &MessageInfo, vote: ex
 
 /// Your vote: shown right away, then sent (encrypted with the poll's secret).
 async fn vote_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, poll_id: String, options: Vec<String>) {
-    let Some((secret, creator, _)) = ctx.db().poll(&chat_id, &poll_id) else {
-        ctx.send(Out::Notice { ok: false, text: "This poll can't be voted on from this PC (it arrived before WAFluent kept poll keys).".into() });
+    info!("voting {options:?} on {chat_id}/{poll_id}");
+    let Some((secret, creator, _)) = poll_meta(ctx, &chat_id, &poll_id) else {
+        warn!("no key for poll {chat_id}/{poll_id}");
+        ctx.send(Out::Notice { ok: false, text: "This poll can't be voted on from this PC: its key never reached it.".into() });
         return;
     };
-    let (Some(creator), Ok(jid)) = (poll_creator(client, &chat_id, &creator), chat_id.parse::<Jid>()) else { return };
-    let previous = ctx.db().set_vote(&chat_id, &poll_id, "me", &options, whatsapp_rust::wacore::time::now_millis());
-    if previous {
+    let Some(creator) = poll_creator(client, &chat_id, &creator) else { return };
+    if ctx.db().set_vote(&chat_id, &poll_id, "me", &options, whatsapp_rust::wacore::time::now_millis()) {
         send_message_update(ctx, &chat_id, &poll_id);
     }
-    if let Err(e) = client.polls().vote(jid, &poll_id, &creator, &secret, &options).await {
-        warn!("vote on {chat_id}/{poll_id} failed: {e}");
-        ctx.send(Out::Notice { ok: false, text: "Couldn't send your vote.".into() });
+    match send_vote(ctx, client, &chat_id, &poll_id, &creator, &secret, &options).await {
+        Ok(()) => info!("vote on {chat_id}/{poll_id} sent"),
+        Err(e) => {
+            warn!("vote on {chat_id}/{poll_id} failed: {e}");
+            ctx.send(Out::Notice { ok: false, text: "Couldn't send your vote.".into() });
+        }
     }
+}
+
+/// A poll's key, creator and options: ours, or (polls from before WAFluent kept keys) the
+/// key the WhatsApp library stored from history, remembered for next time.
+fn poll_meta(ctx: &Ctx, chat_id: &str, poll_id: &str) -> Option<(Vec<u8>, String, Vec<String>)> {
+    if let Some(meta) = ctx.db().poll(chat_id, poll_id) {
+        // History stored your own polls as "me"; the library knows which address made them.
+        if meta.1 == "me" {
+            if let Some((_, sender)) = library_secret(&ctx.data_dir, poll_id) {
+                return Some((meta.0, sender, meta.2));
+            }
+        }
+        return Some(meta);
+    }
+    let (secret, sender) = library_secret(&ctx.data_dir, poll_id)?;
+    let db = ctx.db();
+    db.set_poll(chat_id, poll_id, &secret, &sender);
+    Some((secret, sender, db.poll_options(chat_id, poll_id)))
+}
+
+/// (secret, sender) from whatsapp-rust's own message-secret table.
+fn library_secret(data_dir: &std::path::Path, msg_id: &str) -> Option<(Vec<u8>, String)> {
+    let db = rusqlite::Connection::open_with_flags(data_dir.join("whatsapp.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    db.query_row("SELECT secret, sender FROM msg_secrets WHERE msg_id = ?1 AND length(secret) = 32 LIMIT 1", [msg_id], |r| {
+        Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, String>(1)?))
+    })
+    .ok()
+    .map(|(secret, sender)| (secret, sender.split(':').next().unwrap_or(&sender).to_string()))
+}
+
+/// The vote message, like WhatsApp builds it. Not `client.polls().vote()`: for polls you
+/// made under your LID it compares your phone number with the LID, marks the poll as
+/// someone else's (`from_me: false`), and your phone can't match the vote to the poll.
+async fn send_vote(
+    ctx: &Ctx,
+    client: &Arc<Client>,
+    chat_id: &str,
+    poll_id: &str,
+    creator: &Jid,
+    secret: &[u8],
+    options: &[String],
+) -> Result<(), String> {
+    use whatsapp_rust::wacore::poll;
+    let (pn, lid) = (client.pn().map(|j| j.to_non_ad()), client.lid().map(|j| j.to_non_ad()));
+    let mine = |j: &Jid| [&pn, &lid].into_iter().flatten().any(|m| m.user == j.user);
+    let from_me = mine(creator);
+    // Vote under the same address family the poll was made in.
+    let voter = if creator.server == Server::Lid { lid.clone().or(pn.clone()) } else { pn.clone().or(lid.clone()) }.ok_or("not logged in")?;
+
+    // 1:1: the chat in the poll's address family (their LID for a LID poll).
+    let group = chat_id.ends_with("@g.us");
+    let chat_jid: Jid = if group {
+        chat_id.parse().map_err(|e| format!("{e}"))?
+    } else if !from_me {
+        creator.clone()
+    } else {
+        let family = if creator.server == Server::Lid { "@lid" } else { "@s.whatsapp.net" };
+        let jids = ctx.db().chat_jids(chat_id);
+        jids.iter().find(|j| j.ends_with(family)).unwrap_or(&jids[0]).parse().map_err(|e| format!("{e}"))?
+    };
+
+    let hashes: Vec<Vec<u8>> = options.iter().map(|o| poll::compute_option_hash(o).to_vec()).collect();
+    let (payload, iv) = poll::encrypt_poll_vote_with_secret(&hashes, secret, poll_id, &creator.to_non_ad_string(), &voter.to_string())
+        .map_err(|e| e.to_string())?;
+    let update = wa::message::PollUpdateMessage {
+        poll_creation_message_key: whatsapp_rust::buffa::MessageField::some(wa::MessageKey {
+            remote_jid: Some(chat_jid.to_string()),
+            from_me: Some(from_me),
+            id: Some(poll_id.to_string()),
+            participant: group.then(|| creator.to_string()),
+        }),
+        vote: whatsapp_rust::buffa::MessageField::some(wa::message::PollEncValue { enc_payload: Some(payload), enc_iv: Some(iv.to_vec()) }),
+        metadata: whatsapp_rust::buffa::MessageField::none(),
+        sender_timestamp_ms: Some(whatsapp_rust::wacore::time::now_millis()),
+    };
+    let message = wa::Message { poll_update_message: whatsapp_rust::buffa::MessageField::some(update), ..Default::default() };
+    info!("vote key: chat {chat_jid}, creator {creator}, voter {voter}, from me {from_me}");
+    client.send_message(chat_jid, message).await.map(|_| ()).map_err(|e| e.to_string())
 }
 
 // ───────────── New chats ─────────────

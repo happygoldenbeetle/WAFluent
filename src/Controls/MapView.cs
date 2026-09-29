@@ -34,11 +34,46 @@ public sealed partial class MapView : Grid
 
     private readonly ImageBrush _brush = new() { Stretch = Stretch.UniformToFill };
     private readonly Grid _pin;
+    private readonly Grid _shimmer;
+    private readonly Microsoft.UI.Xaml.Media.Animation.Storyboard _sweep = new() { RepeatBehavior = Microsoft.UI.Xaml.Media.Animation.RepeatBehavior.Forever };
     private int _version;
 
     public MapView()
     {
         Background = _brush;
+
+        // Skeleton while the map is drawn: a soft band of light sweeping across (not the blurry snapshot).
+        var band = new Microsoft.UI.Xaml.Shapes.Rectangle
+        {
+            Width = 140,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            RenderTransform = new TranslateTransform(),
+            Fill = new LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0, 0.5),
+                EndPoint = new Windows.Foundation.Point(1, 0.5),
+                GradientStops =
+                {
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0, 255, 255, 255), Offset = 0 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0x22, 255, 255, 255), Offset = 0.5 },
+                    new GradientStop { Color = Windows.UI.Color.FromArgb(0, 255, 255, 255), Offset = 1 },
+                },
+            },
+        };
+        _shimmer = new Grid { Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+        _shimmer.Children.Add(band);
+        Children.Add(_shimmer);
+        var move = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation { From = -140, To = 440, Duration = TimeSpan.FromMilliseconds(1300) };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(move, band.RenderTransform);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(move, "X");
+        _sweep.Children.Add(move);
+        SizeChanged += (_, e) =>
+        {
+            move.To = e.NewSize.Width + 20;
+            Clip = new RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
+        };
+        Unloaded += (_, _) => _sweep.Stop();
+
         // WhatsApp's red pin, its needle tip on the place (the snapshot has its own pin).
         _pin = new Grid { Width = 24, Height = 38, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
                           Margin = new Thickness(0, 0, 0, 38), Visibility = Visibility.Collapsed, IsHitTestVisible = false };
@@ -79,21 +114,57 @@ public sealed partial class MapView : Grid
     private async void Refresh()
     {
         var version = ++_version;
-        _brush.ImageSource = Ui.Thumb(Thumb);
         _pin.Visibility = Visibility.Collapsed;
         var (lat, lng) = (Latitude, Longitude);
-        if (lat == 0 && lng == 0) return;
+        if (lat == 0 && lng == 0)
+        {
+            ShowSnapshot();
+            return;
+        }
+        if (Cached(lat, lng) is { } cached)
+        {
+            ShowMap(cached);   // drawn before: straight in, no skeleton
+            return;
+        }
+        _brush.ImageSource = null;
+        _shimmer.Visibility = Visibility.Visible;
+        _sweep.Begin();
+        string? path = null;
         try
         {
-            var path = await MapFor(lat, lng);
-            if (version != _version || path is null) return;   // recycled for another message meanwhile
-            _brush.ImageSource = Ui.Image(path);
-            _pin.Visibility = Visibility.Visible;
+            path = await MapFor(lat, lng);
         }
         catch (Exception)
         {
-            // Offline or blocked: the snapshot stays.
+            // Offline or blocked: the sender's snapshot instead.
         }
+        if (version != _version) return;   // recycled for another message meanwhile
+        if (path is null) ShowSnapshot(); else ShowMap(path);
+    }
+
+    private void ShowMap(string path)
+    {
+        StopShimmer();
+        _brush.ImageSource = Ui.Image(path);
+        _pin.Visibility = Visibility.Visible;
+    }
+
+    private void ShowSnapshot()
+    {
+        StopShimmer();
+        _brush.ImageSource = Ui.Thumb(Thumb);
+    }
+
+    private void StopShimmer()
+    {
+        _sweep.Stop();
+        _shimmer.Visibility = Visibility.Collapsed;
+    }
+
+    private static string? Cached(double lat, double lng)
+    {
+        var file = Path.Combine(Root, "maps", string.Create(CultureInfo.InvariantCulture, $"{lat:0.00000}_{lng:0.00000}_{Zoom}.png"));
+        return File.Exists(file) ? file : null;
     }
 
     /// <summary>The stitched map for a place (from the cache when it's been drawn before).</summary>

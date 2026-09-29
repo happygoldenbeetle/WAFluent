@@ -119,7 +119,14 @@ public sealed partial class MainViewModel : Observable
         List<string> next = poll.PollMulti
             ? option.Selected ? mine.Where(n => n != option.Name).ToList() : [.. mine, option.Name]
             : option.Selected ? [] : [option.Name];
-        if (_core is not null && _selectedChat is not null) _core.VotePoll(_selectedChat.Id, poll.Id, next);
+        if (_core is not null && _selectedChat is not null)
+        {
+            _core.VotePoll(_selectedChat.Id, poll.Id, next);
+            return;
+        }
+        // Sample mode: count it here.
+        var voters = poll.PollOptions.ToDictionary(o => o.Name, o => o.Voters.Where(v => v != "You").Concat(next.Contains(o.Name) ? ["You"] : []).ToList());
+        poll.PollOptions = Format.PollOptions(poll, poll.PollOptions.Select(o => o.Name).ToList(), voters, next.ToHashSet());
     }
 
     /// <summary>The 1:1 chat with this phone number (any format: "+92 300 1234567", "923001234567"...).</summary>

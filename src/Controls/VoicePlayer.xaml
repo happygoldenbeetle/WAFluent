@@ -45,10 +45,12 @@
                 <ProgressRing x:Name="LoadingRing" Width="30" Height="30" IsHitTestVisible="False" />
             </Grid>
 
-            <!-- Waveform: tap to seek. Transparent background so the gaps are clickable too. -->
-            <Grid Grid.Column="1" Height="32" VerticalAlignment="Center">
-                <StackPanel x:Name="Bars" Orientation="Horizontal" Spacing="1.5" VerticalAlignment="Center"
-                            Background="Transparent" Tapped="Bars_Tapped" />
+            <!-- Waveform: click or drag the dot to move through the note. Transparent background so the
+                 gaps between bars respond too. -->
+            <Grid x:Name="Wave" Grid.Column="1" Height="32" VerticalAlignment="Center" Background="Transparent"
+                  PointerPressed="Wave_PointerPressed" PointerMoved="Wave_PointerMoved"
+                  PointerReleased="Wave_PointerReleased" PointerCaptureLost="Wave_PointerCaptureLost">
+                <StackPanel x:Name="Bars" Orientation="Horizontal" Spacing="1.5" VerticalAlignment="Center" />
                 <Canvas IsHitTestVisible="False">
                     <Ellipse x:Name="Knob" Width="13" Height="13" Canvas.Top="9.5" Fill="{ThemeResource VoiceKnobBrush}" />
                 </Canvas>

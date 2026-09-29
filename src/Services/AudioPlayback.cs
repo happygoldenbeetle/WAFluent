@@ -13,6 +13,7 @@ public static class AudioPlayback
 {
     private static MediaPlayer? _player;
     private static DispatcherQueueTimer? _timer;
+    private static double? _pendingSeek;
 
     /// <summary>Raised on the UI thread whenever the current note, state or position changes.</summary>
     public static event Action? Changed;
@@ -45,6 +46,13 @@ public static class AudioPlayback
         _player.PlaybackSession.PlaybackRate = Rate;
         _player.MediaEnded += (_, _) => ui.TryEnqueue(Stop);
         _player.MediaFailed += (_, _) => ui.TryEnqueue(Stop);
+        _player.MediaOpened += (sender, _) => ui.TryEnqueue(() =>
+        {
+            if (_pendingSeek is not { } fraction || sender != _player) return;
+            _pendingSeek = null;
+            _player.PlaybackSession.Position = TimeSpan.FromTicks((long)(Duration.Ticks * fraction));
+            Raise();
+        });
         Current = message;
         _player.Play();
 
@@ -56,9 +64,13 @@ public static class AudioPlayback
     /// <summary>Jumps to a point (0..1) in the note, starting it if needed.</summary>
     public static void Seek(Message message, double fraction)
     {
+        fraction = Math.Clamp(fraction, 0, 1);
         if (Current != message) Toggle(message);
         if (_player is null) return;
-        _player.PlaybackSession.Position = TimeSpan.FromTicks((long)(Duration.Ticks * Math.Clamp(fraction, 0, 1)));
+        if (_player.PlaybackSession.NaturalDuration <= TimeSpan.Zero)
+            _pendingSeek = fraction;   // still opening: jump there once it has
+        else
+            _player.PlaybackSession.Position = TimeSpan.FromTicks((long)(Duration.Ticks * fraction));
         Raise();
     }
 

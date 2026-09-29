@@ -60,8 +60,9 @@ public static partial class LinkText
                     UnderlineStyle = UnderlineStyle.Single,
                 };
                 link.Inlines.Add(new Run { Text = match.Value });
-                if (Uri.TryCreate(uri, UriKind.Absolute, out var parsed)) link.NavigateUri = parsed;
-                Targets.Add(link, new Target(uri, match.Value, email));
+                var target = new Target(uri, match.Value, email);
+                link.Click += (_, _) => Open(target);
+                Targets.Add(link, target);
                 block.Inlines.Add(link);
                 at = match.Index + match.Length;
             }
@@ -70,21 +71,44 @@ public static partial class LinkText
         block.Inlines.Add(new Run { Text = m.TimeSpacer, FontSize = 11, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Transparent) });
     }
 
+    /// <summary>
+    /// Opens a link the way Explorer would: mailto: starts your mail app, web links your browser.
+    /// With no mail app set up, Windows asks which app to use.
+    /// </summary>
+    public static void Open(Target target)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target.Uri) { UseShellExecute = true });
+        }
+        catch (Exception)
+        {
+            if (Uri.TryCreate(target.Uri, UriKind.Absolute, out var uri))
+                _ = Windows.System.Launcher.LaunchUriAsync(uri, new Windows.System.LauncherOptions { DisplayApplicationPicker = true });
+        }
+    }
+
     /// <summary>The link under <paramref name="point"/> (relative to the TextBlock), if any.</summary>
     public static Target? HitTest(TextBlock block, Point point)
     {
         foreach (var link in block.Inlines.OfType<Hyperlink>())
         {
             if (!Targets.TryGetValue(link, out var target)) continue;
-            var length = link.ContentStart.Offset <= link.ContentEnd.Offset ? link.ContentEnd.Offset - link.ContentStart.Offset : 0;
-            for (var i = 0; i < length; i++)
+            // Walk the link's characters; each rect is hairline-wide at its start, so a
+            // character spans to the next one (or ~a glyph at a line end).
+            var length = Math.Max(0, link.ContentEnd.Offset - link.ContentStart.Offset);
+            Rect? previous = null;
+            for (var i = 0; i <= length; i++)
             {
-                var rect = link.ContentStart.GetPositionAtOffset(i, LogicalDirection.Forward).GetCharacterRect(LogicalDirection.Forward);
-                // Character rects are hairline-wide at their start; use the gap to the next one.
-                var next = link.ContentStart.GetPositionAtOffset(i + 1, LogicalDirection.Forward).GetCharacterRect(LogicalDirection.Forward);
-                var right = next.Y == rect.Y && next.X > rect.X ? next.X : rect.X + Math.Max(rect.Width, 8);
-                if (point.X >= rect.X && point.X <= right && point.Y >= rect.Y - 2 && point.Y <= rect.Y + rect.Height + 2)
-                    return target;
+                if (link.ContentStart.GetPositionAtOffset(i, LogicalDirection.Forward) is not { } position) continue;
+                var rect = position.GetCharacterRect(LogicalDirection.Forward);
+                if (previous is { } p)
+                {
+                    var right = rect.Y == p.Y && rect.X > p.X ? rect.X : p.X + 9;
+                    if (point.X >= p.X - 1 && point.X <= right + 1 && point.Y >= p.Y - 3 && point.Y <= p.Y + Math.Max(p.Height, 16) + 3)
+                        return target;
+                }
+                previous = rect;
             }
         }
         return null;

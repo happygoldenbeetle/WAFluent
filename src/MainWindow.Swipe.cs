@@ -63,6 +63,13 @@ public sealed partial class MainWindow
             _swipeRow = null;
             return;
         }
+        // Dragging a voice note's playhead isn't a swipe to reply.
+        for (var d = e.OriginalSource as DependencyObject; d is not null && d != _swipeRow; d = VisualTreeHelper.GetParent(d))
+            if (d is FrameworkElement { Name: "Wave" })
+            {
+                _swipeRow = null;
+                return;
+            }
         _swipeOrigin = point.Position;
         _swipePointer = e.Pointer.PointerId;
         _swiping = false;

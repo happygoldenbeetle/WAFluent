@@ -64,6 +64,10 @@ public sealed partial class MainWindow : Window
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
+#if DEBUG
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
+            Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
+#endif
         Closed += (_, _) =>
         {
             _call?.Close();
