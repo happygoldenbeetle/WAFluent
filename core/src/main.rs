@@ -1,4 +1,4 @@
-//! wafluent-core: the WhatsApp connection behind WAFluent.
+﻿//! wafluent-core: the WhatsApp connection behind WAFluent.
 //!
 //! Started by the WinUI app with redirected stdio. Events go out on stdout and
 //! commands come in on stdin, one JSON object per line (see `protocol.rs`).
@@ -645,16 +645,18 @@ fn favorite_sticker(ctx: &Ctx, m: whatsapp_rust::wafluent_hooks::StickerMutation
             waveform: Vec::new(),
         })
     });
+    info!("favourite sticker {} (full sync: {})", if media.is_some() { "added" } else { "removed" }, m.full_sync);
     match media {
         Some(media) => ctx.db().set_favorite(&key, &media),
         None => ctx.db().remove_favorite(&key),
     }
+    ctx.send(Out::FavoritesChanged);
 }
 
 /// Favourite stickers were dropped before the library patch; pull the app state once more
 /// so the ones starred earlier arrive too. Later changes come as they happen.
 fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
-    const FLAG: &str = "favorite_stickers_synced_v1";
+    const FLAG: &str = "favorite_stickers_synced_v2";
     if ctx.db().flag(FLAG) {
         return;
     }
@@ -674,7 +676,11 @@ fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
             client.process_sync_task(MajorSyncTask::AppStateSync { name, full_sync: true }).await;
         }
         ctx.db().set_flag(FLAG);
-        info!("favourite stickers synced: {}", ctx.db().favorites().len());
+        info!(
+            "favourite stickers synced: {} (app state seen: {:?})",
+            ctx.db().favorites().len(),
+            whatsapp_rust::wafluent_hooks::mutation_kinds()
+        );
     });
 }
 
@@ -748,7 +754,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             refresh_blocklist(ctx, client);
             avatars::queue_stale(ctx);
         }
-        Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
+        Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chatsâ€¦".into())),
         Event::Disconnected(_) => ctx.status("connecting", None),
         Event::LoggedOut(_) => forget_everything(ctx),
         Event::ChatPresence(update) => {
@@ -807,7 +813,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 Err(e) => error!("history sync task failed: {e}"),
             }
             if let Some(p) = progress.filter(|p| *p < 100) {
-                ctx.status("syncing", Some(format!("Loading your chats… {p}%")));
+                ctx.status("syncing", Some(format!("Loading your chatsâ€¦ {p}%")));
             }
             ctx.chats_dirty.notify_one();
         }
@@ -1208,8 +1214,8 @@ fn system_notice(s: &Store, wmi: &wa::WebMessageInfo, from_me: bool, actor: &str
     let names = params.iter().map(|p| name(p)).collect::<Vec<_>>().join(", ");
     let first = params.first().cloned().unwrap_or_default();
     let text = match wmi.message_stub_type? {
-        T::CALL_MISSED_VOICE | T::CALL_MISSED_GROUP_VOICE => "📞 Missed voice call".to_string(),
-        T::CALL_MISSED_VIDEO | T::CALL_MISSED_GROUP_VIDEO => "📹 Missed video call".to_string(),
+        T::CALL_MISSED_VOICE | T::CALL_MISSED_GROUP_VOICE => "ðŸ“ž Missed voice call".to_string(),
+        T::CALL_MISSED_VIDEO | T::CALL_MISSED_GROUP_VIDEO => "ðŸ“¹ Missed video call".to_string(),
         T::GROUP_CREATE => format!("{who} created group \"{first}\""),
         T::GROUP_CHANGE_SUBJECT => format!("{who} changed the group name to \"{first}\""),
         T::GROUP_CHANGE_ICON => format!("{who} changed this group's icon"),
@@ -1238,7 +1244,7 @@ fn delivery(wmi: &wa::WebMessageInfo) -> u8 {
     }
 }
 
-// ───────────── Polls ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Polls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Option hashes (what a vote carries) back to option names.
 fn option_names(options: &[String], hashes: &[Vec<u8>]) -> Vec<String> {
@@ -1381,7 +1387,7 @@ async fn send_vote(
     client.send_message(chat_jid, message).await.map(|_| ()).map_err(|e| e.to_string())
 }
 
-// ───────────── New chats ─────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ New chats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Opens the chat with a phone number, creating it if you've never messaged them.
 async fn open_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) {

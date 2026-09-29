@@ -29,6 +29,7 @@ public sealed partial class MainWindow
         _core.Stickers += (favorites, stickers, gifs) => _stickerPanel?.SetItems(favorites, stickers, gifs);
         _core.MediaReceived += (chatId, messageId, path) => _stickerPanel?.MediaArrived(chatId, messageId, path);
         _core.MediaFailed += (chatId, messageId, _) => _stickerPanel?.MediaFailed(chatId, messageId);
+        _core.FavoritesChanged += () => { if (_stickerFlyout?.IsOpen == true) _core.LoadStickers(); };
     }
 
     private void Stickers_Click(object sender, RoutedEventArgs e)

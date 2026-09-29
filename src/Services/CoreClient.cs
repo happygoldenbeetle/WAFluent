@@ -64,6 +64,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
+    public event Action? FavoritesChanged;                                   // starred/unstarred on the phone
     public event Action<IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>>? Stickers;   // favourites, recent stickers, GIFs
     public event Action<string, string, string>? Typing;                     // chat, who (groups), typing | recording | paused
     public event Action<string, bool, long?>? Presence;                      // chat, online, last seen (Unix s)
@@ -303,6 +304,9 @@ public sealed class CoreClient : IDisposable
                 var online = root.GetProperty("online").GetBoolean();
                 long? lastSeen = root.TryGetProperty("lastSeen", out var ls) && ls.ValueKind == System.Text.Json.JsonValueKind.Number ? ls.GetInt64() : null;
                 Post(() => Presence?.Invoke(presenceChat, online, lastSeen));
+                break;
+            case "favoritesChanged":
+                Post(() => FavoritesChanged?.Invoke());
                 break;
             case "stickers":
                 var favorites = root.GetProperty("favorites").Deserialize<List<StickerDto>>(Json) ?? [];

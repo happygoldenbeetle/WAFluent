@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 pub enum Event {
     /// The sticker panel's contents: recent stickers and GIFs.
     Stickers { favorites: Vec<StickerDto>, stickers: Vec<StickerDto>, gifs: Vec<StickerDto> },
+    /// A favourite sticker was added or removed on the phone (the open panel reloads).
+    FavoritesChanged,
     /// Someone in the chat is typing ("typing"), recording a voice note ("recording") or
     /// stopped ("paused"). `who` names them in groups.
     Typing { chat_id: String, who: String, state: &'static str },
