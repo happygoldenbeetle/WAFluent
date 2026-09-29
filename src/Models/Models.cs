@@ -58,12 +58,28 @@ public sealed class Message : Observable
     public string Time { get; init; } = "";
     public DateTime Timestamp { get; init; }
     public long UnixTs { get; init; }
-    public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }
+    public Delivery Delivery
+    {
+        get => _delivery;
+        set { if (Set(ref _delivery, value)) Raise(nameof(ReceiptLabel)); }
+    }
 
-    private bool _hasTail = true;
+    private bool _hasTail = true, _showReceipt;
 
-    /// <summary>First bubble of a run from the same person: it gets WhatsApp's little tail.</summary>
+    /// <summary>Gets the tail: the first bubble of a run (classic) or the last (iMessage style).</summary>
     public bool HasTail { get => _hasTail; set => Set(ref _hasTail, value); }
+
+    /// <summary>Your latest message: "Delivered" / "Read" under it (iMessage style).</summary>
+    public bool ShowReceipt { get => _showReceipt; set => Set(ref _showReceipt, value); }
+
+    public string ReceiptLabel => _delivery switch
+    {
+        Delivery.Read => "Read",
+        Delivery.Delivered => "Delivered",
+        Delivery.Pending => "Sending…",
+        Delivery.Failed => "Not Delivered",
+        _ => "Sent",
+    };
 
     /// <summary>Just sent or received: its bubble springs in when it first appears.</summary>
     public bool AnimateIn { get; set; }
@@ -232,7 +248,7 @@ public sealed class Message : Observable
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.
     /// Must end in a non-whitespace character: trailing spaces take no width at a line end.
     /// </summary>
-    public string TimeSpacer => "  " + (Starred ? "__ " : "") + (Edited ? "Edited " : "") + Time + (IsOutgoing ? " ___" : "");
+    public string TimeSpacer => Helpers.Ui.IMessage ? "" : "  " + (Starred ? "__ " : "") + (Edited ? "Edited " : "") + Time + (IsOutgoing ? " ___" : "");
 }
 
 public sealed class Chat : Observable

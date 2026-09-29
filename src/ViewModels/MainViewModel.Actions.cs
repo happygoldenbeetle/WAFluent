@@ -112,6 +112,12 @@ public sealed partial class MainViewModel
     }
 #endif
 
+    /// <summary>Tails and receipts again for every loaded chat (the bubble style changed).</summary>
+    public void RefreshRuns()
+    {
+        foreach (var chat in _allChats.Where(c => c.MessagesLoaded)) UpdateRuns(chat);
+    }
+
     /// <summary>A message changed (vote, edit, download details): its bubble is swapped in place.</summary>
     private void ApplyUpdate(Chat chat, MessageDto dto)
     {
@@ -122,6 +128,7 @@ public sealed partial class MainViewModel
         fresh.MediaPath ??= old.MediaPath;
         fresh.Selecting = old.Selecting;
         fresh.HasTail = old.HasTail;
+        fresh.ShowReceipt = old.ShowReceipt;
         chat.Messages[i] = fresh;
         // A message whose download details just arrived from the phone: fetch it now.
         if (!old.HasMedia && fresh.HasMedia) RequestMedia(chat, [fresh]);

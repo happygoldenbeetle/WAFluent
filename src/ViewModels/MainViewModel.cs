@@ -553,19 +553,27 @@ public sealed partial class MainViewModel : Observable
     }
 
     /// <summary>
-    /// A bubble gets WhatsApp's tail when it starts a run: the message before it is someone
-    /// else's, a notice, or the start of a new day.
+    /// Runs of bubbles from the same person (broken by someone else, a notice or a new day).
+    /// Classic: the first bubble of a run gets the tail; iMessage style: the last one, and
+    /// your latest message shows "Delivered" / "Read".
     /// </summary>
     public static void UpdateRuns(Chat chat)
     {
-        Message? previous = null;
-        foreach (var m in chat.Messages)
+        var list = chat.Messages;
+        static bool SameRun(Message a, Message b) =>
+            a.Kind is not (MessageKind.DateDivider or MessageKind.System) && b.Kind is not (MessageKind.DateDivider or MessageKind.System)
+            && a.IsOutgoing == b.IsOutgoing && a.SenderName == b.SenderName;
+        Message? lastOutgoing = null;
+        for (var i = 0; i < list.Count; i++)
         {
-            if (m.Kind != MessageKind.DateDivider)
-                m.HasTail = previous is null || previous.Kind is MessageKind.DateDivider or MessageKind.System || m.Kind == MessageKind.System
-                            || previous.IsOutgoing != m.IsOutgoing || previous.SenderName != m.SenderName;
-            previous = m;
+            var m = list[i];
+            if (m.Kind == MessageKind.DateDivider) continue;
+            m.HasTail = Helpers.Ui.IMessage
+                ? i + 1 >= list.Count || !SameRun(m, list[i + 1])
+                : i == 0 || !SameRun(list[i - 1], m);
+            if (m.IsOutgoing) lastOutgoing = m;
         }
+        foreach (var m in list) m.ShowReceipt = Helpers.Ui.IMessage && m == lastOutgoing;
     }
 
     // ───────────── Sending and replying ─────────────

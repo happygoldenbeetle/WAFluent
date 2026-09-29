@@ -27,6 +27,12 @@ public sealed partial class MainWindow : Window
         var sample = Environment.GetCommandLineArgs().Contains("--sample");
         if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         ViewModel = new MainViewModel(_core);
+        Helpers.Ui.IMessage = !_ui.ClassicBubbles;   // before any bubble is drawn
+#if DEBUG
+        // WAFLUENT_BUBBLES=classic|imessage previews a style without changing your settings.
+        var style = Environment.GetEnvironmentVariable("WAFLUENT_BUBBLES");
+        if (style is "classic" or "imessage") Helpers.Ui.IMessage = style == "imessage";
+#endif
 
         InitializeComponent();
         SetupSwipe();

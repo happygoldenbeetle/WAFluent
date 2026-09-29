@@ -15,8 +15,23 @@ public sealed partial class MainWindow
 {
     private void SetupBubbleMotion()
     {
+        ClassicBubblesSwitch.IsOn = _ui.ClassicBubbles;
         Messages.ElementPrepared += Messages_ElementPrepared;
         SetupTypingBubbleMotion();
+    }
+
+    /// <summary>Settings › Classic bubbles: redraw the open conversation in the other style.</summary>
+    private void ClassicBubbles_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.ClassicBubbles == ClassicBubblesSwitch.IsOn) return;
+        _ui.ClassicBubbles = ClassicBubblesSwitch.IsOn;
+        _ui.Save();
+        Helpers.Ui.IMessage = !_ui.ClassicBubbles;
+        ViewModel.RefreshRuns();
+        TypingBubble.Refresh();
+        Messages.ItemsSource = null;
+        Messages.ItemsSource = ViewModel.SelectedChat?.Messages;
+        ScrollToBottom();
     }
 
     private void Messages_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs e)
@@ -67,12 +82,13 @@ public sealed partial class MainWindow
         visual.StartAnimation("Opacity", fade);
     }
 
-    /// <summary>The typing bubble pops in from its tail (top left) and shrinks back into it.</summary>
+    /// <summary>The typing bubble pops in from its tail (bottom left, or top left for classic) and shrinks back into it.</summary>
     private void SetupTypingBubbleMotion()
     {
         var visual = ElementCompositionPreview.GetElementVisual(TypingBubble);
         var compositor = visual.Compositor;
-        visual.CenterPoint = Vector3.Zero;
+        TypingBubble.SizeChanged += (_, e) =>
+            visual.CenterPoint = new Vector3(0, Helpers.Ui.IMessage ? (float)e.NewSize.Height : 0, 0);
 
         var show = compositor.CreateAnimationGroup();
         var pop = compositor.CreateVector3KeyFrameAnimation();

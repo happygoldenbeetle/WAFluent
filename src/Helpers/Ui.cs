@@ -8,6 +8,24 @@ namespace WhatsAppNative.Helpers;
 /// <summary>Small functions used from x:Bind in XAML.</summary>
 public static class Ui
 {
+    /// <summary>
+    /// iMessage-style bubbles (the default; Settings › Classic bubbles turns them off): round,
+    /// in WhatsApp's colours, tails on the last bubble of a run, no times inside ("Delivered" /
+    /// "Read" under your last message instead), plain "Today 15:20" dividers. Set before a
+    /// conversation is drawn; the window redraws it when it changes.
+    /// </summary>
+    public static bool IMessage { get; set; } = true;
+
+    /// <summary>Times and ticks inside bubbles: classic only.</summary>
+    public static Visibility ClassicMeta => IMessage ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>The time on a picture without caption: classic only.</summary>
+    public static Visibility MetaCollapsed(bool hidden) => IMessage || hidden ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Day dividers: a pill ("Today"), or iMessage's plain "Today 15:20".</summary>
+    public static string DividerText(string day, DateTime at) => IMessage ? $"{day} {at:H:mm}" : day;
+    public static Brush DividerBackground() => IMessage ? new SolidColorBrush(Microsoft.UI.Colors.Transparent) : Themed.Brush("DatePillBrush");
+
     public static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     public static Visibility Collapsed(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
     public static Visibility NotEmpty(string? value) => Visible(!string.IsNullOrEmpty(value));

@@ -97,7 +97,7 @@ public sealed partial class ChatLayout : VirtualizingLayout
                 Remember(i, height);
                 arranged.Add((element, y, height));
             }
-            y += height + (i < count - 1 ? Gap(context.GetItemAt(i + 1)) : 0);
+            y += height + (i < count - 1 ? Gap(context.GetItemAt(i), context.GetItemAt(i + 1)) : 0);
         }
 
         // Rows that scrolled out of the window (or whose message was removed) go back to the pool.
@@ -132,9 +132,16 @@ public sealed partial class ChatLayout : VirtualizingLayout
         return finalSize;
     }
 
-    /// <summary>A bubble that continues a run (no tail) sits close to the one before it, like WhatsApp.</summary>
-    private double Gap(object next) =>
-        next is Models.Message { HasTail: false, Kind: not Models.MessageKind.DateDivider } ? 2 : Spacing;
+    /// <summary>
+    /// Bubbles in a run sit 2 px apart. Classic: the next one continues the run when it has no
+    /// tail (tails start runs); iMessage style: this one does (tails end runs).
+    /// </summary>
+    private double Gap(object current, object next)
+    {
+        if (current is not Models.Message { Kind: not Models.MessageKind.DateDivider } a
+            || next is not Models.Message { Kind: not Models.MessageKind.DateDivider } b) return Spacing;
+        return (Helpers.Ui.IMessage ? !a.HasTail : !b.HasTail) ? 2 : Spacing;
+    }
 
     private void Remember(int index, double height)
     {

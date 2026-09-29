@@ -156,7 +156,7 @@
                                     <TextBlock Grid.Row="3" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
                                                Margin="0,-5.3,0,-3.5" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}" controls:LinkText.Message="{x:Bind}" />
                                     <!-- Time on the same baseline as the last line of text. -->
-                                    <StackPanel Grid.Row="3" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                    <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" Grid.Row="3" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Orientation="Horizontal" Spacing="3">
                                         <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                   Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
@@ -171,6 +171,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -215,7 +217,7 @@
                                         </Border>
                                         <!-- Without a caption the time sits on the picture. -->
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
-                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasText)}">
+                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.MetaCollapsed(HasText)}">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
                                                 <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
                                                 <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -226,7 +228,7 @@
                                     <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
                                         <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
                                                    Margin="0,-5.3,0,-3.5" controls:LinkText.Message="{x:Bind}" />
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                        <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                   Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
@@ -242,6 +244,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -274,6 +278,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -302,7 +308,7 @@
                                 <Image Source="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="Uniform" />
                             </Grid>
                             <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
-                                    Background="{ThemeResource IncomingBubbleBrush}">
+                                    Background="{ThemeResource IncomingBubbleBrush}" Visibility="{x:Bind helpers:Ui.ClassicMeta}">
                                 <StackPanel Orientation="Horizontal" Spacing="3">
                                     <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -311,6 +317,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -368,7 +376,7 @@
                                             </Grid>
                                         </StackPanel>
                                     </Border>
-                                    <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
+                                    <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                         <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                     </StackPanel>
@@ -377,6 +385,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -435,7 +445,7 @@
                                             </StackPanel>
                                         </Border>
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
-                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasText)}">
+                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.MetaCollapsed(HasText)}">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
                                                 <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
                                                 <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -446,7 +456,7 @@
                                     <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
                                         <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
                                                    Margin="0,-5.3,0,-3.5" controls:LinkText.Message="{x:Bind}" />
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
+                                        <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
@@ -459,6 +469,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -514,7 +526,7 @@
                                             <TextBlock Text="© OpenStreetMap" FontSize="9" Foreground="#99000000" />
                                         </Border>
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
-                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasPlaceText)}">
+                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.MetaCollapsed(HasPlaceText)}">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
                                                 <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
                                                 <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -528,7 +540,7 @@
                                             <TextBlock Text="{x:Bind PlaceAddress}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" TextWrapping="Wrap"
                                                        Visibility="{x:Bind HasPlaceAddress}" />
                                         </StackPanel>
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
+                                        <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
@@ -541,6 +553,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -585,7 +599,7 @@
                                         </StackPanel>
                                     </Grid>
                                     <Grid Height="22" Margin="0,0,3,0">
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
+                                        <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
@@ -609,6 +623,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -678,7 +694,7 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <Grid>
-                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
+                                        <StackPanel Visibility="{x:Bind helpers:Ui.ClassicMeta}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
@@ -694,6 +710,8 @@
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                             </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -715,8 +733,8 @@
                 <helpers:MessageTemplateSelector.DateDivider>
                     <DataTemplate x:DataType="models:Message">
                         <Border HorizontalAlignment="Center" Margin="0,10" Padding="12,4"
-                                Background="{ThemeResource DatePillBrush}" CornerRadius="6">
-                            <TextBlock Text="{x:Bind Text}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
+                                Background="{x:Bind helpers:Ui.DividerBackground()}" CornerRadius="6">
+                            <TextBlock Text="{x:Bind helpers:Ui.DividerText(Text, Timestamp)}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
                         </Border>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.DateDivider>
@@ -909,6 +927,12 @@
                                            Text="Shown when you right-click a message, next to + for any emoji. Double-click a message to react with the first one. Click an emoji to change it." />
                                 <StackPanel x:Name="QuickReactionSlots" Orientation="Horizontal" Spacing="6" />
                                 <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="ClassicBubblesSwitch" Header="Classic bubbles" OffContent="Off" OnContent="On"
+                                              Toggled="ClassicBubbles_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="WhatsApp's classic bubbles, with the time and ticks inside. Off: rounder bubbles with a curled tail, &quot;Delivered&quot; and &quot;Read&quot; under your last message." />
                             </StackPanel>
                             <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On"
