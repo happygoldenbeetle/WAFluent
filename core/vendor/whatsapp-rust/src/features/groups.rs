@@ -1,0 +1,2388 @@
+use crate::client::Client;
+use crate::features::mex::{MexError, mex_request};
+use crate::request::IqError;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::sync::Arc;
+use thiserror::Error;
+use wacore::client::context::GroupInfo;
+use wacore::iq::contacts::SetProfilePictureSpec;
+// Returned by set/remove_profile_picture; re-exported so callers don't reach
+// into wacore directly (consistent with GroupProfilePicture below).
+pub use wacore::iq::contacts::SetProfilePictureResponse;
+use wacore::iq::groups::{
+    AcceptGroupInviteIq, AcceptGroupInviteV4Iq, AcknowledgeGroupIq, AddParticipantsIq,
+    BatchGetGroupInfoIq, CancelMembershipRequestsIq, DemoteParticipantsIq, GetGroupInviteInfoIq,
+    GetGroupInviteLinkIq, GetGroupProfilePicturesIq, GetMembershipRequestsIq, GroupCreateIq,
+    GroupInfoOutcome, GroupInfoResponse, GroupParticipantResponse, GroupParticipatingIq,
+    GroupQueryIq, LeaveGroupIq, MembershipRequestActionIq, PromoteParticipantsIq,
+    RemoveParticipantsIncludingLinkedGroupsIq, RemoveParticipantsIq, RevokeRequestCodeIq,
+    SetAllowAdminReportsIq, SetGroupAnnouncementIq, SetGroupDescriptionIq, SetGroupEphemeralIq,
+    SetGroupHistoryIq, SetGroupLockedIq, SetGroupMembershipApprovalIq, SetGroupSubjectIq,
+    SetMemberAddModeIq, SetNoFrequentlyForwardedIq, normalize_participants,
+};
+use wacore::iq::mex_operations::update_group_property;
+use wacore::types::message::AddressingMode;
+use wacore_binary::{Jid, JidExt as _};
+
+use wacore::iq::groups::BatchGroupInfoResult as RawBatchResult;
+pub use wacore::iq::groups::{
+    GroupAppealStatus, GroupCreateOptions, GroupDescription, GroupEphemeralSettings,
+    GroupJoinError, GroupParticipantDetails, GroupParticipantOptions, GroupProfilePicture,
+    GroupSubject, GrowthLockInfo, InviteInfoError, JoinGroupResult, MemberAddMode, MemberLinkMode,
+    MemberShareHistoryMode, MembershipApprovalMode, MembershipRequest, ParticipantChangeResponse,
+    ParticipantType, PictureType,
+};
+
+/// Error returned by group operations (metadata queries, participant and
+/// settings mutations, invites, profile pictures).
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum GroupError {
+    /// A `w:g2` IQ to the server failed (transport, timeout, server rejection).
+    #[error("{0}")]
+    Iq(#[from] IqError),
+    /// A MEX (GraphQL) group-property mutation failed.
+    #[error("{0}")]
+    Mex(#[from] MexError),
+    /// The request was malformed (e.g. empty invite code, batch over the limit,
+    /// expired V4 invite, non-group JID where one is required).
+    #[error("invalid group request: {0}")]
+    InvalidRequest(String),
+    /// The server refused a description update because the `prev` token no
+    /// longer matches the group's current description: another device changed
+    /// it first. Distinct from a permission refusal, so a caller can re-read
+    /// the description and retry instead of giving up.
+    #[error("the group description changed since it was read")]
+    DescriptionConflict,
+    /// Catch-all for internal failures (LID/PN resolution, the protocol-message
+    /// send path behind `update_member_label`, cache plumbing).
+    #[error("{0}")]
+    Internal(#[from] anyhow::Error),
+}
+
+/// The description a [`Groups::set_description`] call expects to replace.
+///
+/// The server takes the `prev` attribute as an optimistic-concurrency token: it
+/// applies the update only when the token matches the group's current
+/// description id, and answers `409 conflict` otherwise. A group with no
+/// description expects no token at all.
+///
+/// The default is [`PreviousDescription::Resolve`] because it is the only
+/// variant that is correct without knowing anything about the group. Note that
+/// it is also the only one that costs a round trip.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PreviousDescription<'a> {
+    /// Read the group's current description id from the server before sending.
+    /// The right choice when the caller holds no fresh metadata.
+    #[default]
+    Resolve,
+    /// The group carries no description yet (a freshly created group), so no
+    /// token is sent.
+    Absent,
+    /// A description id the caller already holds, typically
+    /// [`GroupMetadata::description_id`] from a recent [`Groups::get_metadata`].
+    Id(&'a str),
+}
+
+/// Turns a held [`GroupMetadata::description_id`] into a token.
+///
+/// `None` means "that metadata says the group has no description", so it maps
+/// to [`PreviousDescription::Absent`] and not to a fresh read. Metadata stale
+/// enough to have missed a description added since is therefore answered with
+/// [`GroupError::DescriptionConflict`]; pass [`PreviousDescription::Resolve`]
+/// when the age of the metadata is unknown.
+impl<'a> From<Option<&'a str>> for PreviousDescription<'a> {
+    fn from(description_id: Option<&'a str>) -> Self {
+        match description_id {
+            Some(id) => Self::Id(id),
+            None => Self::Absent,
+        }
+    }
+}
+
+/// `<error code="409" text="conflict"/>` on a `w:g2` set: the request lost an
+/// optimistic-concurrency check.
+const CONFLICT_STATUS_CODE: u16 = 409;
+
+/// Typed `update` payload for the `update_group_property` mex mutation. The
+/// generated mirror types this op's `update` as a `String`, but it is a one-of
+/// object; this enum's `#[serde(rename_all = "snake_case")]` emits the exact
+/// wire keys with no `serde_json::Value`. Leaf values use the mex (uppercase)
+/// vocabulary, which differs from the lower-case `WireEnum` IQ values.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum GroupPropertyUpdate {
+    MemberLinkMode(&'static str),
+    MemberShareGroupHistoryMode(&'static str),
+    LimitSharing(LimitSharingUpdate),
+}
+
+#[derive(serde::Serialize)]
+struct LimitSharingUpdate {
+    limit_sharing_enabled: bool,
+    limit_sharing_trigger: &'static str,
+}
+
+#[derive(serde::Serialize)]
+struct UpdateGroupPropertyVars {
+    group_id: String,
+    update: GroupPropertyUpdate,
+}
+
+/// Result for a single group in a batch query.
+#[derive(Debug, Clone)]
+pub enum BatchGroupResult {
+    Full(Box<GroupMetadata>),
+    /// Server returned truncated info (only id and size).
+    Truncated {
+        id: Jid,
+        size: Option<u32>,
+    },
+    Forbidden(Jid),
+    NotFound(Jid),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GroupMetadata {
+    pub id: Jid,
+    pub subject: String,
+    pub notify: Option<String>,
+    pub participants: Vec<GroupParticipant>,
+    pub addressing_mode: AddressingMode,
+    /// Group creator JID.
+    pub creator: Option<Jid>,
+    pub creator_pn: Option<Jid>,
+    pub creator_username: Option<String>,
+    pub creator_country_code: Option<String>,
+    /// Group creation timestamp (Unix seconds).
+    pub creation_time: Option<u64>,
+    pub participant_version_id: Option<String>,
+    pub admin_version_id: Option<String>,
+    pub open_thread_id: Option<String>,
+    pub has_missing_participant_identification: bool,
+    /// Subject modification timestamp (Unix seconds).
+    pub subject_time: Option<u64>,
+    /// Subject owner JID.
+    pub subject_owner: Option<Jid>,
+    pub subject_owner_pn: Option<Jid>,
+    pub subject_owner_username: Option<String>,
+    /// Group description body text.
+    pub description: Option<String>,
+    /// Description ID (for conflict detection when updating).
+    pub description_id: Option<String>,
+    /// JID of the participant who set the description.
+    pub description_owner: Option<Jid>,
+    pub description_owner_pn: Option<Jid>,
+    pub description_owner_username: Option<String>,
+    /// Timestamp when the description was set.
+    pub description_time: Option<u64>,
+    /// Whether the group is locked (only admins can edit group info).
+    pub is_locked: bool,
+    /// Whether announcement mode is enabled (only admins can send messages).
+    pub is_announcement: bool,
+    /// Disappearing-message settings when the server includes an `<ephemeral>` node.
+    pub ephemeral: Option<GroupEphemeralSettings>,
+    /// Whether membership approval is required to join.
+    pub membership_approval: bool,
+    /// Who can add members to the group.
+    pub member_add_mode: Option<MemberAddMode>,
+    /// Who can use invite links.
+    pub member_link_mode: Option<MemberLinkMode>,
+    /// Total participant count.
+    pub size: Option<u32>,
+    /// Whether this group is a community parent group.
+    pub is_parent_group: bool,
+    pub parent_membership_approval_required: bool,
+    /// JID of the parent community (for subgroups).
+    pub parent_group_jid: Option<Jid>,
+    /// Whether this is the default announcement subgroup of a community.
+    pub is_default_sub_group: bool,
+    /// Whether this is the general chat subgroup of a community.
+    pub is_general_chat: bool,
+    /// Whether non-admin community members can create subgroups.
+    pub allow_non_admin_sub_group_creation: bool,
+    /// Whether frequently-forwarded messages are restricted.
+    pub no_frequently_forwarded: bool,
+    /// Who can share message history with new members.
+    pub member_share_history_mode: Option<MemberShareHistoryMode>,
+    /// Growth lock status (invite links temporarily disabled).
+    pub growth_locked: Option<GrowthLockInfo>,
+    /// Whether the group is suspended.
+    pub is_suspended: bool,
+    pub suspension_can_auto_file: bool,
+    pub appeal_status: Option<GroupAppealStatus>,
+    pub appeal_update_time: Option<u64>,
+    pub is_support_group: bool,
+    /// Whether admin reports are allowed.
+    pub allow_admin_reports: bool,
+    /// Whether the group is hidden.
+    pub is_hidden_group: bool,
+    /// Whether incognito mode is enabled.
+    pub is_incognito: bool,
+    /// Whether group history is enabled.
+    pub has_group_history: bool,
+    pub is_auto_add_disabled: bool,
+    pub has_capi: bool,
+    pub evolution_version: Option<u32>,
+    pub has_group_safety_check: bool,
+    pub participant_label_enabled: bool,
+    /// Whether limit sharing is enabled.
+    pub is_limit_sharing_enabled: bool,
+    pub limit_sharing_trigger: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupParticipant {
+    pub jid: Jid,
+    pub phone_number: Option<Jid>,
+    pub lid: Option<Jid>,
+    pub username: Option<wacore_binary::CompactString>,
+    pub participant_type: ParticipantType,
+    pub details: Option<Box<GroupParticipantDetails>>,
+}
+
+impl GroupParticipant {
+    pub fn is_admin(&self) -> bool {
+        self.participant_type.is_admin()
+    }
+
+    pub fn is_super_admin(&self) -> bool {
+        self.participant_type == ParticipantType::SuperAdmin
+    }
+}
+
+impl From<GroupParticipantResponse> for GroupParticipant {
+    fn from(p: GroupParticipantResponse) -> Self {
+        Self {
+            jid: p.jid,
+            phone_number: p.phone_number,
+            lid: p.lid,
+            username: p.username,
+            participant_type: p.participant_type,
+            details: p.details,
+        }
+    }
+}
+
+impl From<GroupInfoResponse> for GroupMetadata {
+    fn from(group: GroupInfoResponse) -> Self {
+        Self {
+            id: group.id,
+            subject: group.subject.into_string(),
+            notify: group.notify,
+            participants: group.participants.into_iter().map(Into::into).collect(),
+            addressing_mode: group.addressing_mode,
+            creator: group.creator,
+            creator_pn: group.creator_pn,
+            creator_username: group.creator_username,
+            creator_country_code: group.creator_country_code,
+            creation_time: group.creation_time,
+            participant_version_id: group.participant_version_id,
+            admin_version_id: group.admin_version_id,
+            open_thread_id: group.open_thread_id,
+            has_missing_participant_identification: group.has_missing_participant_identification,
+            subject_time: group.subject_time,
+            subject_owner: group.subject_owner,
+            subject_owner_pn: group.subject_owner_pn,
+            subject_owner_username: group.subject_owner_username,
+            description: group.description,
+            description_id: group.description_id,
+            description_owner: group.description_owner,
+            description_owner_pn: group.description_owner_pn,
+            description_owner_username: group.description_owner_username,
+            description_time: group.description_time,
+            is_locked: group.is_locked,
+            is_announcement: group.is_announcement,
+            ephemeral: group.ephemeral,
+            membership_approval: group.membership_approval,
+            member_add_mode: group.member_add_mode,
+            member_link_mode: group.member_link_mode,
+            size: group.size,
+            is_parent_group: group.is_parent_group,
+            parent_membership_approval_required: group.parent_membership_approval_required,
+            parent_group_jid: group.parent_group_jid,
+            is_default_sub_group: group.is_default_sub_group,
+            is_general_chat: group.is_general_chat,
+            allow_non_admin_sub_group_creation: group.allow_non_admin_sub_group_creation,
+            no_frequently_forwarded: group.no_frequently_forwarded,
+            member_share_history_mode: group.member_share_history_mode,
+            growth_locked: group.growth_locked,
+            is_suspended: group.is_suspended,
+            suspension_can_auto_file: group.suspension_can_auto_file,
+            appeal_status: group.appeal_status,
+            appeal_update_time: group.appeal_update_time,
+            is_support_group: group.is_support_group,
+            allow_admin_reports: group.allow_admin_reports,
+            is_hidden_group: group.is_hidden_group,
+            is_incognito: group.is_incognito,
+            has_group_history: group.has_group_history,
+            is_auto_add_disabled: group.is_auto_add_disabled,
+            has_capi: group.has_capi,
+            evolution_version: group.evolution_version,
+            has_group_safety_check: group.has_group_safety_check,
+            participant_label_enabled: group.participant_label_enabled,
+            is_limit_sharing_enabled: group.is_limit_sharing_enabled,
+            limit_sharing_trigger: group.limit_sharing_trigger,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct CreateGroupResult {
+    pub metadata: GroupMetadata,
+}
+
+pub struct Groups<'a> {
+    client: &'a Client,
+}
+
+/// Serializes one group's metadata publication with participant mutations and
+/// sender-key distribution, reusing the client's existing per-group lane.
+/// Keeping the guard in the type prevents persistence and cache publication
+/// from accidentally being split across an unlocked await.
+pub(crate) struct GroupMetadataGuard<'a> {
+    client: &'a Client,
+    jid: &'a Jid,
+    _guard: async_lock::MutexGuardArc<()>,
+}
+
+impl GroupMetadataGuard<'_> {
+    pub(crate) async fn current(&self) -> Option<Arc<GroupInfo>> {
+        self.client.get_group_cache().await.get(self.jid).await
+    }
+
+    async fn cache(&self, info: Arc<GroupInfo>) {
+        self.client
+            .get_group_cache()
+            .await
+            .insert(self.jid.clone(), info)
+            .await;
+    }
+
+    pub(crate) async fn publish(&self, info: Arc<GroupInfo>) {
+        let jid = self.jid.to_string();
+        match serde_json::to_vec(info.as_ref()) {
+            Ok(blob) => {
+                if let Err(error) = self
+                    .client
+                    .persistence_manager
+                    .backend()
+                    .put_group_metadata(&jid, &blob)
+                    .await
+                {
+                    log::warn!("Failed to persist group metadata for {}: {error}", self.jid);
+                }
+            }
+            Err(error) => {
+                log::warn!(
+                    "Failed to serialize group metadata for {}: {error}",
+                    self.jid
+                );
+            }
+        }
+
+        self.cache(info).await;
+    }
+
+    pub(crate) async fn invalidate(&self) {
+        if let Err(error) = self
+            .client
+            .persistence_manager
+            .backend()
+            .delete_group_metadata(&self.jid.to_string())
+            .await
+        {
+            log::warn!(
+                "Failed to invalidate persisted group metadata for {}: {error}",
+                self.jid
+            );
+        }
+        self.client
+            .get_group_cache()
+            .await
+            .invalidate(self.jid)
+            .await;
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ParticipantRemovalScope {
+    Group,
+    LinkedGroups,
+}
+
+impl<'a> Groups<'a> {
+    pub(crate) fn new(client: &'a Client) -> Self {
+        Self { client }
+    }
+
+    /// Query the cached, send-oriented view of a group.
+    ///
+    /// Returns the slim [`GroupInfo`] the encryption path needs: participant
+    /// JIDs, the group's addressing mode, the LID/PN mapping, and whether it is
+    /// a community announcement group. A cached entry is returned as-is, so a
+    /// repeated call is free. Only a cache miss goes to the network, and it
+    /// sends the persisted participant phash, so an unchanged group costs a
+    /// `not-modified` answer instead of a full metadata download.
+    ///
+    /// This is the right call for routing and encrypting a message. For the
+    /// user-facing fields (subject, description, admin roles, group settings)
+    /// use [`Groups::get_metadata`], and to control staleness explicitly use
+    /// [`Groups::query_info_with_freshness`].
+    pub async fn query_info(&self, jid: &Jid) -> Result<Arc<GroupInfo>, GroupError> {
+        self.query_info_with_freshness(jid, crate::cache::Freshness::CachePreferred)
+            .await
+    }
+
+    /// Query group metadata using the requested cache freshness policy.
+    ///
+    /// A refresh leaves the current snapshot readable while the network request
+    /// is in flight, then atomically replaces it after a successful response.
+    pub async fn query_info_with_freshness(
+        &self,
+        jid: &Jid,
+        freshness: crate::cache::Freshness,
+    ) -> Result<Arc<GroupInfo>, GroupError> {
+        let cache = self.client.get_group_cache().await;
+        let mut cached = cache.get(jid).await;
+        if freshness == crate::cache::Freshness::CachePreferred
+            && let Some(cached) = cached.take()
+        {
+            return Ok(cached);
+        }
+
+        self.query_info_from_source(jid, cached).await
+    }
+
+    #[expect(
+        clippy::manual_async_fn,
+        reason = "the explicit async block keeps the network-bound state machine out of line"
+    )]
+    fn query_info_from_source<'b>(
+        &'b self,
+        jid: &'b Jid,
+        mut cached: Option<Arc<GroupInfo>>,
+    ) -> impl Future<Output = Result<Arc<GroupInfo>, GroupError>> + 'b {
+        // Keep the large, network-bound state machine shared between refresh
+        // and cache-miss callers. The cache-hit fast path stays in
+        // `query_info_with_freshness`, while this boundary prevents LTO from
+        // cloning the slow path for each statically known freshness policy.
+        #[inline(never)]
+        async move {
+            let jid_str = jid.to_string();
+            let backend = self.client.persistence_manager.backend();
+            loop {
+                // Send the persisted participant phash (WA Web queryGroup phash) so
+                // the server can omit <group> for an unchanged snapshot. On a cold
+                // L1, keep the lane through the request: without an Arc to compare,
+                // this is the only way to distinguish "still absent" from a
+                // notification that invalidated an already-absent snapshot.
+                let (persisted, mut cold_metadata) = if cached.is_some() {
+                    (None, None)
+                } else {
+                    let metadata = self.client.lock_group_metadata(jid).await;
+                    if let Some(current) = metadata.current().await {
+                        cached = Some(current);
+                        drop(metadata);
+                        continue;
+                    }
+                    let persisted = match backend.get_group_metadata(&jid_str).await {
+                        Ok(Some(blob)) => serde_json::from_slice(&blob).ok(),
+                        _ => None,
+                    };
+                    (persisted, Some(metadata))
+                };
+                let phash = cached.as_deref().or(persisted.as_ref()).and_then(|info| {
+                    wacore::messages::MessageUtils::participant_list_hash(&info.participants).ok()
+                });
+
+                let group = match self
+                    .client
+                    .execute(GroupQueryIq::with_phash(jid, phash))
+                    .await?
+                {
+                    GroupInfoOutcome::NotModified => {
+                        if let Some(metadata) = cold_metadata.take() {
+                            let info = Arc::new(persisted.ok_or_else(|| {
+                                GroupError::InvalidRequest(
+                                    "server returned not-modified group but nothing was cached"
+                                        .into(),
+                                )
+                            })?);
+                            metadata.cache(Arc::clone(&info)).await;
+                            return Ok(info);
+                        }
+
+                        // Participant mutations use the same per-group lane, so the
+                        // snapshot and its persisted blob cannot change between this
+                        // check and the decision below.
+                        let metadata = self.client.lock_group_metadata(jid).await;
+                        if let Some(current) = metadata.current().await {
+                            return Ok(current);
+                        }
+
+                        // The warm snapshot used for the conditional request was
+                        // invalidated while the IQ was in flight. Retry without it
+                        // instead of resurrecting pre-notification membership.
+                        drop(metadata);
+                        cached = None;
+                        continue;
+                    }
+                    GroupInfoOutcome::Full(group) => *group,
+                };
+
+                // Single pass: move participants out and build lid_to_pn_map alongside.
+                let participant_count = group.participants.len();
+                let is_lid = group.addressing_mode == AddressingMode::Lid;
+                let mut participants = Vec::with_capacity(participant_count);
+                let mut lid_to_pn_map: HashMap<wacore_binary::CompactString, Jid> = if is_lid {
+                    HashMap::with_capacity(participant_count)
+                } else {
+                    HashMap::new()
+                };
+                for participant in group.participants {
+                    if is_lid && let Some(pn) = participant.phone_number {
+                        lid_to_pn_map.insert(participant.jid.user.clone(), pn);
+                    }
+                    participants.push(participant.jid);
+                }
+
+                // Populate lid_pn_cache so silent-observer participants (no messages
+                // from them) get their mapping; otherwise `invalidate_device_cache`
+                // can't resolve the PN alias and leaves zombie registry entries.
+                if !lid_to_pn_map.is_empty()
+                    && let Some(client_arc) = self.client.self_weak.get().and_then(|w| w.upgrade())
+                {
+                    let mut batch = Vec::with_capacity(lid_to_pn_map.len());
+                    for (lid_user, pn_jid) in &lid_to_pn_map {
+                        if pn_jid.is_pn() {
+                            batch.push((lid_user.as_str().to_string(), pn_jid.user.to_string()));
+                        }
+                    }
+                    client_arc
+                        .learn_lid_pn_mappings_batch(
+                            batch,
+                            crate::lid_pn_cache::LearningSource::Other,
+                            false,
+                        )
+                        .await;
+                }
+
+                let mut info = GroupInfo::new(participants, group.addressing_mode);
+                info.is_community_announce = Some(group.is_default_sub_group);
+                if !lid_to_pn_map.is_empty() {
+                    info.set_lid_to_pn_map(lid_to_pn_map);
+                }
+                let info = Arc::new(info);
+
+                // Compare and publish while holding the same lane as participant
+                // mutations. Persisting inside the guard prevents the durable blob
+                // and L1 snapshot from being committed in opposite orders.
+                let metadata = match cold_metadata {
+                    Some(metadata) => metadata,
+                    None => {
+                        let metadata = self.client.lock_group_metadata(jid).await;
+                        let current = metadata.current().await;
+                        let unchanged = matches!(
+                            (cached.as_ref(), current.as_ref()),
+                            (Some(expected), Some(current)) if Arc::ptr_eq(expected, current)
+                        );
+                        if !unchanged {
+                            drop(metadata);
+                            if let Some(current) = current {
+                                return Ok(current);
+                            }
+                            cached = None;
+                            continue;
+                        }
+                        metadata
+                    }
+                };
+
+                metadata.publish(Arc::clone(&info)).await;
+                return Ok(info);
+            }
+        }
+    }
+
+    /// Backfills each LID participant's `phone_number` from the client's LID-PN
+    /// cache (`get_lid_pn_entry`, same warm-cache + backend path `create_group`
+    /// uses). The server often omits the attribute on `<participant>` nodes of
+    /// LID-addressed groups, so consumers keying data by PN would treat current
+    /// members as absent. No-op outside LID-addressed groups or when the PN is
+    /// already present; unknown mappings leave the participant untouched.
+    pub(super) async fn fill_participant_pns(&self, meta: &mut GroupMetadata) {
+        if meta.addressing_mode != AddressingMode::Lid {
+            return;
+        }
+        // Participants the server left PN-less, kept with their index.
+        let pending: Vec<(usize, Jid)> = meta
+            .participants
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.phone_number.is_none() && p.jid.is_lid())
+            .map(|(i, p)| (i, p.jid.clone()))
+            .collect();
+        if pending.is_empty() {
+            return;
+        }
+
+        // Cache hits are in-memory, but a cold cache falls back to the DB and a
+        // large group would otherwise serialize those lookups — bounded fan-out.
+        use futures::StreamExt;
+        const LID_PN_RESOLVE_CONCURRENCY: usize = 16;
+        let resolved: Vec<(usize, Jid)> = futures::stream::iter(pending)
+            .map(|(i, jid)| async move {
+                let pn = self
+                    .client
+                    .get_lid_pn_entry(&jid)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|e| Jid::pn(&*e.phone_number));
+                (i, pn)
+            })
+            .buffer_unordered(LID_PN_RESOLVE_CONCURRENCY)
+            .filter_map(|(i, pn)| async move { pn.map(|pn| (i, pn)) })
+            .collect()
+            .await;
+
+        for (i, pn) in resolved {
+            meta.participants[i].phone_number = Some(pn);
+        }
+    }
+
+    pub async fn get_participating(&self) -> Result<HashMap<Jid, GroupMetadata>, GroupError> {
+        let response = self.client.execute(GroupParticipatingIq::new()).await?;
+
+        let mut result: HashMap<Jid, GroupMetadata> = response
+            .groups
+            .into_iter()
+            .map(|group| {
+                let key = group.id.clone();
+                (key, GroupMetadata::from(group))
+            })
+            .collect();
+
+        for meta in result.values_mut() {
+            self.fill_participant_pns(meta).await;
+        }
+
+        Ok(result)
+    }
+
+    /// Fetch the complete, user-facing metadata of a group.
+    ///
+    /// Returns an owned [`GroupMetadata`]: subject, description, creator,
+    /// per-participant admin roles, and ephemeral and membership settings. In a
+    /// LID-addressed group, participant phone numbers the server left out are
+    /// backfilled from known LID/PN mappings on a best-effort basis; a
+    /// participant with no known mapping keeps `phone_number: None`. The query
+    /// always hits the network (no phash is sent, so the server never answers
+    /// `not-modified`) and the result does not populate the group cache.
+    ///
+    /// This is the right call for displaying or auditing a group. When you only
+    /// need the participant list to send a message, prefer the cached
+    /// [`Groups::query_info`].
+    pub async fn get_metadata(&self, jid: &Jid) -> Result<GroupMetadata, GroupError> {
+        // No phash is sent, so the server always returns the full group.
+        match self.client.execute(GroupQueryIq::new(jid)).await? {
+            GroupInfoOutcome::Full(group) => {
+                let mut meta = GroupMetadata::from(*group);
+                self.fill_participant_pns(&mut meta).await;
+                Ok(meta)
+            }
+            GroupInfoOutcome::NotModified => Err(GroupError::InvalidRequest(
+                "group query returned not-modified without a phash".into(),
+            )),
+        }
+    }
+
+    pub async fn create_group(
+        &self,
+        mut options: GroupCreateOptions,
+    ) -> Result<CreateGroupResult, GroupError> {
+        // Resolve phone numbers for LID participants that don't have one
+        let mut resolved_participants = Vec::with_capacity(options.participants.len());
+
+        for participant in options.participants {
+            let resolved = if participant.jid.is_lid() && participant.phone_number.is_none() {
+                let entry = self
+                    .client
+                    .get_lid_pn_entry(&participant.jid)
+                    .await?
+                    .ok_or_else(|| {
+                        GroupError::InvalidRequest(format!(
+                            "missing phone number mapping for LID {}",
+                            participant.jid
+                        ))
+                    })?;
+                participant.with_phone_number(Jid::pn(&*entry.phone_number))
+            } else {
+                participant
+            };
+            resolved_participants.push(resolved);
+        }
+
+        options.participants = normalize_participants(&resolved_participants);
+
+        if self
+            .client
+            .ab_props()
+            .is_enabled(wacore::iq::abprops::web::PRIVACY_TOKEN_SENDING_ON_GROUP_CREATE)
+            .await
+        {
+            self.attach_tokens_to_participants(&mut options.participants)
+                .await;
+        }
+
+        let group = self.client.execute(GroupCreateIq::new(options)).await?;
+
+        Ok(CreateGroupResult {
+            metadata: GroupMetadata::from(group),
+        })
+    }
+
+    pub async fn set_subject(
+        &self,
+        jid: impl Into<Jid>,
+        subject: GroupSubject,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetGroupSubjectIq::new(jid, subject))
+            .await?)
+    }
+
+    /// Set or delete a group's description.
+    ///
+    /// Pass `None` as the description to delete it. `prev` names the
+    /// description this update replaces; the server accepts the change only
+    /// when that token matches the group's current description, so a group that
+    /// already has one cannot be updated without it. With
+    /// [`PreviousDescription::Resolve`] the token is read from the server first,
+    /// which costs one extra query but is always current; a caller holding
+    /// fresh [`GroupMetadata::description_id`] can pass it directly instead.
+    ///
+    /// Returns [`GroupError::DescriptionConflict`] when the group's description
+    /// changed between the read and this update.
+    pub async fn set_description(
+        &self,
+        jid: impl Into<Jid>,
+        description: Option<GroupDescription>,
+        prev: PreviousDescription<'_>,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        let prev: Option<Cow<'_, str>> = match prev {
+            PreviousDescription::Absent => None,
+            PreviousDescription::Id(id) => Some(Cow::Borrowed(id)),
+            // Resolution runs first so a failed read never sends an update
+            // carrying a token the server would reject or, worse, accept
+            // against a description the caller never saw.
+            PreviousDescription::Resolve => self.query_description_id(jid).await?.map(Cow::Owned),
+        };
+
+        self.client
+            .execute(SetGroupDescriptionIq::new(
+                jid,
+                description,
+                prev.as_deref(),
+            ))
+            .await
+            .map_err(|err| match err {
+                IqError::ServerError {
+                    code: CONFLICT_STATUS_CODE,
+                    ..
+                } => GroupError::DescriptionConflict,
+                other => other.into(),
+            })
+    }
+
+    /// Read just the group's current description id from the server.
+    ///
+    /// Deliberately not served from the group cache: that snapshot is the slim
+    /// send-path view, and its refresh is conditional on the participant phash,
+    /// so it can be current for participants while the description behind it
+    /// has already moved. For the same reason the query carries no phash, which
+    /// makes the server answer with the whole group; on a large community that
+    /// is a full participant list downloaded for one attribute. The protocol
+    /// offers no narrower read, so the cost is the price of a correct token.
+    async fn query_description_id(&self, jid: &Jid) -> Result<Option<String>, GroupError> {
+        match self.client.execute(GroupQueryIq::new(jid)).await? {
+            GroupInfoOutcome::Full(group) => Ok(group.description_id),
+            GroupInfoOutcome::NotModified => Err(GroupError::InvalidRequest(
+                "group query returned not-modified without a phash".into(),
+            )),
+        }
+    }
+
+    pub async fn leave(&self, jid: impl Into<Jid>) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        self.client.execute(LeaveGroupIq::new(jid)).await?;
+        self.client
+            .lock_group_metadata(jid)
+            .await
+            .invalidate()
+            .await;
+        Ok(())
+    }
+
+    pub async fn add_participants(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        let iq = if self
+            .client
+            .ab_props()
+            .is_enabled(wacore::iq::abprops::web::PRIVACY_TOKEN_SENDING_ON_GROUP_PARTICIPANT_ADD)
+            .await
+        {
+            let options = self.resolve_participant_tokens(participants).await;
+            AddParticipantsIq::with_options(jid, options)
+        } else {
+            AddParticipantsIq::new(jid, participants)
+        };
+
+        let result = self.client.execute(iq).await?;
+        if result.iter().any(|r| r.is_ok()) {
+            let metadata = self.client.lock_group_metadata(jid).await;
+            if let Some(info) = metadata.current().await {
+                let mut info = Arc::unwrap_or_clone(info);
+                info.add_participants(
+                    result
+                        .iter()
+                        .filter(|r| r.is_ok())
+                        .map(|r| (&r.jid, r.phone_number.as_ref())),
+                );
+                metadata.publish(Arc::new(info)).await;
+            } else {
+                // Cache expired: can't patch in place, so drop the now-stale blob.
+                metadata.invalidate().await;
+            }
+        }
+        Ok(result)
+    }
+
+    pub async fn remove_participants(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        let result = self
+            .client
+            .execute(RemoveParticipantsIq::new(jid, participants))
+            .await?;
+        self.apply_participant_removals(jid, &result, ParticipantRemovalScope::Group)
+            .await;
+        Ok(result)
+    }
+
+    async fn apply_participant_removals(
+        &self,
+        jid: &Jid,
+        result: &[ParticipantChangeResponse],
+        scope: ParticipantRemovalScope,
+    ) {
+        let accepted: Vec<&str> = result
+            .iter()
+            .filter(|r| r.is_ok())
+            .map(|r| r.jid.user.as_str())
+            .collect();
+        if !accepted.is_empty() {
+            match scope {
+                ParticipantRemovalScope::Group => {
+                    let metadata = self.client.lock_group_metadata(jid).await;
+                    if let Some(info) = metadata.current().await {
+                        let mut info = Arc::unwrap_or_clone(info);
+                        info.remove_participants(&accepted);
+                        metadata.publish(Arc::new(info)).await;
+                    } else {
+                        // Cache expired: can't patch in place, so drop the now-stale blob.
+                        metadata.invalidate().await;
+                    }
+                }
+                ParticipantRemovalScope::LinkedGroups => {
+                    // The response carries no subgroup IDs, and the lean send
+                    // cache intentionally stores no hierarchy. Invalidate the
+                    // known parent here; the per-subgroup remove notifications
+                    // carry the affected JIDs, patch their own cache entries,
+                    // and rotate their sender-key chains without evicting
+                    // unrelated groups.
+                    self.client
+                        .lock_group_metadata(jid)
+                        .await
+                        .invalidate()
+                        .await;
+                }
+            }
+            self.client
+                .rotate_sender_key_on_participant_remove(jid, &accepted)
+                .await;
+        }
+    }
+
+    /// Remove participants from a parent group and all of its linked groups.
+    pub async fn remove_participants_including_linked_groups(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        let result = self
+            .client
+            .execute(RemoveParticipantsIncludingLinkedGroupsIq::new(
+                jid,
+                participants,
+            ))
+            .await?;
+        self.apply_participant_removals(jid, &result, ParticipantRemovalScope::LinkedGroups)
+            .await;
+        Ok(result)
+    }
+
+    pub async fn promote_participants(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(PromoteParticipantsIq::new(jid, participants))
+            .await?)
+    }
+
+    pub async fn demote_participants(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(DemoteParticipantsIq::new(jid, participants))
+            .await?)
+    }
+
+    pub async fn get_invite_link(
+        &self,
+        jid: impl Into<Jid>,
+        reset: bool,
+    ) -> Result<String, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(GetGroupInviteLinkIq::new(jid, reset))
+            .await?)
+    }
+
+    /// Lock the group so only admins can change group info.
+    pub async fn set_locked(&self, jid: impl Into<Jid>, locked: bool) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        let spec = if locked {
+            SetGroupLockedIq::lock(jid)
+        } else {
+            SetGroupLockedIq::unlock(jid)
+        };
+        Ok(self.client.execute(spec).await?)
+    }
+
+    /// Set announcement mode. When enabled, only admins can send messages.
+    pub async fn set_announce(
+        &self,
+        jid: impl Into<Jid>,
+        announce: bool,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        let spec = if announce {
+            SetGroupAnnouncementIq::announce(jid)
+        } else {
+            SetGroupAnnouncementIq::unannounce(jid)
+        };
+        Ok(self.client.execute(spec).await?)
+    }
+
+    /// Set ephemeral (disappearing) messages timer on the group.
+    ///
+    /// Common values: 86400 (24h), 604800 (7d), 7776000 (90d).
+    /// Pass 0 to disable.
+    pub async fn set_ephemeral(
+        &self,
+        jid: impl Into<Jid>,
+        expiration: u32,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        let spec = match std::num::NonZeroU32::new(expiration) {
+            Some(exp) => SetGroupEphemeralIq::enable(jid, exp),
+            None => SetGroupEphemeralIq::disable(jid),
+        };
+        Ok(self.client.execute(spec).await?)
+    }
+
+    /// Set membership approval mode. When on, new members must be approved by an admin.
+    pub async fn set_membership_approval(
+        &self,
+        jid: impl Into<Jid>,
+        mode: MembershipApprovalMode,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetGroupMembershipApprovalIq::new(jid, mode))
+            .await?)
+    }
+
+    /// Join a group using an invite code.
+    pub async fn join_with_invite_code(&self, code: &str) -> Result<JoinGroupResult, GroupError> {
+        let code = extract_invite_code(code)
+            .ok_or_else(|| GroupError::InvalidRequest("invalid or empty invite code".into()))?;
+        Ok(self.client.execute(AcceptGroupInviteIq::new(code)).await?)
+    }
+
+    /// Accept a V4 invite (received as a GroupInviteMessage, not a link).
+    pub async fn join_with_invite_v4(
+        &self,
+        group_jid: impl Into<Jid>,
+        code: &str,
+        expiration: i64,
+        admin_jid: impl Into<Jid>,
+    ) -> Result<JoinGroupResult, GroupError> {
+        let group_jid = &group_jid.into();
+        let admin_jid = &admin_jid.into();
+        if expiration > 0 {
+            let now = wacore::time::now_millis() / 1000;
+            if expiration < now {
+                return Err(GroupError::InvalidRequest(format!(
+                    "V4 invite has expired (expiration={expiration}, now={now})"
+                )));
+            }
+        }
+        Ok(self
+            .client
+            .execute(AcceptGroupInviteV4Iq::new(
+                group_jid, code, expiration, admin_jid,
+            ))
+            .await?)
+    }
+
+    /// Get group metadata from an invite code without joining.
+    pub async fn get_invite_info(&self, code: &str) -> Result<GroupMetadata, GroupError> {
+        let code = extract_invite_code(code)
+            .ok_or_else(|| GroupError::InvalidRequest("invalid or empty invite code".into()))?;
+        let group = self.client.execute(GetGroupInviteInfoIq::new(code)).await?;
+        Ok(GroupMetadata::from(group))
+    }
+
+    /// Get pending membership approval requests.
+    pub async fn get_membership_requests(
+        &self,
+        jid: impl Into<Jid>,
+    ) -> Result<Vec<MembershipRequest>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(GetMembershipRequestsIq::new(jid))
+            .await?)
+    }
+
+    /// Approve pending membership requests.
+    pub async fn approve_membership_requests(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(MembershipRequestActionIq::approve(jid, participants))
+            .await?)
+    }
+
+    /// Reject pending membership requests.
+    pub async fn reject_membership_requests(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(MembershipRequestActionIq::reject(jid, participants))
+            .await?)
+    }
+
+    /// Set who can add members to the group.
+    pub async fn set_member_add_mode(
+        &self,
+        jid: impl Into<Jid>,
+        mode: MemberAddMode,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetMemberAddModeIq::new(jid, mode))
+            .await?)
+    }
+
+    /// Restrict or allow frequently-forwarded messages in the group.
+    pub async fn set_no_frequently_forwarded(
+        &self,
+        jid: impl Into<Jid>,
+        restrict: bool,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetNoFrequentlyForwardedIq::new(jid, restrict))
+            .await?)
+    }
+
+    /// Enable or disable admin reports in the group.
+    pub async fn set_allow_admin_reports(
+        &self,
+        jid: impl Into<Jid>,
+        allow: bool,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetAllowAdminReportsIq::new(jid, allow))
+            .await?)
+    }
+
+    /// Enable or disable group history sharing.
+    pub async fn set_group_history(
+        &self,
+        jid: impl Into<Jid>,
+        enabled: bool,
+    ) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(SetGroupHistoryIq::new(jid, enabled))
+            .await?)
+    }
+
+    /// Set who can share invite links (via MEX).
+    pub async fn set_member_link_mode(
+        &self,
+        jid: &Jid,
+        mode: MemberLinkMode,
+    ) -> Result<(), GroupError> {
+        let value = match mode {
+            MemberLinkMode::AdminLink => "ADMIN_LINK",
+            MemberLinkMode::AllMemberLink => "ALL_MEMBER_LINK",
+        };
+        Ok(self
+            .mex_update_group_property(jid, GroupPropertyUpdate::MemberLinkMode(value))
+            .await?)
+    }
+
+    /// Set who can share message history with new members (via MEX).
+    pub async fn set_member_share_history_mode(
+        &self,
+        jid: &Jid,
+        mode: MemberShareHistoryMode,
+    ) -> Result<(), GroupError> {
+        let value = match mode {
+            MemberShareHistoryMode::AdminShare => "ADMIN_SHARE",
+            MemberShareHistoryMode::AllMemberShare => "ALL_MEMBER_SHARE",
+        };
+        Ok(self
+            .mex_update_group_property(jid, GroupPropertyUpdate::MemberShareGroupHistoryMode(value))
+            .await?)
+    }
+
+    /// Enable or disable limit sharing in the group (via MEX).
+    pub async fn set_limit_sharing(&self, jid: &Jid, enabled: bool) -> Result<(), GroupError> {
+        Ok(self
+            .mex_update_group_property(
+                jid,
+                GroupPropertyUpdate::LimitSharing(LimitSharingUpdate {
+                    limit_sharing_enabled: enabled,
+                    limit_sharing_trigger: "CHAT_SETTING",
+                }),
+            )
+            .await?)
+    }
+
+    /// Cancel pending membership requests (from the requesting user's side).
+    pub async fn cancel_membership_requests(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(CancelMembershipRequestsIq::new(jid, participants))
+            .await?)
+    }
+
+    /// Revoke invitation codes from specific participants (admin operation).
+    pub async fn revoke_request_code(
+        &self,
+        jid: impl Into<Jid>,
+        participants: &[Jid],
+    ) -> Result<Vec<ParticipantChangeResponse>, GroupError> {
+        let jid = &jid.into();
+        Ok(self
+            .client
+            .execute(RevokeRequestCodeIq::new(jid, participants))
+            .await?)
+    }
+
+    /// Acknowledge a group notification.
+    pub async fn acknowledge(&self, jid: impl Into<Jid>) -> Result<(), GroupError> {
+        let jid = &jid.into();
+        Ok(self.client.execute(AcknowledgeGroupIq::new(jid)).await?)
+    }
+
+    /// Batch query group info for multiple groups at once (max 10,000).
+    pub async fn batch_get_info(
+        &self,
+        jids: Vec<Jid>,
+    ) -> Result<Vec<BatchGroupResult>, GroupError> {
+        if jids.len() > wacore::iq::groups::BATCH_GROUP_INFO_LIMIT {
+            return Err(GroupError::InvalidRequest(format!(
+                "batch_get_info: {} groups exceeds limit of {}",
+                jids.len(),
+                wacore::iq::groups::BATCH_GROUP_INFO_LIMIT,
+            )));
+        }
+        let raw = self.client.execute(BatchGetGroupInfoIq::new(&jids)).await?;
+        Ok(raw
+            .into_iter()
+            .map(|r| match r {
+                RawBatchResult::Full(info) => {
+                    BatchGroupResult::Full(Box::new(GroupMetadata::from(*info)))
+                }
+                RawBatchResult::Truncated { id, size } => BatchGroupResult::Truncated { id, size },
+                RawBatchResult::Forbidden(id) => BatchGroupResult::Forbidden(id),
+                RawBatchResult::NotFound(id) => BatchGroupResult::NotFound(id),
+            })
+            .collect())
+    }
+
+    /// Batch fetch group profile pictures (max 1,000).
+    pub async fn get_profile_pictures(
+        &self,
+        group_jids: Vec<Jid>,
+        picture_type: PictureType,
+    ) -> Result<Vec<GroupProfilePicture>, GroupError> {
+        if group_jids.len() > wacore::iq::groups::BATCH_PROFILE_PICTURES_LIMIT {
+            return Err(GroupError::InvalidRequest(format!(
+                "get_profile_pictures: {} groups exceeds limit of {}",
+                group_jids.len(),
+                wacore::iq::groups::BATCH_PROFILE_PICTURES_LIMIT,
+            )));
+        }
+        let groups: Vec<(Jid, PictureType)> = group_jids
+            .into_iter()
+            .map(|jid| (jid, picture_type))
+            .collect();
+        Ok(self
+            .client
+            .execute(GetGroupProfilePicturesIq::with_type(&groups))
+            .await?)
+    }
+
+    /// Set a group's profile picture (admin operation).
+    ///
+    /// Sends a JPEG; the caller should size/crop it (WhatsApp uses 640x640).
+    /// Passing empty `image_data` removes the picture, mirroring the own-picture
+    /// API; prefer [`Groups::remove_profile_picture`] when removal is the intent.
+    ///
+    /// ## Wire Format
+    /// ```xml
+    /// <iq type="set" xmlns="w:profile:picture" to="{group}@g.us">
+    ///   <picture type="image">{jpeg bytes}</picture>
+    /// </iq>
+    /// ```
+    pub async fn set_profile_picture(
+        &self,
+        group_jid: impl Into<Jid>,
+        image_data: Vec<u8>,
+    ) -> Result<SetProfilePictureResponse, GroupError> {
+        let group_jid = &group_jid.into();
+        Ok(self
+            .client
+            .execute(SetProfilePictureSpec::for_group(group_jid, image_data))
+            .await?)
+    }
+
+    /// Remove a group's profile picture (admin operation).
+    pub async fn remove_profile_picture(
+        &self,
+        group_jid: impl Into<Jid>,
+    ) -> Result<SetProfilePictureResponse, GroupError> {
+        let group_jid = &group_jid.into();
+        Ok(self
+            .client
+            .execute(SetProfilePictureSpec::remove_group(group_jid))
+            .await?)
+    }
+
+    async fn mex_update_group_property(
+        &self,
+        jid: &Jid,
+        update: GroupPropertyUpdate,
+    ) -> Result<(), MexError> {
+        let resp = self
+            .client
+            .mex()
+            .mutate(mex_request!(
+                update_group_property,
+                UpdateGroupPropertyVars {
+                    group_id: jid.to_string(),
+                    update,
+                }
+            ))
+            .await?;
+
+        let state = resp
+            .data
+            .as_ref()
+            .and_then(|d| d.get("xwa2_group_update_property"))
+            .and_then(|r| r.get("state"))
+            .and_then(|s| s.as_str());
+
+        if state != Some("ACTIVE") {
+            return Err(MexError::PayloadParsing(format!(
+                "group property update failed, state: {state:?}"
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Set or clear the bot's per-group member label. Empty clears.
+    ///
+    /// WA Web sends this as a `ProtocolMessage` over the normal message path,
+    /// not as an IQ.
+    pub async fn update_member_label(
+        &self,
+        group_jid: impl Into<Jid>,
+        label: impl Into<String>,
+    ) -> Result<(), GroupError> {
+        self.update_member_label_with_id(group_jid, label)
+            .await
+            .map(|_| ())
+    }
+
+    /// Set or clear the member label and return the sent message ID.
+    pub async fn update_member_label_with_id(
+        &self,
+        group_jid: impl Into<Jid>,
+        label: impl Into<String>,
+    ) -> Result<String, GroupError> {
+        let group_jid = &group_jid.into();
+        if !group_jid.is_group() {
+            return Err(GroupError::InvalidRequest(format!(
+                "update_member_label requires a group JID, got {group_jid}"
+            )));
+        }
+        let msg = wacore::send::build_member_label_message(label.into(), wacore::time::now_secs());
+        // This low-level send bypasses send_message_with_options (no reporting
+        // token for a protocol message), so compute the <meta> here and pass it
+        // as an extra node — otherwise the member_label appdata/tag_reason attrs
+        // never reach the wire.
+        let (_edit, meta) = crate::send::infer_stanza_metadata(&msg);
+        let message_id = self.client.generate_message_id();
+        self.client
+            .send_message_impl(
+                group_jid.clone(),
+                &msg,
+                crate::send::SendPipelineOptions {
+                    request_id: Some(&message_id),
+                    extra_stanza_nodes: meta.into_iter().collect(),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(message_id)
+    }
+
+    async fn resolve_participant_tokens(&self, jids: &[Jid]) -> Vec<GroupParticipantOptions> {
+        if jids.is_empty() {
+            return Vec::new();
+        }
+        let only_lid = self.only_check_lid().await;
+        let futs = jids.iter().map(|jid| async move {
+            let mut opt = GroupParticipantOptions::new(jid.clone());
+            if let Some(token_key) = self.resolve_token_key(jid, only_lid).await
+                && let Some(token) = self.lookup_valid_token(&token_key).await
+            {
+                opt = opt.with_privacy(token);
+            }
+            opt
+        });
+        futures::future::join_all(futs).await
+    }
+
+    /// Skips participants that already have a token set by the caller.
+    async fn attach_tokens_to_participants(&self, participants: &mut [GroupParticipantOptions]) {
+        if participants.is_empty() {
+            return;
+        }
+        let only_lid = self.only_check_lid().await;
+        let futs = participants.iter().enumerate().map(|(i, p)| async move {
+            if p.privacy.is_some() {
+                return (i, None);
+            }
+            let Some(token_key) = self.resolve_token_key(&p.jid, only_lid).await else {
+                log::debug!(
+                    target: "Client/Groups",
+                    "No LID mapping for participant {}, skipping privacy attachment",
+                    p.jid
+                );
+                return (i, None);
+            };
+            let token = self.lookup_valid_token(&token_key).await;
+            if token.is_none() {
+                log::debug!(
+                    target: "Client/Groups",
+                    "No valid tc_token for participant {} (key={}), skipping privacy attachment",
+                    p.jid, token_key
+                );
+            }
+            (i, token)
+        });
+        for (i, token) in futures::future::join_all(futs).await {
+            if token.is_some() {
+                participants[i].privacy = token;
+            }
+        }
+    }
+
+    async fn only_check_lid(&self) -> bool {
+        self.client
+            .ab_props()
+            .is_enabled(wacore::iq::props::stale::PRIVACY_TOKEN_ONLY_CHECK_LID)
+            .await
+    }
+
+    /// Resolve JID to tc_token store key. When `only_lid`, PN JIDs without a
+    /// LID mapping return `None` instead of falling back to the PN user.
+    async fn resolve_token_key(
+        &self,
+        jid: &Jid,
+        only_lid: bool,
+    ) -> Option<wacore_binary::CompactString> {
+        if jid.is_lid() {
+            Some(jid.user.clone())
+        } else {
+            let lid = self.client.lid_pn_cache.get_current_lid(&jid.user).await;
+            if only_lid {
+                lid
+            } else {
+                Some(lid.unwrap_or_else(|| jid.user.clone()))
+            }
+        }
+    }
+
+    /// Returns the tc_token if present and not expired.
+    async fn lookup_valid_token(&self, token_key: &str) -> Option<Vec<u8>> {
+        use wacore::iq::tctoken::is_tc_token_expired_with;
+        let tc_config = self.client.tc_token_config().await;
+        let backend = self.client.persistence_manager.backend();
+        match backend.get_tc_token(token_key).await {
+            Ok(Some(entry))
+                if !entry.token.is_empty()
+                    && !is_tc_token_expired_with(entry.token_timestamp, &tc_config) =>
+            {
+                Some(entry.token)
+            }
+            Ok(_) => None,
+            Err(e) => {
+                log::warn!(
+                    target: "Client/Groups",
+                    "Failed to get tc_token for {}: {e}",
+                    token_key
+                );
+                None
+            }
+        }
+    }
+}
+
+impl Client {
+    pub fn groups(&self) -> Groups<'_> {
+        Groups::new(self)
+    }
+
+    pub(crate) async fn lock_group_metadata<'a>(&'a self, jid: &'a Jid) -> GroupMetadataGuard<'a> {
+        GroupMetadataGuard {
+            client: self,
+            jid,
+            _guard: self.group_distribution_lock(jid).await,
+        }
+    }
+}
+
+/// Extract the invite code from any supported invite URL format.
+///
+/// Handles all WA Web patterns:
+/// - `https://chat.whatsapp.com/CODE?query`
+/// - `https://chat.whatsapp.com/invite/CODE?query`
+/// - `https://web.whatsapp.com/.../accept/?code=CODE&...`
+/// - `whatsapp://chat/?code=CODE`
+/// - bare code string
+fn extract_invite_code(input: &str) -> Option<&str> {
+    let input = input.trim();
+
+    // whatsapp://chat/?code=CODE or web.whatsapp.com/.../accept/?code=CODE
+    if let Some(code) = extract_code_param(input) {
+        return Some(code);
+    }
+
+    // https://chat.whatsapp.com/invite/CODE or https://chat.whatsapp.com/CODE
+    let stripped = input
+        .strip_prefix("https://chat.whatsapp.com/")
+        .or_else(|| input.strip_prefix("http://chat.whatsapp.com/"));
+
+    let code = if let Some(path) = stripped {
+        let path = path.strip_prefix("invite/").unwrap_or(path);
+        path.split('?').next().unwrap_or(path).trim_end_matches('/')
+    } else if input.contains("://") || input.contains('?') {
+        // Looks like a URL we don't recognize or one with an empty code= param
+        return None;
+    } else {
+        input.trim_end_matches('/')
+    };
+
+    if code.is_empty() { None } else { Some(code) }
+}
+
+fn extract_code_param(input: &str) -> Option<&str> {
+    let query = input.split('?').nth(1)?;
+    for pair in query.split('&') {
+        if let Some(val) = pair.strip_prefix("code=") {
+            let val = val.trim_end_matches('/');
+            if !val.is_empty() {
+                return Some(val);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_group_metadata_struct() {
+        let jid: Jid = "123456789@g.us"
+            .parse()
+            .expect("test group JID should be valid");
+        let participant_jid: Jid = "1234567890@s.whatsapp.net"
+            .parse()
+            .expect("test participant JID should be valid");
+
+        let metadata = GroupMetadata {
+            id: jid.clone(),
+            subject: "Test Group".to_string(),
+            participants: vec![GroupParticipant {
+                jid: participant_jid,
+                phone_number: None,
+                lid: None,
+                username: None,
+                participant_type: ParticipantType::Admin,
+                details: None,
+            }],
+            ..Default::default()
+        };
+
+        assert_eq!(metadata.subject, "Test Group");
+        assert_eq!(metadata.participants.len(), 1);
+        assert!(metadata.participants[0].is_admin());
+        assert!(!metadata.participants[0].is_super_admin());
+    }
+
+    #[tokio::test]
+    async fn fill_participant_pns_backfills_from_cache() {
+        use crate::lid_pn_cache::{LearningSource, LidPnEntry};
+        use wacore_binary::jid::{Jid, Server};
+
+        let client = crate::test_utils::create_test_client().await;
+        // Warm the LID-PN cache with a mapping the server didn't echo on the
+        // participant stanza.
+        let entry = LidPnEntry::new(
+            "26263000000099".to_string(),
+            "5521900000099".to_string(),
+            LearningSource::Usync,
+        );
+        client.lid_pn_cache.add(&entry).await;
+
+        let mut meta = GroupMetadata {
+            id: "120399@g.us".parse().unwrap(),
+            participants: vec![GroupParticipant {
+                jid: Jid::new("26263000000099", Server::Lid),
+                phone_number: None,
+                lid: None,
+                username: None,
+                participant_type: ParticipantType::Member,
+                details: None,
+            }],
+            addressing_mode: AddressingMode::Lid,
+            ..Default::default()
+        };
+        client.groups().fill_participant_pns(&mut meta).await;
+        assert_eq!(
+            meta.participants[0].phone_number,
+            Some(Jid::pn("5521900000099")),
+            "LID participant should receive its PN from the warm cache"
+        );
+    }
+
+    #[tokio::test]
+    async fn fill_participant_pns_noop_in_pn_group() {
+        use wacore_binary::jid::{Jid, Server};
+
+        let client = crate::test_utils::create_test_client().await;
+        // PN-addressed group: untouched (jid already is the PN).
+        let mut meta = GroupMetadata {
+            id: "120398@g.us".parse().unwrap(),
+            participants: vec![GroupParticipant {
+                jid: Jid::new("5521900000098", Server::Pn),
+                phone_number: None,
+                lid: None,
+                username: None,
+                participant_type: ParticipantType::Member,
+                details: None,
+            }],
+            addressing_mode: AddressingMode::Pn,
+            ..Default::default()
+        };
+        client.groups().fill_participant_pns(&mut meta).await;
+        assert_eq!(meta.participants[0].phone_number, None);
+    }
+
+    #[test]
+    fn test_extract_invite_code() {
+        // Pattern 3: most common
+        assert_eq!(
+            extract_invite_code("https://chat.whatsapp.com/AbCdEfGh").unwrap(),
+            "AbCdEfGh"
+        );
+        assert_eq!(
+            extract_invite_code("http://chat.whatsapp.com/AbCdEfGh").unwrap(),
+            "AbCdEfGh"
+        );
+
+        // With query params
+        assert_eq!(
+            extract_invite_code("https://chat.whatsapp.com/AbCdEfGh?fbclid=123&utm_source=x")
+                .unwrap(),
+            "AbCdEfGh"
+        );
+
+        // Trailing slash
+        assert_eq!(
+            extract_invite_code("https://chat.whatsapp.com/AbCdEfGh/").unwrap(),
+            "AbCdEfGh"
+        );
+
+        // Pattern 2: /invite/ prefix
+        assert_eq!(
+            extract_invite_code("https://chat.whatsapp.com/invite/AbCdEfGh").unwrap(),
+            "AbCdEfGh"
+        );
+        assert_eq!(
+            extract_invite_code("https://chat.whatsapp.com/invite/AbCdEfGh?utm=test").unwrap(),
+            "AbCdEfGh"
+        );
+
+        // Pattern 1: web.whatsapp.com/accept?code=
+        assert_eq!(
+            extract_invite_code("https://web.whatsapp.com/accept?code=AbCdEfGh").unwrap(),
+            "AbCdEfGh"
+        );
+        assert_eq!(
+            extract_invite_code("https://web.whatsapp.com/accept/?code=AbCdEfGh&other=1").unwrap(),
+            "AbCdEfGh"
+        );
+
+        // Pattern 4: deep link
+        assert_eq!(
+            extract_invite_code("whatsapp://chat/?code=AbCdEfGh").unwrap(),
+            "AbCdEfGh"
+        );
+        assert_eq!(
+            extract_invite_code("whatsapp://chat?code=AbCdEfGh&extra=y").unwrap(),
+            "AbCdEfGh"
+        );
+
+        // Bare code
+        assert_eq!(extract_invite_code("AbCdEfGh").unwrap(), "AbCdEfGh");
+        assert_eq!(extract_invite_code("AbCdEfGh/").unwrap(), "AbCdEfGh");
+
+        // Whitespace
+        assert_eq!(extract_invite_code("  AbCdEfGh  ").unwrap(), "AbCdEfGh");
+
+        // Empty / malformed inputs return None
+        assert!(extract_invite_code("").is_none());
+        assert!(extract_invite_code("   ").is_none());
+        assert!(extract_invite_code("https://chat.whatsapp.com/").is_none());
+        assert!(extract_invite_code("https://chat.whatsapp.com/invite/").is_none());
+        assert!(extract_invite_code("whatsapp://chat/?code=").is_none());
+        assert!(extract_invite_code("whatsapp://chat/?code=&other=1").is_none());
+    }
+
+    #[tokio::test]
+    async fn warm_group_cache_hit_shares_arc_not_deep_clone() {
+        use wacore::client::context::GroupInfo;
+        use wacore::types::message::AddressingMode;
+
+        let client = crate::test_utils::create_test_client().await;
+        let group_jid: Jid = "123456789@g.us".parse().unwrap();
+
+        let info = GroupInfo::new(
+            vec![
+                "111111111111@s.whatsapp.net".parse().unwrap(),
+                "222222222222@s.whatsapp.net".parse().unwrap(),
+            ],
+            AddressingMode::Pn,
+        );
+        let cache = client.get_group_cache().await;
+        cache.insert(group_jid.clone(), Arc::new(info)).await;
+
+        let a = cache.get(&group_jid).await.expect("warm hit");
+        let b = cache.get(&group_jid).await.expect("warm hit");
+
+        // A warm group-cache hit returns a refcount bump of the same allocation,
+        // not a deep copy of the participant list and LID/PN maps.
+        assert!(Arc::ptr_eq(&a, &b));
+        assert_eq!(a.participants.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn refresh_keeps_the_previous_group_snapshot_on_source_failure() {
+        let client = crate::test_utils::create_test_client().await;
+        let group: Jid = "120363000000000099@g.us".parse().unwrap();
+        let previous = Arc::new(GroupInfo::new(
+            vec!["12025550101@s.whatsapp.net".parse().unwrap()],
+            AddressingMode::Pn,
+        ));
+        let cache = client.get_group_cache().await;
+        cache.insert(group.clone(), Arc::clone(&previous)).await;
+
+        let result = client
+            .groups()
+            .query_info_with_freshness(&group, crate::cache::Freshness::Refresh)
+            .await;
+        assert!(
+            result.is_err(),
+            "the offline fixture proves refresh consulted the source"
+        );
+
+        let preserved = cache
+            .get(&group)
+            .await
+            .expect("refresh failure must not clear the current snapshot");
+        assert!(Arc::ptr_eq(&previous, &preserved));
+    }
+
+    #[tokio::test]
+    async fn linked_removal_preserves_unrelated_group_cache_entries() {
+        use wacore::protocol::ProtocolNode;
+        use wacore_binary::builder::NodeBuilder;
+
+        let client = crate::test_utils::create_test_client().await;
+        let parent: Jid = "120363000000000001@g.us".parse().unwrap();
+        let unrelated: Jid = "120363000000000002@g.us".parse().unwrap();
+        let removed: Jid = "12025550103@s.whatsapp.net".parse().unwrap();
+        let cache = client.get_group_cache().await;
+        for jid in [&parent, &unrelated] {
+            cache
+                .insert(
+                    jid.clone(),
+                    Arc::new(GroupInfo::new(vec![removed.clone()], AddressingMode::Pn)),
+                )
+                .await;
+        }
+        let response = ParticipantChangeResponse::try_from_node(
+            &NodeBuilder::new("participant")
+                .attr("jid", &removed)
+                .build(),
+        )
+        .expect("participant response should parse");
+
+        client
+            .groups()
+            .apply_participant_removals(&parent, &[response], ParticipantRemovalScope::LinkedGroups)
+            .await;
+
+        assert!(cache.get(&parent).await.is_none());
+        assert!(cache.get(&unrelated).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn invalidate_persisted_group_metadata_drops_blob() {
+        // The cache-miss branch of add/remove/leave relies on this to drop a now-stale
+        // persisted blob so the next query re-fetches fresh instead of sending a stale phash.
+        let client = crate::test_utils::create_test_client().await;
+        let backend = client.persistence_manager.backend();
+        let group_jid: Jid = "123456789@g.us".parse().unwrap();
+
+        backend
+            .put_group_metadata(&group_jid.to_string(), b"stale-blob")
+            .await
+            .unwrap();
+        assert!(
+            backend
+                .get_group_metadata(&group_jid.to_string())
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        client
+            .lock_group_metadata(&group_jid)
+            .await
+            .invalidate()
+            .await;
+
+        assert!(
+            backend
+                .get_group_metadata(&group_jid.to_string())
+                .await
+                .unwrap()
+                .is_none(),
+            "invalidation must delete the persisted blob"
+        );
+    }
+
+    // Protocol-level tests (node building, parsing, validation) are in wacore/src/iq/groups.rs
+
+    #[test]
+    fn group_property_update_serializes_to_wire() {
+        assert_eq!(
+            serde_json::to_value(UpdateGroupPropertyVars {
+                group_id: "123@g.us".to_string(),
+                update: GroupPropertyUpdate::MemberLinkMode("ADMIN_LINK"),
+            })
+            .unwrap(),
+            serde_json::json!({
+                "group_id": "123@g.us",
+                "update": { "member_link_mode": "ADMIN_LINK" }
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(GroupPropertyUpdate::MemberShareGroupHistoryMode(
+                "ALL_MEMBER_SHARE"
+            ))
+            .unwrap(),
+            serde_json::json!({ "member_share_group_history_mode": "ALL_MEMBER_SHARE" })
+        );
+        assert_eq!(
+            serde_json::to_value(GroupPropertyUpdate::LimitSharing(LimitSharingUpdate {
+                limit_sharing_enabled: true,
+                limit_sharing_trigger: "CHAT_SETTING",
+            }))
+            .unwrap(),
+            serde_json::json!({
+                "limit_sharing": {
+                    "limit_sharing_enabled": true,
+                    "limit_sharing_trigger": "CHAT_SETTING"
+                }
+            })
+        );
+    }
+
+    /// Fictitious group used by the description round-trip tests.
+    fn description_test_group() -> Jid {
+        "120363000000000001@g.us"
+            .parse()
+            .expect("test group JID should be valid")
+    }
+
+    /// `<iq type="result">` carrying a `<group>` with (optionally) a current
+    /// description, i.e. what the server answers a metadata query with.
+    fn group_result_with_description(
+        request_id: &str,
+        group: &Jid,
+        description_id: Option<&str>,
+    ) -> wacore_binary::Node {
+        use wacore_binary::builder::NodeBuilder;
+
+        let mut group_node = NodeBuilder::new("group")
+            .attr("id", group.to_string())
+            .attr("subject", "Test Group");
+        if let Some(description_id) = description_id {
+            group_node = group_node.children([NodeBuilder::new("description")
+                .attr("id", description_id)
+                .children([NodeBuilder::new("body")
+                    .string_content("current description")
+                    .build()])
+                .build()]);
+        }
+
+        NodeBuilder::new("iq")
+            .attr("type", "result")
+            .attr("id", request_id)
+            .attr("from", group)
+            .children([group_node.build()])
+            .build()
+    }
+
+    fn iq_error(request_id: &str, group: &Jid, code: &str, text: &str) -> wacore_binary::Node {
+        use wacore_binary::builder::NodeBuilder;
+
+        NodeBuilder::new("iq")
+            .attr("type", "error")
+            .attr("id", request_id)
+            .attr("from", group)
+            .children([NodeBuilder::new("error")
+                .attr("code", code)
+                .attr("text", text)
+                .build()])
+            .build()
+    }
+
+    fn iq_result(request_id: &str, group: &Jid) -> wacore_binary::Node {
+        use wacore_binary::builder::NodeBuilder;
+
+        NodeBuilder::new("iq")
+            .attr("type", "result")
+            .attr("id", request_id)
+            .attr("from", group)
+            .build()
+    }
+
+    /// A group that already has a description can only be updated by naming the
+    /// id it replaces, so the update must carry both a fresh `id` and the
+    /// current one as `prev`.
+    #[tokio::test]
+    async fn set_description_sends_the_current_description_id_as_prev() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("new description").unwrap()),
+                        PreviousDescription::Resolve,
+                    )
+                    .await
+            })
+        };
+
+        let query = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let query = query.get();
+        assert_eq!(query.tag.as_ref(), "iq");
+        assert_eq!(
+            query.attrs().optional_string("type").as_deref(),
+            Some("get")
+        );
+        assert!(
+            query.get_optional_child("query").is_some(),
+            "the resolution step must be a group metadata query"
+        );
+        let query_id = query
+            .attrs()
+            .optional_string("id")
+            .expect("query carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &query_id,
+            &group_result_with_description(&query_id, &group, Some("D1D2D3D4")),
+        )
+        .await;
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 1).await;
+        let set = set.get();
+        assert_eq!(set.attrs().optional_string("type").as_deref(), Some("set"));
+        let description = set
+            .get_optional_child("description")
+            .expect("the update carries a <description>");
+        let id = description
+            .attrs()
+            .optional_string("id")
+            .expect("a new id is minted");
+        assert_eq!(id.len(), 8);
+        assert_ne!(id, "D1D2D3D4", "the new id must not reuse prev");
+        assert_eq!(
+            description.attrs().optional_string("prev").as_deref(),
+            Some("D1D2D3D4"),
+            "the update must name the description it replaces"
+        );
+        let body = description
+            .get_optional_child("body")
+            .expect("a set carries a <body>");
+        assert_eq!(body.content_as_string().as_deref(), Some("new description"));
+
+        let set_id = set
+            .attrs()
+            .optional_string("id")
+            .expect("the update carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(&client, &set_id, &iq_result(&set_id, &group)).await;
+        update
+            .await
+            .expect("the update task should not panic")
+            .expect("the update should succeed");
+    }
+
+    /// Deleting a description is the same optimistic-concurrency check, so the
+    /// `delete` marker travels with the token it replaces.
+    #[tokio::test]
+    async fn delete_description_sends_prev_alongside_the_delete_marker() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(group, None, PreviousDescription::Resolve)
+                    .await
+            })
+        };
+
+        let query = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let query_id = query
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("query carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &query_id,
+            &group_result_with_description(&query_id, &group, Some("AABBCCDD")),
+        )
+        .await;
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 1).await;
+        let set = set.get();
+        let description = set
+            .get_optional_child("description")
+            .expect("the delete carries a <description>");
+        assert_eq!(
+            description.attrs().optional_string("delete").as_deref(),
+            Some("true")
+        );
+        assert_eq!(
+            description.attrs().optional_string("prev").as_deref(),
+            Some("AABBCCDD")
+        );
+        assert!(
+            description.get_optional_child("body").is_none(),
+            "a delete carries no body"
+        );
+
+        let set_id = set
+            .attrs()
+            .optional_string("id")
+            .expect("the delete carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(&client, &set_id, &iq_result(&set_id, &group)).await;
+        update
+            .await
+            .expect("the delete task should not panic")
+            .expect("the delete should succeed");
+    }
+
+    /// The path that already worked: a group with no description expects no
+    /// token, and sending one would be rejected.
+    #[tokio::test]
+    async fn set_description_on_a_group_without_one_omits_prev() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("first description").unwrap()),
+                        PreviousDescription::Resolve,
+                    )
+                    .await
+            })
+        };
+
+        let query = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let query_id = query
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("query carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &query_id,
+            &group_result_with_description(&query_id, &group, None),
+        )
+        .await;
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 1).await;
+        let set = set.get();
+        let description = set
+            .get_optional_child("description")
+            .expect("the update carries a <description>");
+        assert!(
+            description.attrs().optional_string("prev").is_none(),
+            "a group with no description must not carry a prev token"
+        );
+        assert!(description.attrs().optional_string("id").is_some());
+
+        let set_id = set
+            .attrs()
+            .optional_string("id")
+            .expect("the update carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(&client, &set_id, &iq_result(&set_id, &group)).await;
+        update
+            .await
+            .expect("the update task should not panic")
+            .expect("the update should succeed");
+    }
+
+    /// A caller that already holds the id (the community create path holds
+    /// "none") skips the resolution query entirely.
+    #[tokio::test]
+    async fn set_description_with_a_known_token_skips_the_resolution_query() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("known token").unwrap()),
+                        PreviousDescription::Id("KNOWNID1"),
+                    )
+                    .await
+            })
+        };
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let set = set.get();
+        assert_eq!(
+            set.attrs().optional_string("type").as_deref(),
+            Some("set"),
+            "the first stanza must be the update itself, not a query"
+        );
+        let description = set
+            .get_optional_child("description")
+            .expect("the update carries a <description>");
+        assert_eq!(
+            description.attrs().optional_string("prev").as_deref(),
+            Some("KNOWNID1")
+        );
+
+        let set_id = set
+            .attrs()
+            .optional_string("id")
+            .expect("the update carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(&client, &set_id, &iq_result(&set_id, &group)).await;
+        update
+            .await
+            .expect("the update task should not panic")
+            .expect("the update should succeed");
+        assert_eq!(transport.sent_count(), 1);
+    }
+
+    /// If the resolution query fails there is no token to send, and guessing
+    /// one (or omitting it) would either be rejected or silently overwrite a
+    /// description the caller never read.
+    #[tokio::test]
+    async fn a_failed_resolution_sends_no_update() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("new description").unwrap()),
+                        PreviousDescription::Resolve,
+                    )
+                    .await
+            })
+        };
+
+        let query = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let query_id = query
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("query carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &query_id,
+            &iq_error(&query_id, &group, "403", "forbidden"),
+        )
+        .await;
+
+        let error = update
+            .await
+            .expect("the update task should not panic")
+            .expect_err("a failed resolution must fail the update");
+        assert!(
+            matches!(
+                error,
+                GroupError::Iq(IqError::ServerError { code: 403, .. })
+            ),
+            "the resolution failure must surface as-is, got {error:?}"
+        );
+        assert_eq!(
+            transport.sent_count(),
+            1,
+            "no update may be sent once resolution failed"
+        );
+    }
+
+    /// Another device changing the description between the read and the update
+    /// is exactly what the token guards against; the server's `409 conflict`
+    /// must stay distinguishable from a permission refusal.
+    #[tokio::test]
+    async fn a_concurrent_change_surfaces_as_a_description_conflict() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("new description").unwrap()),
+                        PreviousDescription::Resolve,
+                    )
+                    .await
+            })
+        };
+
+        let query = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let query_id = query
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("query carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &query_id,
+            &group_result_with_description(&query_id, &group, Some("STALE001")),
+        )
+        .await;
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 1).await;
+        let set_id = set
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("the update carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &set_id,
+            &iq_error(&set_id, &group, "409", "conflict"),
+        )
+        .await;
+
+        let error = update
+            .await
+            .expect("the update task should not panic")
+            .expect_err("a conflict must fail the update");
+        assert!(
+            matches!(error, GroupError::DescriptionConflict),
+            "a 409 on a description update is a conflict, got {error:?}"
+        );
+    }
+
+    /// A refusal that is not a conflict keeps its server code, so a caller can
+    /// still tell "no permission" from "someone else changed it".
+    #[tokio::test]
+    async fn a_forbidden_update_is_not_reported_as_a_conflict() {
+        let (client, transport) = crate::test_utils::create_iq_test_client().await;
+        let group = description_test_group();
+
+        let update = {
+            let client = Arc::clone(&client);
+            let group = group.clone();
+            tokio::spawn(async move {
+                client
+                    .groups()
+                    .set_description(
+                        group,
+                        Some(GroupDescription::new("new description").unwrap()),
+                        PreviousDescription::Id("KNOWNID1"),
+                    )
+                    .await
+            })
+        };
+
+        let set = crate::test_utils::decode_sent_iq(&transport, 0).await;
+        let set_id = set
+            .get()
+            .attrs()
+            .optional_string("id")
+            .expect("the update carries an id")
+            .into_owned();
+        crate::test_utils::answer_iq(
+            &client,
+            &set_id,
+            &iq_error(&set_id, &group, "403", "forbidden"),
+        )
+        .await;
+
+        let error = update
+            .await
+            .expect("the update task should not panic")
+            .expect_err("a forbidden update must fail");
+        assert!(
+            matches!(
+                error,
+                GroupError::Iq(IqError::ServerError { code: 403, .. })
+            ),
+            "a non-conflict refusal must keep its code, got {error:?}"
+        );
+    }
+
+    #[test]
+    fn previous_description_from_optional_id() {
+        assert_eq!(
+            PreviousDescription::from(Some("ABCD1234")),
+            PreviousDescription::Id("ABCD1234")
+        );
+        assert_eq!(
+            PreviousDescription::from(None),
+            PreviousDescription::Absent,
+            "a group with no description resolves to no token, not to a query"
+        );
+    }
+}

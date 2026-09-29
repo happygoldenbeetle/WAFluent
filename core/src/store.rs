@@ -25,6 +25,9 @@ pub struct StoredMessage {
     pub status: u8,
 }
 
+/// Pseudo chat id the favourite stickers' files are stored under.
+pub const FAVORITES: &str = "favorites";
+
 pub struct ChatMeta<'a> {
     pub id: &'a str,
     pub name: &'a str,
@@ -142,6 +145,12 @@ CREATE TABLE IF NOT EXISTS poll_votes(
     PRIMARY KEY(chat_id, message_id, voter)
 );
 
+-- Favourite stickers, synced from the phone. Their files live in media under
+-- chat_id FAVORITES, message_id = key.
+CREATE TABLE IF NOT EXISTS favorite_stickers(
+    key TEXT PRIMARY KEY,
+    ts  INTEGER NOT NULL
+);
 -- Per-kind details (JSON: map pin, contact numbers, poll options, link card...) and the
 -- sender's JPEG preview.
 CREATE TABLE IF NOT EXISTS extras(
@@ -955,6 +964,63 @@ impl Store {
     }
 
     // ───────────── Sticker panel ─────────────
+
+    /// A sticker starred on the phone (or its new CDN reference); keeps the downloaded file
+    /// and its place in the list.
+    pub fn set_favorite(&self, key: &str, m: &Media) {
+        let _ = self.db.execute(
+            "INSERT INTO media(chat_id, message_id, media_type, direct_path, media_key, file_sha256,
+                               file_enc_sha256, file_length, mimetype, width, height)
+             VALUES(?1, ?2, 'sticker', ?3, ?4, x'', ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(chat_id, message_id) DO UPDATE SET
+                direct_path = excluded.direct_path, media_key = excluded.media_key,
+                file_enc_sha256 = excluded.file_enc_sha256, file_length = excluded.file_length,
+                mimetype = excluded.mimetype, width = excluded.width, height = excluded.height",
+            params![FAVORITES, key, m.direct_path, m.media_key, m.file_enc_sha256, m.file_length as i64, m.mimetype, m.width, m.height],
+        );
+        let _ = self.db.execute("INSERT OR IGNORE INTO favorite_stickers(key, ts) VALUES(?1, ?2)", params![key, unix_now()]);
+    }
+
+    pub fn remove_favorite(&self, key: &str) {
+        let _ = self.db.execute("DELETE FROM favorite_stickers WHERE key = ?1", [key]);
+        if let Ok(path) = self.db.query_row("SELECT path FROM media WHERE chat_id = ?1 AND message_id = ?2", [FAVORITES, key], |r| r.get::<_, String>(0)) {
+            let _ = std::fs::remove_file(path);
+        }
+        let _ = self.db.execute("DELETE FROM media WHERE chat_id = ?1 AND message_id = ?2", [FAVORITES, key]);
+    }
+
+    /// Favourite stickers, newest first.
+    pub fn favorites(&self) -> Vec<crate::protocol::StickerDto> {
+        self.db
+            .prepare(
+                "SELECT f.key, x.width, x.height, x.path FROM favorite_stickers f
+                 JOIN media x ON x.chat_id = ?1 AND x.message_id = f.key
+                 ORDER BY f.ts DESC, f.rowid DESC",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map([FAVORITES], |r| {
+                    let path: String = r.get(3)?;
+                    Ok(crate::protocol::StickerDto {
+                        chat_id: FAVORITES.into(),
+                        message_id: r.get(0)?,
+                        width: r.get(1)?,
+                        height: r.get(2)?,
+                        path: (!path.is_empty() && std::path::Path::new(&path).exists()).then_some(path),
+                        thumb: None,
+                    })
+                })?
+                .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The plaintext hash, for attachments that arrived without one (favourite stickers).
+    pub fn set_file_sha256(&self, chat_id: &str, message_id: &str, hash: &[u8]) {
+        let _ = self.db.execute(
+            "UPDATE media SET file_sha256 = ?3 WHERE chat_id = ?1 AND message_id = ?2",
+            params![chat_id, message_id, hash],
+        );
+    }
 
     /// Stickers (`kind` "sticker") or GIFs ("gif") from every chat, newest first, each file once.
     pub fn recent_media(&self, kind: &str, limit: usize) -> Vec<crate::protocol::StickerDto> {

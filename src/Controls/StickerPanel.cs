@@ -8,9 +8,10 @@ using WhatsAppNative.Services;
 namespace WhatsAppNative.Controls;
 
 /// <summary>
-/// The sticker button's panel, like WhatsApp's: your recent stickers or GIFs in a grid, a
-/// GIF | Stickers switch at the bottom (emoji have their own keyboard). Recents are every
-/// sticker and GIF sent or received in your chats, newest first; click one to send it.
+/// The sticker button's panel, like WhatsApp's: your favourite and recent stickers, or your
+/// recent GIFs, in grids, a GIF | Stickers switch at the bottom (emoji have their own
+/// keyboard). Favourites are the ones starred on your phone (synced); recents are every
+/// sticker and GIF sent or received in your chats, newest first. Click one to send it.
 /// </summary>
 public sealed partial class StickerPanel : Grid
 {
@@ -22,14 +23,7 @@ public sealed partial class StickerPanel : Grid
     /// <summary>Asks for a sticker's file (it arrives through <see cref="MediaArrived"/>).</summary>
     public event Action<StickerDto>? DownloadWanted;
 
-    private readonly TextBlock _title = new() { FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Margin = new Thickness(14, 12, 14, 6) };
-    private readonly VariableSizedWrapGrid _grid = new()
-    {
-        Orientation = Orientation.Horizontal,
-        ItemWidth = Cell,
-        ItemHeight = Cell,
-        Margin = new Thickness(8, 0, 8, 8),
-    };
+    private readonly StackPanel _sections = new() { Padding = new Thickness(0, 4, 0, 0) };
     private readonly TextBlock _empty = new()
     {
         TextWrapping = TextWrapping.Wrap,
@@ -39,22 +33,18 @@ public sealed partial class StickerPanel : Grid
     };
     private readonly Button _gifTab, _stickerTab;
     private readonly Dictionary<(string, string), Grid> _cells = new();
-    private IReadOnlyList<StickerDto> _stickers = [], _gifs = [];
+    private IReadOnlyList<StickerDto> _favorites = [], _stickers = [], _gifs = [];
     private bool _showGifs;
 
     public StickerPanel()
     {
         Width = 420;
         Height = 440;
-        RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         _empty.Foreground = Themed.Brush("TextFillColorSecondaryBrush");
-        Children.Add(_title);
-        var scroller = new ScrollViewer { Content = new Grid { Children = { _grid, _empty } } };
-        SetRow(scroller, 1);
-        Children.Add(scroller);
+        Children.Add(new ScrollViewer { Content = new Grid { Children = { _sections, _empty } } });
 
         // GIF | Stickers, a quiet pill at the bottom.
         _gifTab = Tab("GIF", null);
@@ -72,13 +62,14 @@ public sealed partial class StickerPanel : Grid
             Padding = new Thickness(3),
             Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Children = { _gifTab, _stickerTab } },
         };
-        SetRow(pill, 2);
+        SetRow(pill, 1);
         Children.Add(pill);
     }
 
     /// <summary>New contents from the core; shows the stickers first.</summary>
-    public void SetItems(IReadOnlyList<StickerDto> stickers, IReadOnlyList<StickerDto> gifs)
+    public void SetItems(IReadOnlyList<StickerDto> favorites, IReadOnlyList<StickerDto> stickers, IReadOnlyList<StickerDto> gifs)
     {
+        _favorites = favorites;
         _stickers = stickers;
         _gifs = gifs;
         Show(_showGifs);
@@ -87,9 +78,20 @@ public sealed partial class StickerPanel : Grid
     /// <summary>A sticker's file finished downloading.</summary>
     public void MediaArrived(string chatId, string messageId, string path)
     {
-        if (!_cells.TryGetValue((chatId, messageId), out var cell)) return;
+        if (!_cells.Remove((chatId, messageId), out var cell)) return;
         cell.Children.Clear();
         cell.Children.Add(new Image { Source = new BitmapImage(new Uri(path)) { DecodePixelWidth = 180 }, Stretch = Stretch.Uniform });
+    }
+
+    /// <summary>A sticker's file couldn't be fetched (expired on the server).</summary>
+    public void MediaFailed(string chatId, string messageId)
+    {
+        if (!_cells.Remove((chatId, messageId), out var cell)) return;
+        cell.Children.Clear();
+        var glyph = StickerGlyph(22);
+        glyph.Opacity = 0.35;
+        cell.Children.Add(glyph);
+        ToolTipService.SetToolTip(cell, "Couldn't load this sticker");
     }
 
     private void Show(bool gifs)
@@ -97,13 +99,42 @@ public sealed partial class StickerPanel : Grid
         _showGifs = gifs;
         Highlight(_gifTab, gifs);
         Highlight(_stickerTab, !gifs);
-        _title.Text = gifs ? "Recent GIFs" : "Recent stickers";
-        _grid.Children.Clear();
+        _sections.Children.Clear();
         _cells.Clear();
-        var items = gifs ? _gifs : _stickers;
-        _empty.Text = gifs ? "GIFs you send or receive show up here." : "Stickers you send or receive show up here.";
-        _empty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var item in items) _grid.Children.Add(ItemButton(item, gifs));
+        if (gifs)
+        {
+            Section("Recent GIFs", _gifs, gif: true);
+        }
+        else
+        {
+            Section("Favourites", _favorites, gif: false);
+            Section("Recent stickers", _stickers, gif: false);
+        }
+        var empty = gifs ? _gifs.Count == 0 : _favorites.Count + _stickers.Count == 0;
+        _empty.Text = gifs ? "GIFs you send or receive show up here." : "Stickers you star on your phone, send or receive show up here.";
+        _empty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>A titled grid; nothing when there are no items.</summary>
+    private void Section(string title, IReadOnlyList<StickerDto> items, bool gif)
+    {
+        if (items.Count == 0) return;
+        _sections.Children.Add(new TextBlock
+        {
+            Text = title,
+            FontSize = 13,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Margin = new Thickness(14, 10, 14, 6),
+        });
+        var grid = new VariableSizedWrapGrid
+        {
+            Orientation = Orientation.Horizontal,
+            ItemWidth = Cell,
+            ItemHeight = Cell,
+            Margin = new Thickness(8, 0, 8, 4),
+        };
+        foreach (var item in items) grid.Children.Add(ItemButton(item, gif));
+        _sections.Children.Add(grid);
     }
 
     private Button ItemButton(StickerDto item, bool gif)

@@ -150,7 +150,30 @@ pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, firs
 /// Sends a stored message to other chats from its CDN reference. `as_forward`: marked
 /// "Forwarded"; otherwise sent as new (stickers and GIFs from the panel).
 pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, to: Vec<String>, as_forward: bool) {
-    let Some((_, m)) = lookup(ctx, &chat_id, &message_id) else { return };
+    let m = if chat_id == store::FAVORITES {
+        // Not a message: a sticker starred on the phone. Its hash comes from the file.
+        if ctx.db().media(&chat_id, &message_id).is_some_and(|(x, _)| x.file_sha256.is_empty())
+            && let Err(e) = crate::media::fetch_now(ctx, client, &chat_id, &message_id).await
+        {
+            warn!("favourite sticker {message_id}: {e}");
+            notice(ctx, false, "This sticker couldn't be downloaded.");
+            return;
+        }
+        StoredMessage {
+            id: message_id.clone(),
+            from_me: true,
+            sender: String::new(),
+            push_name: String::new(),
+            ts: 0,
+            kind: "sticker".into(),
+            text: String::new(),
+            file_name: String::new(),
+            status: 1,
+        }
+    } else {
+        let Some((_, m)) = lookup(ctx, &chat_id, &message_id) else { return };
+        m
+    };
     let media = ctx.db().media(&chat_id, &message_id);
     let Some(message) = extract::forwarded(&m.kind, &m.text, &m.file_name, media.as_ref().map(|(x, _)| x), as_forward) else {
         notice(ctx, false, "This message can't be forwarded yet.");

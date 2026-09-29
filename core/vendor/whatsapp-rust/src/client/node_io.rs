@@ -1,0 +1,2018 @@
+//! Inbound node I/O: read loop, frame decryption, node routing, acks and stream errors.
+
+use super::*;
+use crate::client::{PhashWaiter, ResponseWaiter};
+use wacore::net::DisconnectReason;
+
+/// Non-error exits of [`Client::read_messages_loop`] — `ServerRecycle` keeps the
+/// routine reconnect path out of `Err`, so severity consumers (logs, the span's
+/// `err(...)` capture, error trackers) only fire for genuine failures.
+pub(crate) enum ReadLoopExit {
+    /// Shutdown signal or an expected disconnect.
+    Expected,
+    /// Server ended the stream cleanly (the routine WhatsApp reconnect path).
+    ServerRecycle(DisconnectReason),
+}
+
+/// Genuine failures of [`Client::read_messages_loop`] — everything here is worth
+/// reporting loudly, unlike [`ReadLoopExit`].
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ReadLoopError {
+    #[error("cannot start message loop: {0}")]
+    NotStarted(&'static str),
+    #[error("transport disconnected: {0}")]
+    Transport(DisconnectReason),
+    #[error("transport event channel closed")]
+    ChannelClosed,
+}
+
+impl ReadLoopError {
+    /// The disconnect reason to surface on the `Disconnected` event; failures
+    /// that carry none map to `Unknown` (conservative, matches `is_clean_shutdown`).
+    pub(crate) fn into_reason(self) -> DisconnectReason {
+        match self {
+            Self::Transport(reason) => reason,
+            Self::NotStarted(_) | Self::ChannelClosed => DisconnectReason::Unknown,
+        }
+    }
+}
+
+/// Borrows instead of taking `ValueRef::to_jid`'s owned `Jid`: this runs once
+/// per inbound stanza.
+#[inline]
+fn from_jid_matches(
+    node: &wacore_binary::NodeRef<'_>,
+    pred: impl Fn(&wacore_binary::jid::JidRef<'_>) -> bool,
+) -> bool {
+    match node.get_attr("from") {
+        Some(wacore_binary::node::ValueRef::Jid(jid)) => pred(jid),
+        Some(wacore_binary::node::ValueRef::String(s)) => {
+            wacore_binary::jid::parse_jid_ref(s.as_ref()).is_some_and(|jid| pred(&jid))
+        }
+        None => false,
+    }
+}
+
+/// The wire shape the server uses for E2EE status updates, carrying the same
+/// payload as `<message from="status@broadcast">`.
+fn is_status_broadcast_stanza(node: &wacore_binary::NodeRef<'_>) -> bool {
+    from_jid_matches(node, |jid| jid.is_status_broadcast())
+}
+
+impl Client {
+    /// Read the current semaphore generation and Arc atomically under the mutex.
+    pub(crate) fn read_message_semaphore(&self) -> (u64, Arc<async_lock::Semaphore>) {
+        let guard = match self.message_processing_semaphore.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (
+            self.message_semaphore_generation.load(Ordering::SeqCst),
+            guard.clone(),
+        )
+    }
+
+    /// Replace the message processing semaphore and bump the generation counter.
+    ///
+    /// Both operations happen under the same mutex hold so readers always see
+    /// a consistent (generation, Arc) pair. Must be called from a non-async
+    /// context or inside a scoped block (MutexGuard is !Send).
+    pub(crate) fn swap_message_semaphore(&self, permits: usize) {
+        let mut guard = match self.message_processing_semaphore.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard = Arc::new(async_lock::Semaphore::new(permits));
+        self.message_semaphore_generation
+            .fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Acquire one permit from the CURRENT message-processing semaphore.
+    ///
+    /// The semaphore can be swapped while a waiter sleeps (offline online
+    /// transition); a permit from the stale semaphore would be a no-op guard,
+    /// so re-acquire until generation and semaphore agree. Shared by stanza
+    /// processing and the commit batcher: both must serialize on the same
+    /// instance for the drain-flush safety argument to hold.
+    pub(crate) async fn acquire_message_processing_permit(&self) -> async_lock::SemaphoreGuardArc {
+        // A holder stalling while the drain semaphore is at 1 permit freezes
+        // every lane and sender with no other signal — surface long waits
+        // instead of hanging silently. The slow path keeps ONE acquire future
+        // alive across warn ticks so the waiter never loses its queue position.
+        const PERMIT_WAIT_WARN: Duration = Duration::from_secs(10);
+        loop {
+            let (generation, semaphore) = self.read_message_semaphore();
+            let permit = match semaphore.try_acquire_arc() {
+                Some(permit) => permit,
+                None => {
+                    let acquire = semaphore.acquire_arc();
+                    futures::pin_mut!(acquire);
+                    let sleep = self.runtime.sleep(PERMIT_WAIT_WARN);
+                    futures::pin_mut!(sleep);
+                    match futures::future::select(&mut acquire, sleep).await {
+                        futures::future::Either::Left((permit, _)) => permit,
+                        futures::future::Either::Right(((), _)) => {
+                            warn!(
+                                "Message-processing permit not acquired after {PERMIT_WAIT_WARN:?} (drain_active={}); a stanza worker or drain flush may be stalled",
+                                self.inbound_commit_batch.is_active()
+                            );
+                            acquire.await
+                        }
+                    }
+                }
+            };
+            if generation == self.message_semaphore_generation.load(Ordering::SeqCst) {
+                return permit;
+            }
+            // Generation changed while waiting: drop the stale permit and
+            // retry with the new semaphore.
+            drop(permit);
+        }
+    }
+
+    // err(...) stays at the default ERROR on purpose: with the routine server
+    // recycle moved to Ok(ServerRecycle), an Err from this loop now always means
+    // something genuinely wrong — so the automatic capture only ever reports
+    // real failures, not WhatsApp's periodic stream recycling.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "wa.conn.read_loop",
+            level = "debug",
+            skip_all,
+            fields(lid = tracing::field::Empty, pn = tracing::field::Empty),
+            err(Debug)
+        )
+    )]
+    pub(crate) async fn read_messages_loop(
+        self: &Arc<Self>,
+    ) -> Result<ReadLoopExit, ReadLoopError> {
+        #[cfg(feature = "tracing")]
+        self.record_identity_on_span(&tracing::Span::current());
+
+        debug!("Starting message processing loop...");
+
+        let mut rx_guard = self.transport_events.lock().await;
+        let transport_events = rx_guard
+            .take()
+            .ok_or(ReadLoopError::NotStarted("not connected"))?;
+        drop(rx_guard);
+
+        // The noise socket is installed before this loop starts (connect_internal)
+        // and replaced only across reconnects, which tear this loop down first —
+        // so resolve it once instead of locking the mutex per frame.
+        let noise_socket = self
+            .get_noise_socket()
+            .await
+            .map_err(|_| ReadLoopError::NotStarted("no noise socket"))?;
+
+        // Frame decoder to parse incoming data
+        let mut frame_decoder = wacore::framing::FrameDecoder::new();
+        let shutdown = self.connection_shutdown_signal();
+        // Subscribe once: a fresh wait_for_shutdown() inside the select allocated an
+        // event_listener on every frame. The signal is one-shot, so a single pinned
+        // listener still catches an in-loop firing.
+        let shutdown_fut = wacore::runtime::wait_for_shutdown(&shutdown).fuse();
+        futures::pin_mut!(shutdown_fut);
+
+        loop {
+            futures::select_biased! {
+                    _ = shutdown_fut => {
+                        debug!("Shutdown signaled in message loop. Exiting message loop.");
+                        return Ok(ReadLoopExit::Expected);
+                    },
+                    event_result = transport_events.recv().fuse() => {
+                        match event_result {
+                            Ok(crate::transport::TransportEvent::DataReceived(data)) => {
+                                // Update dead-socket timer (WA Web: deadSocketTimer reset)
+                                self.stats.mark_recv_activity();
+                                let wire_bytes = data.len();
+
+                                // Dropped before any await below: the payload is
+                                // a view into the websocket's shared read buffer,
+                                // so holding it while a node is processed keeps
+                                // that allocation alive alongside the decoder's
+                                // copy of the same bytes.
+                                frame_decoder.feed(&data);
+                                drop(data);
+
+                                // Process all complete frames.
+                                // Frame decryption must be sequential (noise protocol counter),
+                                // but we spawn node processing concurrently after decryption.
+                                let mut frames_in_batch: u32 = 0;
+
+                                while let Some(encrypted_frame) = frame_decoder.decode_frame() {
+                                    // Decrypt the frame synchronously (required for noise counter ordering)
+                                    if let Some(node) = self.decrypt_frame(&noise_socket, encrypted_frame) {
+                                        if self.processes_inline(node.get()) {
+                                            self.process_decrypted_node(node).await;
+                                        } else {
+                                            let client = self.clone();
+                                            self.runtime.spawn_detached(Box::pin(async move {
+                                                client.process_decrypted_node(node).await;
+                                            }));
+                                        }
+                                    }
+
+                                    // Check if we should exit after processing (e.g., after 515 stream error)
+                                    if self.expected_disconnect.load(Ordering::Relaxed) {
+                                        debug!("Expected disconnect signaled during frame processing. Exiting message loop.");
+                                        // The batch (this frame included — its counter
+                                        // increment is below) must not vanish from the
+                                        // wire counters on this exit path.
+                                        self.stats.record_recv_batch(wire_bytes, frames_in_batch + 1);
+                                        return Ok(ReadLoopExit::Expected);
+                                    }
+
+                                    // Cooperative yield — frequency and behavior are runtime-defined.
+                                    frames_in_batch += 1;
+                                    if frames_in_batch.is_multiple_of(self.runtime.yield_frequency())
+                                        && let Some(yield_fut) = self.runtime.yield_now()
+                                    {
+                                        yield_fut.await;
+                                    }
+                                }
+
+                                // Count the batch and refresh the timestamp after
+                                // processing so the keepalive loop sees the batch
+                                // completion time, not just the arrival time. Prevents
+                                // stale reads when a large batch (e.g. offline sync)
+                                // takes seconds to drain.
+                                self.stats.record_recv_batch(wire_bytes, frames_in_batch);
+                            },
+                            Ok(crate::transport::TransportEvent::Disconnected(reason)) => {
+                                if !self.expected_disconnect.load(Ordering::Relaxed) {
+                                    // A routine server recycle (clean EOF / normal close) is not
+                                    // an error — quiet log, Ok exit. A real transport error stays
+                                    // WARN + Err so it's never hidden behind reconnect noise.
+                                    if reason.is_clean_shutdown() {
+                                        info!("Connection closed by server ({reason}); reconnecting.");
+                                        return Ok(ReadLoopExit::ServerRecycle(reason));
+                                    }
+                                    warn!("Transport disconnected: {reason}; reconnecting.");
+                                    return Err(ReadLoopError::Transport(reason));
+                                } else {
+                                    debug!("Transport disconnected as expected: {reason}");
+                                    return Ok(ReadLoopExit::Expected);
+                                }
+                            }
+                            // Event channel closed (no DisconnectReason available) — the
+                            // transport task ended without reporting why. No reason means we
+                            // can't prove it was a clean recycle, so it stays loud (WARN),
+                            // matching the conservative `Unknown` rule in is_clean_shutdown.
+                            Err(_) => {
+                                if !self.expected_disconnect.load(Ordering::Relaxed) {
+                                    warn!("Transport event channel closed; reconnecting.");
+                                    return Err(ReadLoopError::ChannelClosed);
+                                } else {
+                                    return Ok(ReadLoopExit::Expected);
+                                }
+                            }
+                            Ok(crate::transport::TransportEvent::Connected) => {
+                                // Already handled during handshake, but could be useful for logging
+                                debug!("Transport connected event received");
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Decrypt a frame and return the parsed node as a zero-copy OwnedNodeRef.
+    /// This must be called sequentially due to noise protocol counter requirements.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.decrypt_frame", level = "trace", skip_all)
+    )]
+    pub(crate) fn decrypt_frame(
+        &self,
+        noise_socket: &NoiseSocket,
+        encrypted_frame: bytes::BytesMut,
+    ) -> Option<wacore_binary::OwnedNodeRef> {
+        let decrypted_payload = match noise_socket.decrypt_frame(encrypted_frame) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Failed to decrypt frame: {e}");
+                return None;
+            }
+        };
+
+        let buffer = match wacore_binary::util::unpack_bytes(decrypted_payload) {
+            Ok(data) => data,
+            Err(e) => {
+                log::warn!(target: "Client/Recv", "Failed to decompress frame: {e}");
+                return None;
+            }
+        };
+
+        match wacore_binary::OwnedNodeRef::new(buffer) {
+            Ok(owned) => Some(owned),
+            Err(e) => {
+                log::warn!(target: "Client/Recv", "Failed to unmarshal node: {e}");
+                None
+            }
+        }
+    }
+
+    /// Process an already-decrypted node.
+    /// This can be spawned concurrently since it doesn't depend on noise protocol state.
+    /// The node is wrapped in Arc to avoid cloning when passing through handlers.
+    pub(crate) async fn process_decrypted_node(
+        self: &Arc<Self>,
+        node: wacore_binary::OwnedNodeRef,
+    ) {
+        // ACKs need shared ownership only for opt-in raw/node observers. The
+        // usual response-waiter path borrows the node and can skip the Arc.
+        if node.tag() == "ack"
+            && !self.raw_node_forwarding_enabled()
+            && self.node_waiter_count.load(Ordering::Acquire) == 0
+            && !self.offline_sync_metrics.active.load(Ordering::Acquire)
+        {
+            use wacore::xml::DisplayableNodeRef;
+            debug!(target: "Client/Recv", "{}", DisplayableNodeRef(node.get()));
+            self.handle_ack_response_owned(node);
+            return;
+        }
+
+        // Wrap in Arc once - all handlers will share this same allocation
+        let node_arc = Arc::new(node);
+        self.process_node(node_arc).await;
+    }
+
+    /// Process a node wrapped in Arc. Handlers receive the Arc and can share/store it cheaply.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.node", level = "trace", skip_all, fields(tag = %node.get().tag.as_ref()))
+    )]
+    pub(crate) async fn process_node(self: &Arc<Self>, node: Arc<wacore_binary::OwnedNodeRef>) {
+        use wacore::xml::DisplayableNodeRef;
+        let nr = node.get();
+
+        // --- Offline Sync Tracking ---
+        if nr.tag.as_ref() == "ib" {
+            // Check for offline_preview child to get expected count
+            if let Some(preview) = nr.get_optional_child("offline_preview") {
+                let count: usize = preview
+                    .get_attr("count")
+                    .map(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+
+                if count == 0 {
+                    self.offline_sync_metrics
+                        .active
+                        .store(false, Ordering::Release);
+                    debug!(target: "Client/OfflineSync", "Sync COMPLETED: 0 items.");
+                } else {
+                    // Use stronger memory ordering for state transitions
+                    self.offline_sync_metrics
+                        .total_messages
+                        .store(count, Ordering::Release);
+                    self.offline_sync_metrics
+                        .processed_messages
+                        .store(0, Ordering::Release);
+                    self.offline_sync_metrics
+                        .active
+                        .store(true, Ordering::Release);
+                    match self.offline_sync_metrics.start_time.lock() {
+                        Ok(mut guard) => *guard = Some(wacore::time::Instant::now()),
+                        Err(poison) => *poison.into_inner() = Some(wacore::time::Instant::now()),
+                    }
+                    debug!(target: "Client/OfflineSync", "Sync STARTED: Expecting {} items.", count);
+                }
+            } else if self.offline_sync_metrics.active.load(Ordering::Acquire)
+                && nr.get_optional_child("offline").is_some()
+            {
+                // Handle end marker: <ib><offline count="N"/> signals sync completion
+                // Only <ib> with an <offline> child is a real end marker.
+                // Other <ib> children (thread_metadata, edge_routing, dirty) are NOT end markers.
+                let processed = self
+                    .offline_sync_metrics
+                    .processed_messages
+                    .load(Ordering::Acquire);
+                let elapsed = match self.offline_sync_metrics.start_time.lock() {
+                    Ok(guard) => guard.map(|t| t.elapsed()).unwrap_or_default(),
+                    Err(poison) => poison.into_inner().map(|t| t.elapsed()).unwrap_or_default(),
+                };
+                debug!(target: "Client/OfflineSync", "Sync COMPLETED: End marker received. Processed {} items in {:.2?}.", processed, elapsed);
+                self.offline_sync_metrics
+                    .active
+                    .store(false, Ordering::Release);
+            }
+        }
+
+        // Track progress if active
+        if self.offline_sync_metrics.active.load(Ordering::Acquire) {
+            // Check for 'offline' attribute on relevant stanzas
+            if nr.get_attr("offline").is_some() {
+                let processed = self
+                    .offline_sync_metrics
+                    .processed_messages
+                    .fetch_add(1, Ordering::Release)
+                    + 1;
+                let total = self
+                    .offline_sync_metrics
+                    .total_messages
+                    .load(Ordering::Acquire);
+
+                if processed.is_multiple_of(50) || processed == total {
+                    trace!(target: "Client/OfflineSync", "Sync Progress: {}/{}", processed, total);
+                }
+
+                // Drive WA Web pull-batch loop (non-adaptive `$13`): when
+                // remaining drops to <=C and no batch request is in flight,
+                // schedule the next one.
+                let pending = total.saturating_sub(processed);
+                offline_resume::on_offline_stanza_arrived(self, pending);
+
+                if processed >= total {
+                    let elapsed = match self.offline_sync_metrics.start_time.lock() {
+                        Ok(guard) => guard.map(|t| t.elapsed()).unwrap_or_default(),
+                        Err(poison) => poison.into_inner().map(|t| t.elapsed()).unwrap_or_default(),
+                    };
+                    debug!(target: "Client/OfflineSync", "Sync COMPLETED: Processed {} items in {:.2?}.", processed, elapsed);
+                    self.offline_sync_metrics
+                        .active
+                        .store(false, Ordering::Release);
+                }
+            }
+        }
+        // --- End Tracking ---
+
+        if nr.tag.as_ref() == "iq"
+            && let Some(sync_node) = nr.get_optional_child("sync")
+            && let Some(collection_node) = sync_node.get_optional_child("collection")
+        {
+            let name = collection_node.attrs().optional_string("name");
+            let name = name.as_deref().unwrap_or("<unknown>");
+            debug!(target: "Client/Recv", "Received app state sync response for '{name}' (hiding content).");
+        } else {
+            debug!(target: "Client/Recv","{}", DisplayableNodeRef(nr));
+        }
+
+        // Prepare deferred ACK cancellation flag (sent after dispatch unless cancelled)
+        let mut cancelled = false;
+
+        // Emit raw node before any early returns so all decoded stanzas
+        // (including IQ responses and xmlstreamend) reach external observers
+        if self.raw_node_forwarding_enabled() {
+            self.core
+                .event_bus
+                .dispatch(Event::RawNode(Arc::clone(&node)));
+        }
+
+        if nr.tag.as_ref() == "xmlstreamend" {
+            if self.expected_disconnect.load(Ordering::Relaxed) {
+                debug!("Received <xmlstreamend/>, expected disconnect.");
+            } else {
+                // A bare <xmlstreamend/> is the server cleanly ending the stream
+                // (a recycle). We reconnect, so this is routine, not an error.
+                info!("Received <xmlstreamend/> (server stream end); reconnecting.");
+            }
+            self.notify_connection_shutdown();
+            return;
+        }
+
+        // Check generic node waiters (zero-cost when none registered)
+        if self.node_waiter_count.load(Ordering::Acquire) > 0 {
+            self.resolve_node_waiters(&node);
+        }
+
+        if nr.tag.as_ref() == "iq"
+            && let Some(id) = nr.get_attr("id").map(|v| v.as_str())
+            && let Some(waiter) = self.response_waiters_guard().remove(id.as_ref())
+        {
+            // An IQ id never carries a phash waiter (those are registered under
+            // message ids), so a mismatch here means the id space collided.
+            match waiter {
+                ResponseWaiter::Iq(sender) => {
+                    #[cfg(feature = "voip-runtime")]
+                    self.bind_pending_call_link_join_ack(nr);
+                    if sender.send(Arc::clone(&node)).is_err() {
+                        warn!(target: "Client/IQ", "Failed to send IQ response to waiter. Receiver was likely dropped.");
+                    }
+                }
+                ResponseWaiter::Phash(_) => {
+                    warn!(target: "Client/IQ", "IQ id collided with a pending phash waiter; dropping the phash check");
+                }
+            }
+            return;
+        }
+
+        // Most messages do not need a transport <ack> from this generic gate.
+        // Move those nodes into their chat lane instead of retaining a second
+        // Arc in this dispatcher while decryption starts. Besides removing an
+        // atomic refcount pair, this lets a large uniquely-owned pkmsg donate
+        // its receive buffer to authenticated in-place decryption. Newsletter
+        // and status messages keep the extra owner until their deferred ack is
+        // encoded, preserving the existing acknowledgement semantics.
+        let should_ack = self.should_ack(nr);
+        let deferred_ack_node = should_ack.then(|| Arc::clone(&node));
+
+        // Bypass async_trait's boxed future for the hot built-in handlers while
+        // retaining router registration for direct router callers.
+        match nr.tag.as_ref() {
+            "ack" => {
+                self.handle_ack_response_arc(&node);
+            }
+            "receipt" => {
+                self.handle_receipt_inline(node);
+            }
+            "message" => {
+                crate::handlers::message::MessageHandler::handle_inline(
+                    self.clone(),
+                    node,
+                    &mut cancelled,
+                )
+                .await;
+            }
+            // Differs from a `<message>` only in tag, so WA Web retags it and
+            // runs the same pipeline.
+            "status" if is_status_broadcast_stanza(nr) => {
+                crate::handlers::message::MessageHandler::handle_inline(
+                    self.clone(),
+                    node,
+                    &mut cancelled,
+                )
+                .await;
+            }
+            _ => {
+                let handled = self
+                    .stanza_router
+                    .dispatch(self.clone(), Arc::clone(&node), &mut cancelled)
+                    .await;
+                if !handled {
+                    warn!(
+                        "Received unknown top-level node: {}",
+                        DisplayableNodeRef(node.get())
+                    );
+                    // The nack is this stanza's acknowledgement.
+                    cancelled |= self.nack_unrecognized_stanza(node.get());
+                }
+            }
+        }
+
+        if !cancelled && let Some(node) = deferred_ack_node {
+            self.maybe_deferred_ack(node).await;
+        }
+    }
+
+    /// Whether a decrypted node must stay on the read loop instead of moving to
+    /// a spawned task. success/failure/stream:error carry connection state the
+    /// rest depends on, and `ib` sets up offline-sync tracking before the batch
+    /// arrives. message and status@broadcast only enqueue here, and a spawned
+    /// enqueue could put a group message ahead of the pkmsg that establishes its
+    /// session. Acks and receipts qualify only while nothing observes them.
+    pub(crate) fn processes_inline(&self, node: &wacore_binary::NodeRef<'_>) -> bool {
+        match node.tag.as_ref() {
+            "success" | "failure" | "stream:error" | "message" | "ib" => true,
+            "status" => is_status_broadcast_stanza(node),
+            "receipt" => {
+                !self.synchronous_ack
+                    && !self.raw_node_forwarding_enabled()
+                    && !self
+                        .core
+                        .event_bus
+                        .has_handler_for(wacore::types::events::EventKind::Receipt)
+            }
+            "ack" => {
+                !self.raw_node_forwarding_enabled()
+                    && !self
+                        .core
+                        .event_bus
+                        .has_handler_for(wacore::types::events::EventKind::ServerAck)
+            }
+            _ => false,
+        }
+    }
+
+    /// Answering nothing leaves the stanza in the offline queue forever, which
+    /// is how an unhandled `<status>` kept recycling the stream. Returns whether
+    /// a nack was queued; one without `id`/`from` would have nothing to address.
+    fn nack_unrecognized_stanza(self: &Arc<Self>, node: &wacore_binary::NodeRef<'_>) -> bool {
+        if node.get_attr("id").is_none() || node.get_attr("from").is_none() {
+            return false;
+        }
+        self.spawn_stanza_nack(
+            node,
+            wacore::protocol::nack::NackReason::UnrecognizedStanza,
+            None,
+        );
+        true
+    }
+
+    /// Per WA Web (`Handle/MsgSendReceipt.js`), only newsletter `<message>`
+    /// gets `<ack class="message">` on the success path; DM/group use
+    /// `<receipt>`. Failure paths (retry/backfill/nack) emit `<ack>` from
+    /// their dedicated handlers, not via this gate.
+    ///
+    /// status@broadcast is included as a fallback: drop paths in
+    /// `process_group_enc_batch` (expired status, missing sender key, generic
+    /// decrypt error) intentionally skip the delivery receipt to avoid
+    /// inflating the server-side offline counter for messages we'll never
+    /// process. Without the transport `<ack>` from this gate, the server
+    /// would redeliver indefinitely. WA Web emits `<receipt context="status">`
+    /// in the success path on top of this; the duplicate is tolerated.
+    pub(crate) fn should_ack(&self, node: &wacore_binary::NodeRef<'_>) -> bool {
+        let tag = node.tag.as_ref();
+        if node.get_attr("id").is_none() {
+            return false;
+        }
+        if node.get_attr("from").is_none() {
+            return false;
+        }
+        match tag {
+            "receipt" | "notification" | "call" => true,
+            "message" => from_jid_matches(node, |j| j.is_newsletter() || j.is_status_broadcast()),
+            "status" => is_status_broadcast_stanza(node),
+            _ => false,
+        }
+    }
+
+    /// Possibly send a deferred ack: either immediately or through the ack
+    /// worker. Handlers can cancel by setting `cancelled` to true.
+    /// Uses Arc<OwnedNodeRef> so queueing does not clone the node.
+    ///
+    /// The deferred path feeds one persistent worker rather than spawning a
+    /// task per ack, which also makes acks leave in arrival order.
+    async fn maybe_deferred_ack(self: &Arc<Self>, node: Arc<wacore_binary::OwnedNodeRef>) {
+        if self.synchronous_ack {
+            if let Err(e) = self.send_ack_for(node.get()).await
+                && !e.is_transport_unavailable()
+            {
+                warn!("Failed to send ack: {e:?}");
+            }
+            return;
+        }
+        // A closed scope means disconnect is already running; the spawned task
+        // it replaces would have failed on an unavailable transport anyway.
+        let Some(guard) = self.outbound_flush.try_track() else {
+            return;
+        };
+        let tx = self
+            .transport_ack_queue
+            .get_or_init(|| self.start_transport_ack_worker());
+        // Only fails once the worker is gone (client teardown).
+        let _ = tx.try_send((node, guard));
+    }
+
+    /// Whether queued outbound work should be dropped rather than sent.
+    ///
+    /// This is the gate [`Self::send_ack_for`] applies before every ack, hoisted
+    /// so the burst path applies it too: during an expected teardown (an
+    /// intentional disconnect, or a 515) queued acks are deliberately dropped
+    /// rather than raced against the disconnect, and sending them anyway would
+    /// also hold the outbound flush open until its timeout.
+    pub(crate) fn outbound_teardown_in_progress(&self) -> bool {
+        self.expected_disconnect.load(Ordering::Relaxed) || !self.is_connected()
+    }
+
+    /// How many queued acks one burst may take.
+    ///
+    /// Measured, not guessed: the send-job channel holds 8, so a larger burst
+    /// fills it and makes unrelated producers (a reply, a receipt) wait for a
+    /// slot. At 16 the harness showed 29% fewer writes but 3.7% worse pong
+    /// latency (paired t = 2.8); at 4 the write saving is ~16% and latency is
+    /// no worse than main. Raising the channel instead recovers the latency but
+    /// gives back most of the coalescing, because a sender that never waits
+    /// consumes jobs one at a time.
+    const MAX_ACK_BURST: usize = 4;
+
+    /// Worker shared by every deferred ack. Holds a `Weak`, so a dropped
+    /// `Client` closes the channel and ends the task instead of keeping the
+    /// client alive.
+    fn start_transport_ack_worker(
+        self: &Arc<Self>,
+    ) -> async_channel::Sender<(
+        Arc<wacore_binary::OwnedNodeRef>,
+        crate::flush_scope::FlushGuard,
+    )> {
+        let (tx, rx) = async_channel::unbounded::<(
+            Arc<wacore_binary::OwnedNodeRef>,
+            crate::flush_scope::FlushGuard,
+        )>();
+        let client = Arc::downgrade(self);
+        self.runtime.spawn_detached(Box::pin(async move {
+            // Reuse the bounded control buffers for the worker's lifetime.
+            // Encoded payload allocations still move into `Bytes`; only
+            // the outer storage stays here.
+            let mut batch = Vec::with_capacity(Self::MAX_ACK_BURST);
+            let mut frames = Vec::with_capacity(Self::MAX_ACK_BURST);
+            let mut guards = Vec::with_capacity(Self::MAX_ACK_BURST);
+            let mut results = Vec::with_capacity(Self::MAX_ACK_BURST);
+            while let Ok(first) = rx.recv().await {
+                let Some(client) = client.upgrade() else {
+                    break;
+                };
+
+                // Take everything already waiting, not just the one job that
+                // woke us. Awaiting each ack before reading the next is what
+                // kept the noise sender from ever seeing two frames at once,
+                // so its batching only fired when some *other* producer
+                // happened to interleave. `try_recv` only: this never waits
+                // for work that has not arrived.
+                batch.push(first);
+                while batch.len() < Self::MAX_ACK_BURST
+                    && let Ok(next) = rx.try_recv()
+                {
+                    batch.push(next);
+                }
+
+                // The queue is still drained, exactly as the
+                // one-at-a-time worker did; only the send is skipped.
+                if client.outbound_teardown_in_progress() {
+                    batch.clear();
+                    continue;
+                }
+
+                // Encoding is synchronous, so the whole burst is marshalled
+                // before anything is sent and arrival order survives.
+                for (node, guard) in batch.drain(..) {
+                    match client.encode_ack_from_snapshot(
+                        node.get(),
+                        AckParticipantPolicy::OmitReceiptDestinationDuplicate,
+                    ) {
+                        Ok(buf) => {
+                            frames.push(buf);
+                            guards.push(guard);
+                        }
+                        // Matches the single-ack path: log and drop this one
+                        // rather than failing the rest of the burst.
+                        Err(e) => warn!("Failed to encode ack: {e}"),
+                    }
+                }
+                if frames.is_empty() {
+                    continue;
+                }
+
+                // The per-ack `wa.conn.ack` span lived in `send_ack_for`,
+                // which this path no longer calls; a burst reports itself
+                // once, with its size, rather than N times. The result
+                // inspection is inside the instrumented future, not after
+                // it: a failure has to be recorded while the span is open,
+                // the way `send_ack_for`'s `err(Debug)` used to. And
+                // `instrument` rather than `entered()`, because an
+                // EnteredSpan is not Send and cannot cross the await.
+                let frame_count = frames.len();
+                let send_and_report = async {
+                    match client.send_raw_bytes_burst(&mut frames, &mut results).await {
+                        Ok(()) => {
+                            for result in results.drain(..) {
+                                if let Err(e) = result
+                                    && !e.is_transport_unavailable()
+                                {
+                                    warn!("Failed to send ack: {e:?}");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if !matches!(e, ClientError::NotConnected) {
+                                warn!("Failed to send ack burst: {e:?}");
+                            }
+                        }
+                    }
+                };
+                #[cfg(feature = "tracing")]
+                {
+                    use tracing::Instrument;
+                    send_and_report
+                        .instrument(tracing::trace_span!(
+                            "wa.conn.ack_burst",
+                            frames = frame_count
+                        ))
+                        .await;
+                }
+                #[cfg(not(feature = "tracing"))]
+                {
+                    let _ = frame_count;
+                    send_and_report.await;
+                }
+                debug_assert!(
+                    frames.is_empty(),
+                    "send_raw_bytes_burst must always drain its input"
+                );
+                guards.clear();
+            }
+        }));
+        tx
+    }
+
+    #[inline]
+    fn encode_ack_from_snapshot(
+        &self,
+        node: &wacore_binary::NodeRef<'_>,
+        participant_policy: AckParticipantPolicy,
+    ) -> Result<Vec<u8>, crate::features::StanzaResponseError> {
+        let device = self.persistence_manager.get_device_snapshot();
+        let encoded = encode_ack_bytes(node, device.pn.as_ref(), participant_policy);
+        drop(device);
+        encoded
+    }
+
+    /// Build and send an <ack/> node corresponding to the given stanza.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.ack", level = "trace", skip_all, err(Debug))
+    )]
+    pub(crate) async fn send_ack_for(
+        &self,
+        node: &wacore_binary::NodeRef<'_>,
+    ) -> Result<(), ClientError> {
+        if self.expected_disconnect.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        if !self.is_connected() {
+            return Err(ClientError::NotConnected);
+        }
+        let buf = match self
+            .encode_ack_from_snapshot(node, AckParticipantPolicy::OmitReceiptDestinationDuplicate)
+        {
+            Ok(buf) => buf,
+            Err(e) => {
+                log::warn!("Failed to encode ack: {e}");
+                return Ok(());
+            }
+        };
+        self.send_raw_bytes(buf).await
+    }
+
+    /// Confirm a received stanza using its original borrowed node.
+    ///
+    /// Unlike the tolerant automatic receive path, malformed input is returned
+    /// to the caller and no successful outcome is reported unless the response
+    /// reaches the transport.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.ack_explicit", level = "debug", skip_all, err(Debug))
+    )]
+    pub async fn acknowledge_stanza(
+        &self,
+        stanza: &wacore_binary::NodeRef<'_>,
+    ) -> Result<(), crate::features::StanzaResponseError> {
+        let bytes = self.encode_ack_from_snapshot(stanza, AckParticipantPolicy::Preserve)?;
+        self.send_raw_bytes(bytes).await?;
+        Ok(())
+    }
+
+    /// Send a transport ack so the server stops replaying a stanza from the
+    /// offline queue. Awaitable so callers can order it after a retry receipt
+    /// in a single flushed task.
+    pub(crate) async fn send_transport_ack(&self, info: &crate::types::message::MessageInfo) {
+        let source = message_ack_source_node(info);
+        let encoded =
+            self.encode_ack_from_snapshot(&source.as_node_ref(), AckParticipantPolicy::Preserve);
+        match encoded {
+            Ok(buf) => {
+                if let Err(e) = self.send_raw_bytes(buf).await
+                    && !e.is_transport_unavailable()
+                {
+                    log::warn!("Failed to send transport ack for undecryptable message: {e:?}");
+                }
+            }
+            Err(e) => log::warn!("Failed to encode transport ack: {e}"),
+        }
+    }
+
+    /// Spawn [`Self::send_transport_ack`], tracked via `outbound_flush` so
+    /// `disconnect()` flushes it (issue #571), same as delivery receipts.
+    pub(crate) fn spawn_message_ack(
+        self: &Arc<Self>,
+        info: &Arc<crate::types::message::MessageInfo>,
+    ) {
+        let client = Arc::clone(self);
+        let info = Arc::clone(info);
+        self.outbound_flush.spawn(&*self.runtime, async move {
+            client.send_transport_ack(&info).await;
+        });
+    }
+
+    /// Tracked ack encoded from the original node. Use when the stanza carries
+    /// `recipient` (LID-routed/hosted-companion/peer) since `MessageInfo`
+    /// drops it on non-self branches and the server needs it for routing.
+    pub(crate) async fn spawn_node_transport_ack(
+        self: &Arc<Self>,
+        node: &wacore_binary::NodeRef<'_>,
+    ) {
+        let buf = match self.encode_ack_from_snapshot(node, AckParticipantPolicy::Preserve) {
+            Ok(buf) => buf,
+            Err(e) => {
+                log::warn!("Failed to encode node transport ack: {e}");
+                return;
+            }
+        };
+        let client = Arc::clone(self);
+        self.outbound_flush.spawn(&*self.runtime, async move {
+            if let Err(e) = client.send_raw_bytes(buf).await
+                && !e.is_transport_unavailable()
+            {
+                log::warn!("Failed to send node transport ack: {e:?}");
+            }
+        });
+    }
+
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.success", level = "debug", skip_all)
+    )]
+    pub(crate) async fn handle_success(self: &Arc<Self>, node: &wacore_binary::NodeRef<'_>) {
+        #[cfg(feature = "client-lifecycle")]
+        let login_transition = self
+            .login_transition
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Skip processing if an expected disconnect is pending (e.g., 515 received).
+        // This prevents race conditions where a spawned success handler runs after
+        // cleanup_connection_state has already reset is_logged_in.
+        if self.expected_disconnect.load(Ordering::Relaxed) {
+            debug!("Ignoring <success> stanza: expected disconnect pending");
+            return;
+        }
+
+        // Guard against multiple <success> stanzas (WhatsApp may send more than one during
+        // routing/reconnection). Only process the first one per connection.
+        if self.is_logged_in.swap(true, Ordering::SeqCst) {
+            debug!("Ignoring duplicate <success> stanza (already logged in)");
+            return;
+        }
+
+        // Increment connection generation to invalidate any stale post-login tasks
+        // from previous connections (e.g., during 515 reconnect cycles).
+        let current_generation = self.connection_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        #[cfg(feature = "client-lifecycle")]
+        if let Some(lifecycle) = &self.lifecycle {
+            let opened = lifecycle.begin_scope_if_current(current_generation, || {
+                self.connection_generation.load(Ordering::SeqCst) == current_generation
+                    && !self.expected_disconnect.load(Ordering::Acquire)
+            });
+            if !opened {
+                self.is_logged_in.store(false, Ordering::SeqCst);
+                debug!("Ignoring <success> stanza retired during lifecycle publication");
+                return;
+            }
+        }
+        #[cfg(feature = "client-lifecycle")]
+        drop(login_transition);
+
+        info!(
+            "Successfully authenticated with WhatsApp servers! (gen={})",
+            current_generation
+        );
+        // The generation this connection will be admitted under is now final.
+        // Published here, after the increment, and not by `is_logged_in` above —
+        // that one is the duplicate-`<success>` guard and has to be set first,
+        // which leaves a window where the client looks authenticated on a
+        // generation that is about to change. Work binding a scope in that
+        // window had every attempt rejected as retired.
+        self.authenticated_generation
+            .store(current_generation, Ordering::SeqCst);
+        // Only now is there something worth waking for: released here and not at
+        // `socket_ready_notifier`, which fires before login, so an IQ sent in
+        // that gap is answered by nobody.
+        self.notify_session_state();
+        // Record the auth time but DON'T reset the backoff counter yet: WA Web
+        // resets only after the connection has been stable for ~30s
+        // (`resetDelay`). Resetting on <success> alone lets a server that
+        // authenticates then immediately drops keep us in a 1s reconnect storm.
+        // The run loop does the stability-gated reset on the next disconnect.
+        self.connected_at_ms
+            .store(wacore::time::now_millis(), Ordering::Relaxed);
+        // Fresh connection starts un-penalized (see backoff_reset_suppressed).
+        self.backoff_reset_suppressed
+            .store(false, Ordering::Relaxed);
+
+        self.update_server_time_offset(node);
+
+        // Extract LID from the node before spawning (node isn't Send).
+        let lid_from_server = match node.get_attr("lid") {
+            Some(lid_value) => match lid_value.to_jid() {
+                Some(lid) => Some(lid),
+                None => {
+                    warn!("Failed to parse LID from success stanza: {lid_value}");
+                    None
+                }
+            },
+            None => {
+                warn!("LID not found in <success> stanza. Group messaging may fail.");
+                None
+            }
+        };
+
+        let client_clone = self.clone();
+        let task_generation = current_generation;
+        self.runtime.spawn_detached(Box::pin(async move {
+            // Update LID if changed (moved here to avoid blocking the read loop
+            // on Device snapshot + write lock).
+            if let Some(lid) = lid_from_server {
+                let device_snapshot =
+                    client_clone.persistence_manager.get_device_snapshot();
+                if device_snapshot.lid.as_ref() != Some(&lid) {
+                    debug!("Updating LID from server to '{}'", lid.observe());
+                    client_clone
+                        .persistence_manager
+                        .process_command(DeviceCommand::SetLid(Some(lid)))
+                        .await;
+                }
+            }
+
+            // WA Web bumps `lc` after each successful auth (Start/Backend.js
+            // listener on `onOpenSocketStream`). The Comms `onConnect` handler
+            // gates the trigger on `isRegistered()`, so the bump only happens
+            // for already-paired logins — never during the pairing XX
+            // handshake. We mirror that by skipping when `device.pn` is None.
+            let already_paired = client_clone
+                .persistence_manager
+                .get_device_snapshot()
+                .pn
+                .is_some();
+            if already_paired {
+                client_clone
+                    .persistence_manager
+                    .process_command(DeviceCommand::IncrementLoginCounter)
+                    .await;
+            }
+
+            // Macro to check if this task is still valid (connection hasn't been replaced)
+            macro_rules! check_generation {
+                () => {
+                    if client_clone.connection_generation.load(Ordering::SeqCst) != task_generation
+                    {
+                        debug!("Post-login task cancelled: connection generation changed");
+                        return;
+                    }
+                };
+            }
+
+            debug!(
+                "Starting post-login initialization sequence (gen={})...",
+                task_generation
+            );
+
+            // Check if we need initial app state sync (empty pushname indicates fresh pairing
+            // where pushname will come from app state sync's setting_pushName mutation)
+            let device_snapshot = client_clone.persistence_manager.get_device_snapshot();
+            let needs_pushname_from_sync = device_snapshot.push_name.is_empty();
+            if needs_pushname_from_sync {
+                debug!("Push name is empty - will be set from app state sync (setting_pushName)");
+            }
+
+            // Check connection before network operations.
+            // During pairing, a 515 disconnect happens quickly after success,
+            // so the socket may already be gone.
+            if !client_clone.is_connected() {
+                debug!(
+                    "Skipping post-login init: connection closed (likely pairing phase reconnect)"
+                );
+                return;
+            }
+
+            check_generation!();
+            client_clone.send_unified_session().await;
+
+            // === Establish session with primary phone for PDO ===
+            // This must happen BEFORE we exit passive mode (before offline messages arrive).
+            // PDO needs a session with device 0 to request decrypted content from our phone.
+            // Matches WhatsApp Web's bootstrapDeviceCapabilities() pattern.
+            check_generation!();
+            if let Err(e) = client_clone
+                .establish_primary_phone_session_immediate()
+                .await
+            {
+                warn!(target: "Client/PDO", "Failed to establish session with primary phone on login: {:?}", e);
+                // Don't fail login - PDO will retry via ensure_e2e_sessions fallback
+            }
+
+            check_generation!();
+            if !client_clone.is_connected() {
+                debug!("Skipping passive tasks: connection closed");
+                return;
+            }
+            // WA Web PassiveTasks: the pre-key upload is a passive task, not a gate
+            // on going active — it only publishes keys for peers' FUTURE sessions
+            // (the offline backlog uses keys we already hold, and a fresh device's
+            // server pool is empty). Awaiting it here just delayed offline delivery,
+            // so spawn it like RotateKeyJob below.
+            // Pre-key upload then RotateKeyJob, ordered on ONE detached task.
+            // Both re-declare the signed pre-key to the server — the upload bundles
+            // the CURRENT one with its one-time keys, rotation uploads a freshly
+            // promoted one. Run as two independent tasks they can overlap, and if
+            // rotation lands first, the upload (built from a pre-rotation snapshot)
+            // reverts the server to the stale signed pre-key; once that key is
+            // pruned, pkmsg sessions the server hands out become undecryptable.
+            // Ordering them here keeps set_passive un-gated (still detached) while
+            // making rotation read the upload's persisted state.
+            check_generation!();
+            let key_client = client_clone.clone();
+            let key_generation = task_generation;
+            client_clone
+                .runtime
+                .spawn_detached(Box::pin(async move {
+                    // A newer connection may have taken over between spawn and now.
+                    if key_client.connection_generation.load(Ordering::SeqCst) != key_generation {
+                        return;
+                    }
+                    if let Err(e) = key_client.upload_pre_keys_at_login().await
+                        && !key_client.is_shutting_down()
+                    {
+                        warn!("Failed to upload pre-keys during startup: {e:?}");
+                    }
+
+                    // The upload awaited network I/O; re-check before rotating so a
+                    // stale generation doesn't upload a duplicate signed pre-key.
+                    if key_client.connection_generation.load(Ordering::SeqCst) != key_generation {
+                        return;
+                    }
+                    if let Err(e) = key_client.maybe_rotate_signed_pre_key().await
+                        && !key_client.is_shutting_down()
+                    {
+                        warn!("Signed pre-key rotation check failed: {e:?}");
+                    }
+                }));
+
+            // === Send active IQ ===
+            // The server sends <ib><offline count="X"/></ib> AFTER we exit passive mode.
+            // This matches WhatsApp Web's behavior: executePassiveTasks() -> sendPassiveModeProtocol("active")
+            check_generation!();
+            if !client_clone.is_connected() {
+                debug!("Skipping active IQ: connection closed");
+                return;
+            }
+            if let Err(e) = client_clone.set_passive(false).await
+                && !client_clone.is_shutting_down()
+            {
+                warn!("Failed to send post-connect active IQ: {e:?}");
+            }
+
+            // === Wait for offline sync to complete ===
+            // The server sends <ib><offline count="X"/></ib> after we exit passive mode.
+            client_clone.wait_for_offline_delivery_end().await;
+
+            // Check if connection was replaced while waiting
+            check_generation!();
+
+            // Re-check connection and generation before sending presence
+            check_generation!();
+            if !client_clone.is_connected() {
+                debug!("Skipping presence: connection closed");
+                return;
+            }
+
+            // Background initialization queries (can run in parallel, non-blocking)
+            let bg_client = client_clone.clone();
+            let bg_generation = task_generation;
+            client_clone.runtime.spawn_detached(Box::pin(async move {
+                // Check connection and generation before starting background queries
+                if bg_client.connection_generation.load(Ordering::SeqCst) != bg_generation {
+                    debug!("Skipping background init queries: connection generation changed");
+                    return;
+                }
+                if !bg_client.is_connected() {
+                    debug!("Skipping background init queries: connection closed");
+                    return;
+                }
+
+                debug!(
+                    "Sending background initialization queries (Props, Blocklist, Privacy, Digest, Devices)..."
+                );
+
+                let props_fut = bg_client.fetch_props();
+                let binding = bg_client.blocking();
+                let blocklist_fut = binding.get_blocklist();
+                let privacy_fut = bg_client.fetch_privacy_settings();
+                let digest_fut = bg_client.validate_digest_key();
+                // Off the pre-active critical path: WA Web's passive tasks don't
+                // include an own-device usync (it resolves device lists on demand
+                // at send time), so syncing here instead of before the active IQ
+                // starts offline delivery one round-trip sooner.
+                let device_list_fut = bg_client.sync_own_device_list();
+
+                let (r_props, r_block, r_priv, r_digest, r_devices) = futures::join!(
+                    props_fut,
+                    blocklist_fut,
+                    privacy_fut,
+                    digest_fut,
+                    device_list_fut
+                );
+
+                // Suppress warnings if connection closed while queries were in-flight
+                if !bg_client.is_shutting_down() {
+                    if let Err(e) = r_props {
+                        warn!("Background init: Failed to fetch props: {e:?}");
+                    }
+                    if let Err(e) = r_block {
+                        warn!("Background init: Failed to fetch blocklist: {e:?}");
+                    }
+                    match r_priv {
+                        Ok(settings) => {
+                            use wacore::iq::privacy::{PrivacyCategory, PrivacyValue};
+                            // Persist so the gate is correct on reconnect before the next fetch
+                            // runs; this is also the cross-device refresh path (WA Web reads
+                            // readreceipts from local prefs).
+                            let disabled = matches!(
+                                settings.get_value(&PrivacyCategory::ReadReceipts),
+                                Some(PrivacyValue::None)
+                            );
+                            // Re-check generation: after the fetch's round-trip a superseded
+                            // connection must not persist its now-stale privacy value.
+                            let stale = bg_client.connection_generation.load(Ordering::SeqCst)
+                                != bg_generation;
+                            if !stale
+                                && disabled
+                                    != bg_client
+                                        .persistence_manager
+                                        .get_device_snapshot()
+                                        .read_receipts_disabled
+                            {
+                                bg_client
+                                    .persistence_manager
+                                    .process_command(DeviceCommand::SetReadReceiptsDisabled(
+                                        disabled,
+                                    ))
+                                    .await;
+                                if let Err(e) = bg_client.persistence_manager.flush().await {
+                                    warn!(
+                                        "Background init: Failed to persist readreceipts privacy: {e:?}"
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Background init: Failed to fetch privacy settings: {e:?}");
+                        }
+                    }
+                    if let Err(e) = r_digest {
+                        warn!("Background init: Failed to validate digest key: {e:?}");
+                    }
+                    if let Err(e) = r_devices {
+                        bg_client.log_sync_error("sync own device list", &e);
+                    }
+                }
+
+                // Prune expired tcTokens on connect (matches WhatsApp Web's PrivacyTokenJob)
+                if let Err(e) = bg_client.tc_token().prune_expired().await
+                    && !bg_client.is_shutting_down()
+                {
+                    warn!("Background init: Failed to prune expired tc_tokens: {e:?}");
+                }
+            }));
+
+            check_generation!();
+
+            let flag_set = client_clone.needs_initial_full_sync.is_armed();
+            let needs_initial_sync = flag_set || needs_pushname_from_sync;
+
+            if needs_initial_sync {
+                // === Fresh pairing path ===
+                // Like WhatsApp Web's syncCriticalData(): await critical collections before
+                // dispatching Connected, so blocklist/privacy settings are applied first.
+                debug!(
+                    target: "Client/AppState",
+                    "Starting Initial App State Sync (flag_set={flag_set}, needs_pushname={needs_pushname_from_sync})"
+                );
+
+                // Single deadline for the whole critical path (key-share grace + batched
+                // IQ + missing-key fallback). Matches WhatsApp Web's WAWebSyncBootstrap
+                // 180s critical-data deadline. Armed before the wait so every step below
+                // is bounded by the same clock.
+                const CRITICAL_SYNC_TIMEOUT_SECS: u64 = 180;
+                let critical_deadline = wacore::time::Instant::now()
+                    + Duration::from_secs(CRITICAL_SYNC_TIMEOUT_SECS);
+                // Explicit "critical sync completed" signal for the watchdog. A push_name
+                // check is not a reliable proxy: a business account gets push_name set
+                // from business_name at pairing (src/pair.rs) while still needing the
+                // full sync, so the watchdog would wrongly stand down on a failed sync.
+                let critical_sync_done =
+                    Arc::new(AtomicBool::new(false));
+                let timeout_client = client_clone.clone();
+                let timeout_generation = task_generation;
+                let timeout_rt = client_clone.runtime.clone();
+                let timeout_done = critical_sync_done.clone();
+                let critical_sync_timeout_handle = timeout_rt.spawn(Box::pin(async move {
+                    timeout_client.runtime.sleep(Duration::from_secs(CRITICAL_SYNC_TIMEOUT_SECS)).await;
+                    // Check generation — if connection was replaced, this timeout is stale
+                    if timeout_client.connection_generation.load(Ordering::SeqCst)
+                        != timeout_generation
+                    {
+                        return;
+                    }
+                    if timeout_done.load(Ordering::SeqCst) {
+                        debug!(
+                            target: "Client/AppState",
+                            "Critical sync timeout fired but critical sync already completed"
+                        );
+                    } else {
+                        warn!(
+                            target: "Client/AppState",
+                            "Critical app state sync did not complete within {CRITICAL_SYNC_TIMEOUT_SECS}s. \
+                             Reconnecting to retry."
+                        );
+                        // WhatsApp Web does socketLogout here which clears device identity.
+                        // We reconnect instead — preserving credentials and keeping the
+                        // run loop active so auto-reconnect can retry the sync.
+                        timeout_client.reconnect_immediately().await;
+                    }
+                }));
+
+                // Brief grace for the auto-shared key that the primary sends at pairing
+                // (the WA Web primary path). The listener is registered before the flag
+                // check because the notifier is not sticky — a key-share landing in the
+                // load→listen gap would otherwise be missed. This wait is only an
+                // optimization to avoid a redundant explicit key request in the common
+                // fast case; if the key is late (heavy history sync) or never
+                // auto-shared, the batched sync below falls back to an explicit
+                // AppStateSyncKeyRequest bounded by `critical_deadline`, so correctness
+                // does not depend on this grace.
+                const KEY_SHARE_GRACE_SECS: u64 = 10;
+                let key_share_listener = client_clone.initial_keys_synced_notifier.listen();
+                if !client_clone
+                    .initial_app_state_keys_received
+                    .load(Ordering::Relaxed)
+                {
+                    debug!(
+                        target: "Client/AppState",
+                        "Waiting up to {KEY_SHARE_GRACE_SECS}s for the auto-shared app state key..."
+                    );
+                    let _ = rt_timeout(
+                        &*client_clone.runtime,
+                        Duration::from_secs(KEY_SHARE_GRACE_SECS),
+                        key_share_listener,
+                    )
+                    .await;
+
+                    // Check if connection was replaced while waiting
+                    check_generation!();
+                }
+
+                // Await critical collections via batched IQ before dispatching Connected.
+                // The deadline lets the missing-key fallback recover a late/never-shared
+                // key on this connection instead of stalling to the watchdog.
+                check_generation!();
+                // Critical collections that missed for a reason a retry can still
+                // fix. Only filled on the refused path below, which connects
+                // anyway: the watchdog cannot be the retry there, because the
+                // collection the server refused would fail again on every
+                // reconnect and the two would loop for good. So they ride along
+                // with the background sync instead of being dropped.
+                let mut critical_retry: Vec<WAPatchName> = Vec::new();
+                // Whether a critical collection was refused outright. Terminal,
+                // so it is not retried, but it still means the bootstrap never
+                // finished.
+                let mut critical_refused = false;
+                let critical_scope = client_clone.sync_scope(Some(critical_deadline));
+                match client_clone
+                    .sync_collections_batched(
+                        vec![WAPatchName::CriticalBlock, WAPatchName::CriticalUnblockLow],
+                        critical_scope,
+                    )
+                    .await
+                {
+                    Ok(outcome) if outcome.all_synced() => {
+                        // Critical sync completed — signal the watchdog, then cancel it.
+                        critical_sync_done.store(true, Ordering::SeqCst);
+                        critical_sync_timeout_handle.abort();
+
+                        check_generation!();
+
+                        client_clone
+                            .resubscribe_presence_subscriptions(task_generation)
+                            .await;
+
+                        check_generation!();
+
+                        // Dispatch Connected after critical sync completes.
+                        // Presence is NOT sent here — WhatsApp Web sends presence from the
+                        // setting_pushName mutation handler (WAWebPushNameSync), not from
+                        // criticalSyncDone. Our setting_pushName handler already does this.
+                        client_clone.dispatch_connected(task_generation).await;
+                    }
+                    // The server refused a critical collection outright, and it
+                    // will refuse the same request again. Reconnecting cannot
+                    // clear a 400/404, and `needs_initial_full_sync` is only
+                    // cleared further down, so leaving the watchdog armed here
+                    // would reconnect into this same state every 180s — for
+                    // good, since `needs_pushname_from_sync` is derived from the
+                    // persisted push name and survives a restart.
+                    //
+                    // WA Web's answer is to notify the primary and log out
+                    // (`WAWebSyncdFatal`), which a library must not do on a
+                    // consumer's behalf. So: stop retrying, connect without the
+                    // collection, and hand the decision over as an event. The
+                    // account is reachable but missing whatever that collection
+                    // carried — for `critical_block` that includes the push
+                    // name, so presence stays unavailable until it arrives.
+                    Ok(outcome) if !outcome.fatal.is_empty() => {
+                        critical_sync_timeout_handle.abort();
+                        // Armed first, before anything a consumer handler can
+                        // interrupt. A refusal means the bootstrap is unfinished
+                        // whatever happens next, and everything below —
+                        // resubscribe, `Connected`, the failure event — can
+                        // retire this generation and take the decision with it,
+                        // leaving the flag false with the push name already
+                        // populated so the replacement skips what it still owes.
+                        client_clone.settle_bootstrap(critical_scope, true);
+                        // A refusal does not make the batch's other misses
+                        // terminal, and leaving them to the watchdog is not an
+                        // option once we connect. Retry them below instead.
+                        critical_retry
+                            .extend(outcome.retryable.iter().chain(&outcome.skipped).copied());
+                        // The refusal is not in `critical_retry` — retrying it
+                        // is pointless — but the bootstrap is still unfinished
+                        // because of it. Without carrying that, a clean
+                        // background run would stand the gate down for a
+                        // collection that never synced.
+                        critical_refused = true;
+                        warn!(
+                            target: "Client/AppState",
+                            "Critical app state sync refused for {:?}; connecting without it (retrying {:?})",
+                            outcome.fatal, critical_retry
+                        );
+                        check_generation!();
+                        client_clone
+                            .resubscribe_presence_subscriptions(task_generation)
+                            .await;
+                        check_generation!();
+                        client_clone.dispatch_connected(task_generation).await;
+                        // After the readiness transition, not before: the report
+                        // claims the session is usable, and until `Connected` is
+                        // actually published that claim can still be falsified by
+                        // a disconnect during the resubscribe above.
+                        //
+                        // Re-checked once more here because publishing
+                        // `Connected` runs consumer handlers, and one of them
+                        // disconnecting would retire this generation between the
+                        // two dispatches — long enough to hand the next session
+                        // a refusal it never earned.
+                        check_generation!();
+                        client_clone.dispatch_app_state_sync_failed(
+                            &outcome,
+                            client_clone.is_ready.load(Ordering::Relaxed),
+                        );
+                    }
+                    // Nothing terminal: a retryable error, a decode key that
+                    // never landed, or a collection held by another writer. The
+                    // watchdog stays alive to force the reconnect that retries.
+                    // detach() so this early return doesn't abort it on drop
+                    // (AbortHandle aborts the task when dropped).
+                    Ok(outcome) => {
+                        warn!(
+                            target: "Client/AppState",
+                            "Critical app state sync incomplete (retryable={:?} skipped={:?}); will retry",
+                            outcome.retryable, outcome.skipped
+                        );
+                        // Same reason as the arm above: never publish an outcome
+                        // that belongs to a retired socket. Returning here drops
+                        // the watchdog handle, which aborts it — correct for a
+                        // generation that already has its own.
+                        check_generation!();
+                        // Armed before returning, because the watchdog is not the
+                        // whole guarantee. This path is reachable with the flag
+                        // already false — an empty push name alone opens the
+                        // bootstrap — and a mixed response can apply
+                        // `critical_block`, push name included, while leaving
+                        // `critical_unblock_low` behind. The forced reconnect
+                        // would then see a populated name and a clear flag, take
+                        // the ordinary path, and never retry what is missing.
+                        client_clone.settle_bootstrap(critical_scope, true);
+                        client_clone.dispatch_app_state_sync_failed(&outcome, false);
+                        critical_sync_timeout_handle.detach();
+                        return;
+                    }
+                    Err(e) => {
+                        client_clone.log_sync_error("critical app state sync", &e);
+                        // Armed for the same reason as the incomplete arm above,
+                        // and it matters just as much here: a batch can fail
+                        // partway, after `critical_block` already dispatched and
+                        // persisted `setting_pushName`. The watchdog's reconnect
+                        // would then find a populated push name and a clear flag
+                        // and take the ordinary path, never retrying the rest.
+                        //
+                        client_clone.settle_bootstrap(critical_scope, true);
+                        // The sync failed — the watchdog must stay alive to force a reconnect.
+                        critical_sync_timeout_handle.detach();
+                        return;
+                    }
+                }
+
+                // Spawn remaining non-critical collections in background
+                let sync_client = client_clone.clone();
+                let sync_generation = task_generation;
+                client_clone.runtime.spawn_detached(Box::pin(async move {
+                    if sync_client.connection_generation.load(Ordering::SeqCst) != sync_generation {
+                        debug!("App state sync cancelled: connection generation changed");
+                        return;
+                    }
+
+                    // Any critical collection the refused path handed over goes
+                    // first: it is the one the account actually needs.
+                    let mut to_sync = critical_retry;
+                    to_sync.extend([
+                        WAPatchName::RegularLow,
+                        WAPatchName::RegularHigh,
+                        WAPatchName::Regular,
+                    ]);
+                    let requested = to_sync.clone();
+                    let scope = sync_client.sync_scope(None);
+                    let result = sync_client.sync_collections_batched(to_sync, scope).await;
+
+                    let complete = !critical_refused
+                        && result.as_ref().is_ok_and(|outcome| outcome.all_synced());
+
+                    // Settled before the report, because reporting dispatches to
+                    // consumer handlers synchronously and one of them
+                    // disconnecting would retire the scope and take this
+                    // decision with it — leaving an unfinished bootstrap
+                    // unarmed, which is the failure this path exists to prevent.
+                    // `settle_bootstrap` is what makes the "only for this
+                    // connection" part impossible to forget.
+                    sync_client.settle_bootstrap(scope, !complete);
+
+                    // A refused critical collection is not in `requested` and
+                    // never will be retried, but it is why the bootstrap is
+                    // unfinished. Handing that to the scheduler keeps a later
+                    // clean round from standing the gate down on its behalf.
+                    sync_client.report_background_sync_stranded(
+                        "non-critical app state sync",
+                        scope,
+                        SyncSettles::InitialSync,
+                        &requested,
+                        critical_refused,
+                        result,
+                    );
+                }));
+            } else {
+                // === Reconnection path ===
+                // Pushname is already known, send presence and Connected immediately.
+                let device_snapshot = client_clone.persistence_manager.get_device_snapshot();
+                if !device_snapshot.push_name.is_empty() {
+                    if let Err(e) = client_clone.presence().set_available().await {
+                        warn!("Failed to send initial presence: {e:?}");
+                    } else {
+                        debug!("Initial presence sent successfully.");
+                    }
+                }
+
+                client_clone
+                    .resubscribe_presence_subscriptions(task_generation)
+                    .await;
+
+                // Re-check generation after awaits to avoid dispatching Connected
+                // for an outdated connection that was replaced mid-await.
+                check_generation!();
+
+                client_clone.dispatch_connected(task_generation).await;
+            }
+        }));
+    }
+
+    /// Ack entry point for callers that already share the node: the waiter
+    /// receives an `Arc` clone instead of a ~1 KB re-encode + re-parse.
+    pub(crate) fn handle_ack_response_arc(
+        self: &Arc<Self>,
+        node: &Arc<wacore_binary::OwnedNodeRef>,
+    ) -> bool {
+        let Some(waiter) = self.take_ack_waiter(node.get()) else {
+            return false;
+        };
+        match waiter {
+            ResponseWaiter::Iq(sender) => {
+                #[cfg(feature = "voip-runtime")]
+                self.bind_pending_call_link_join_ack(node.get());
+                if let Err(rejected) = sender.send(Arc::clone(node)) {
+                    Self::warn_ack_waiter_dropped(&rejected);
+                }
+            }
+            ResponseWaiter::Phash(waiter) => self.check_phash_against_ack(node.get(), waiter),
+        }
+        true
+    }
+
+    /// Ack entry point for the read-loop fast path, which owns the node: the
+    /// `Arc` is built from the existing allocation, and only when a waiter is
+    /// actually waiting.
+    pub(crate) fn handle_ack_response_owned(
+        self: &Arc<Self>,
+        node: wacore_binary::OwnedNodeRef,
+    ) -> bool {
+        let Some(waiter) = self.take_ack_waiter(node.get()) else {
+            return false;
+        };
+        match waiter {
+            ResponseWaiter::Iq(sender) => {
+                #[cfg(feature = "voip-runtime")]
+                self.bind_pending_call_link_join_ack(node.get());
+                if let Err(rejected) = sender.send(Arc::new(node)) {
+                    Self::warn_ack_waiter_dropped(&rejected);
+                }
+            }
+            ResponseWaiter::Phash(waiter) => self.check_phash_against_ack(node.get(), waiter),
+        }
+        true
+    }
+
+    /// Inline half of the phash check. The comparison is a string equality on
+    /// the read loop; only a disagreement pays for a task, and that path
+    /// re-reads caches and can force a sender-key redistribution.
+    fn check_phash_against_ack(
+        self: &Arc<Self>,
+        node: &wacore_binary::NodeRef<'_>,
+        waiter: PhashWaiter,
+    ) {
+        let Some(server) = node.get_attr("phash") else {
+            return;
+        };
+        if server.as_str() == waiter.expected {
+            return;
+        }
+        let client = Arc::clone(self);
+        let server = server.as_str().to_string();
+        self.runtime.spawn_detached(Box::pin(async move {
+            client
+                .handle_phash_mismatch(
+                    &waiter.jid,
+                    &waiter.expected,
+                    &server,
+                    waiter.invalidate_group_cache,
+                )
+                .await;
+        }));
+    }
+
+    fn warn_ack_waiter_dropped(rejected: &Arc<wacore_binary::OwnedNodeRef>) {
+        warn!(
+            target: "Client/Ack",
+            "Failed to send ACK response to waiter for ID {:?}. Receiver was likely dropped.",
+            rejected.get().get_attr("id")
+        );
+    }
+
+    /// Shared ack prologue: log nack codes, dispatch `ServerAck` when
+    /// observed, and pull the matching response waiter out of the map.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.ack_response", level = "debug", skip_all)
+    )]
+    fn take_ack_waiter(&self, node: &wacore_binary::NodeRef<'_>) -> Option<ResponseWaiter> {
+        let ack_id = node.get_attr("id");
+        let ack_error = node.get_attr("error");
+
+        // Surface server nack codes for diagnosability. A nacked send still
+        // resolves Ok to the caller, so without this the failure is invisible.
+        if let Some(error_code) = &ack_error {
+            let code = error_code.as_str();
+            let id = ack_id.as_ref().map(|v| v.as_str());
+            match code.as_ref() {
+                "463" => {
+                    warn!(
+                        target: "Client/Ack",
+                        "Received 463 (MissingTcToken) nack for msg {:?}. \
+                         The recipient requires a valid tctoken or cstoken. \
+                         This may indicate a reachout timelock on the account.",
+                        id
+                    );
+                }
+                "479" => {
+                    warn!(
+                        target: "Client/Ack",
+                        "Received 479 (SmaxInvalid) nack for msg {:?}. \
+                         A stanza field has an incorrect format (e.g. wrong JID format or content type).",
+                        id
+                    );
+                }
+                other => {
+                    warn!(
+                        target: "Client/Ack",
+                        "Received {other} nack for msg {:?}; the message was likely \
+                         not delivered (e.g. 400 = malformed stanza, 404 = recipient \
+                         not found, 503 = service unavailable).",
+                        id
+                    );
+                }
+            }
+        }
+
+        // Dispatched before waiter resolution; gated on interest so the hot path
+        // allocates nothing when nobody is listening.
+        if self
+            .core
+            .event_bus
+            .has_handler_for(wacore::types::events::EventKind::ServerAck)
+            && let Some(id) = &ack_id
+        {
+            let ack = wacore::types::events::ServerAck::builder()
+                .id(id.as_str().to_string())
+                .maybe_class(node.get_attr("class").map(|v| v.as_str().to_string()))
+                .maybe_from(node.get_attr("from").and_then(|v| v.as_str().parse().ok()))
+                .maybe_timestamp(
+                    node.get_attr("t")
+                        .and_then(|v| v.as_str().parse::<i64>().ok())
+                        .and_then(|secs| chrono::DateTime::from_timestamp(secs, 0)),
+                )
+                .maybe_error(ack_error.as_ref().map(|v| v.as_str().to_string()))
+                .build();
+            self.core.event_bus.dispatch(Event::ServerAck(ack));
+        }
+
+        let id = ack_id.map(|v| v.as_str())?;
+        self.response_waiters_guard().remove(id.as_ref())
+    }
+
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.stream_error", level = "debug", skip_all)
+    )]
+    pub(crate) async fn handle_stream_error(&self, node: &wacore_binary::NodeRef<'_>) {
+        wacore::telemetry::stream_error();
+        // is_logged_in handling: opt-in branches (515/516/401/409/conflict) clear it
+        // in the disconnect block below; 429/503 clear it inline because the server
+        // explicitly rejected the session and outgoing sends should bail fast; the
+        // unknown/code-less catch-all keeps it true so is_fully_ready()-gated work
+        // (notably prekey uploads) survives ack-shaped routing errors.
+        let mut attrs = node.attrs();
+        let code_cow = attrs.optional_string("code");
+        let code = code_cow.as_deref().unwrap_or("");
+        let conflict_type = node
+            .get_optional_child("conflict")
+            .map(|n| {
+                n.attrs()
+                    .optional_string("type")
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .unwrap_or_default();
+
+        // Whether to proactively disconnect the transport after handling.
+        let mut should_disconnect = false;
+
+        if !conflict_type.is_empty() {
+            info!(
+                "Got stream error indicating client was removed or replaced (conflict={}). Logging out.",
+                conflict_type
+            );
+            self.expected_disconnect.store(true, Ordering::Relaxed);
+            self.enable_auto_reconnect.store(false, Ordering::Relaxed);
+
+            let event = if conflict_type == "replaced" {
+                Event::StreamReplaced(crate::types::events::StreamReplaced::builder().build())
+            } else {
+                Event::LoggedOut(
+                    crate::types::events::LoggedOut::builder()
+                        .on_connect(false)
+                        .reason(ConnectFailureReason::LoggedOut)
+                        .raw(node.to_owned())
+                        .build(),
+                )
+            };
+            self.core.event_bus.dispatch(event);
+            should_disconnect = true;
+        } else {
+            match code {
+                "515" => {
+                    info!(
+                        "Got 515 stream error, server is closing stream (expected after pairing). Will auto-reconnect."
+                    );
+                    self.expected_disconnect.store(true, Ordering::Relaxed);
+                    should_disconnect = true;
+                }
+                "516" => {
+                    info!("Got 516 stream error (device removed). Logging out.");
+                    self.expected_disconnect.store(true, Ordering::Relaxed);
+                    self.enable_auto_reconnect.store(false, Ordering::Relaxed);
+                    self.core.event_bus.dispatch(Event::LoggedOut(
+                        crate::types::events::LoggedOut::builder()
+                            .on_connect(false)
+                            .reason(ConnectFailureReason::LoggedOut)
+                            .raw(node.to_owned())
+                            .build(),
+                    ));
+                    should_disconnect = true;
+                }
+                "401" => {
+                    info!("Got 401 stream error (unauthorized). Logging out.");
+                    self.expected_disconnect.store(true, Ordering::Relaxed);
+                    self.enable_auto_reconnect.store(false, Ordering::Relaxed);
+                    self.core.event_bus.dispatch(Event::LoggedOut(
+                        crate::types::events::LoggedOut::builder()
+                            .on_connect(false)
+                            .reason(ConnectFailureReason::LoggedOut)
+                            .raw(node.to_owned())
+                            .build(),
+                    ));
+                    should_disconnect = true;
+                }
+                "409" => {
+                    info!("Got 409 stream error (conflict). Another session replaced this one.");
+                    self.expected_disconnect.store(true, Ordering::Relaxed);
+                    self.enable_auto_reconnect.store(false, Ordering::Relaxed);
+                    self.core.event_bus.dispatch(Event::StreamReplaced(
+                        crate::types::events::StreamReplaced::builder().build(),
+                    ));
+                    should_disconnect = true;
+                }
+                "429" => {
+                    // Server signalled rate-limit on this session: mark logged-out so
+                    // outgoing sends bail fast instead of being interpreted as abuse
+                    // while we wait for the (likely-imminent) reconnect.
+                    warn!(
+                        "Got 429 stream error (rate limited). Will auto-reconnect with extended backoff."
+                    );
+                    self.is_logged_in.store(false, Ordering::Relaxed);
+                    self.auto_reconnect_errors.fetch_add(5, Ordering::Relaxed);
+                    // Deliberate rate-limit backoff: the stability reset must
+                    // not erase it even if the connection had been up >= 30s.
+                    self.backoff_reset_suppressed.store(true, Ordering::Relaxed);
+                }
+                "503" => {
+                    // Server is going down/restarting: mark logged-out so sends fail
+                    // fast against the soon-to-die socket. Auto-reconnect handles recovery.
+                    info!("Got 503 service unavailable, will auto-reconnect.");
+                    self.is_logged_in.store(false, Ordering::Relaxed);
+                }
+                _ => {
+                    // Server wraps per-stanza routing failures in <stream:error> without a
+                    // code (e.g. <ack/>): treat as informational so we don't trigger reconnect
+                    // storms. is_logged_in stays true on purpose — whatsmeow clears it eagerly,
+                    // but here is_fully_ready() gates prekey uploads and we want them to keep
+                    // working while the socket is still alive. Severity is warn!, not error!,
+                    // because the connection is intentionally preserved.
+                    // WA Web (StreamError.js) knows <stream:error><ack/> (type "ack");
+                    // name it instead of "Unknown". Root cause is usually an un-acked
+                    // offline stanza; the server's <xmlstreamend/> drives the reconnect.
+                    if node.get_optional_child("xml-not-well-formed").is_some() {
+                        // WA Web (Handle/StreamError.js): "bad xml, closing socket"
+                        // → CLOSE_SOCKET. A malformed frame desyncs the stream, so
+                        // recycle the socket proactively instead of keeping the
+                        // broken connection and waiting for the server to end it.
+                        // Counts toward the reconnect backoff (not an expected
+                        // disconnect); is_logged_in clears so sends bail fast.
+                        warn!(
+                            "Stream error <xml-not-well-formed>: closing socket to recycle the stream"
+                        );
+                        self.is_logged_in.store(false, Ordering::Relaxed);
+                        should_disconnect = true;
+                    } else if let Some(ack) = node.get_optional_child("ack") {
+                        let id = ack
+                            .get_attr("id")
+                            .map(|v| v.as_str().to_string())
+                            .unwrap_or_default();
+                        let class = ack
+                            .get_attr("class")
+                            .map(|v| v.as_str().to_string())
+                            .unwrap_or_default();
+                        warn!(
+                            "Stream error carrying <ack> (class={class:?}, id={id}): the server is \
+                             still owed a transport ack for that stanza and recycles the stream \
+                             until it arrives; reconnect follows on stream end"
+                        );
+                    } else {
+                        warn!("Unknown stream error: {}", DisplayableNodeRef(node));
+                    }
+                    self.core.event_bus.dispatch(Event::StreamError(
+                        crate::types::events::StreamError::builder()
+                            .code(code.to_string())
+                            .raw(node.to_owned())
+                            .build(),
+                    ));
+                }
+            }
+        }
+
+        // Single is_logged_in clear + transport disconnect for every opt-in branch
+        // (515/516/401/409 and conflict). 429/503/unknown fall through so the
+        // socket layer notices a real teardown without us forcing one.
+        if should_disconnect {
+            self.is_logged_in.store(false, Ordering::Relaxed);
+            let transport_opt = self.transport.lock().await.clone();
+            if let Some(transport) = transport_opt {
+                self.runtime.spawn_detached(Box::pin(async move {
+                    transport.disconnect().await;
+                }));
+            }
+            info!("Notifying connection shutdown from stream error handler");
+            self.notify_connection_shutdown();
+        }
+    }
+
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.connect_failure", level = "debug", skip_all)
+    )]
+    pub(crate) async fn handle_connect_failure(&self, node: &wacore_binary::NodeRef<'_>) {
+        self.expected_disconnect.store(true, Ordering::Relaxed);
+
+        let failure = wacore::stanza::connect_failure::ConnectFailureStanza::parse(node);
+        // A `<failure>` with no usable `reason` is not a failure we can classify:
+        // treat it as unknown, which stops auto-reconnect rather than looping
+        // against a server that just refused us. (WA Web drops the stanza
+        // outright; it has a UI to fall back on, an embedder does not.)
+        let reason = failure.reason.unwrap_or(ConnectFailureReason::Unknown(0));
+
+        if reason.should_reconnect() {
+            self.expected_disconnect.store(false, Ordering::Relaxed);
+        } else {
+            self.enable_auto_reconnect.store(false, Ordering::Relaxed);
+        }
+        // Announced after the classification, not before it. This notify is what
+        // wakes work parked in `await_connection`, and that work answers by
+        // reading the state — so announcing first offers it the state of a
+        // client that has not yet decided, and the decision that follows makes
+        // no sound of its own. Nothing awaits between the stores and here, so
+        // the pair is what a waiter observes.
+        self.notify_connection_shutdown();
+
+        // Every branch below keeps the stanza on its event. The server states
+        // things here exactly once — an account lock's one-time `appeal_token`,
+        // a ban's support URL — and a `warn!` line is not a delivery channel.
+        if reason.is_logged_out() {
+            // `location` (e.g. "rva") is a routing token, not the cause.
+            warn!(
+                "Got {reason:?} connect failure, logging out: {}",
+                DisplayableNodeRef(node)
+            );
+            self.core.event_bus.dispatch(Event::LoggedOut(
+                crate::types::events::LoggedOut::builder()
+                    .on_connect(true)
+                    .reason(reason)
+                    .maybe_logout_message(failure.logout_message())
+                    .raw(node.to_owned())
+                    .build(),
+            ));
+        } else if let ConnectFailureReason::TempBanned = reason
+            && let Some(expire_secs) = failure.expire
+            && let Some(ban_code) = failure.code
+            && let Ok(expire_secs) = i64::try_from(expire_secs)
+            && let Some(expire_duration) = chrono::Duration::try_seconds(expire_secs)
+        {
+            warn!(
+                "Temporary ban connect failure: {}",
+                DisplayableNodeRef(node)
+            );
+            self.core.event_bus.dispatch(Event::TemporaryBan(
+                crate::types::events::TemporaryBan::builder()
+                    .code(crate::types::events::TempBanReason::from(ban_code))
+                    .expire(expire_duration)
+                    .maybe_message(failure.message.as_deref().map(str::to_owned))
+                    .maybe_url(failure.url.as_deref().map(str::to_owned))
+                    .raw(node.to_owned())
+                    .build(),
+            ));
+        } else if let ConnectFailureReason::ClientOutdated = reason {
+            error!("Client is outdated and was rejected by server.");
+            self.core.event_bus.dispatch(Event::ClientOutdated(
+                crate::types::events::ClientOutdated::builder()
+                    .raw(node.to_owned())
+                    .build(),
+            ));
+        } else {
+            // Also the landing spot for a 402 whose `code`/`expire` is missing
+            // or does not fit a `Duration`: WA Web errors out there instead of
+            // reporting a zero-length ban, so the raw stanza is all we can
+            // honestly hand over.
+            warn!("Unknown connect failure: {}", DisplayableNodeRef(node));
+            self.core.event_bus.dispatch(Event::ConnectFailure(
+                crate::types::events::ConnectFailure::builder()
+                    .reason(reason)
+                    .maybe_message(failure.message.as_deref().map(str::to_owned))
+                    .raw(node.to_owned())
+                    .build(),
+            ));
+        }
+    }
+
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.iq_in", level = "debug", skip_all)
+    )]
+    pub(crate) async fn handle_iq(self: &Arc<Self>, node: &wacore_binary::NodeRef<'_>) -> bool {
+        // Pong a server-initiated ping (a request: type="get" or, like WA Web's
+        // type-agnostic handleIq, an absent type), but not a type="result"/"error"
+        // ping — that's a response to our own ping, and ponging it back is wrong.
+        // The previous gate required type=="get" exactly, dropping an absent-type
+        // ping and risking a keepalive timeout/disconnect.
+        let is_ping_request = node.get_attr("type").is_none_or(|s| s.as_str() == "get")
+            && (node.get_optional_child("ping").is_some()
+                || node
+                    .get_attr("xmlns")
+                    .is_some_and(|s| s.as_str() == "urn:xmpp:ping"));
+        if is_ping_request {
+            debug!("Received ping, sending pong.");
+            let mut parser = node.attrs();
+            let from_jid = parser.jid("from");
+            let id = parser.optional_string("id").map(|s| s.to_string());
+            let pong = build_pong(from_jid.to_string(), id.as_deref());
+            if let Err(e) = self.send_node(pong).await {
+                warn!("Failed to send pong: {e:?}");
+            }
+            return true;
+        }
+
+        if pair::handle_iq(self, node).await {
+            return true;
+        }
+
+        false
+    }
+
+    pub(crate) fn update_server_time_offset(&self, node: &wacore_binary::NodeRef<'_>) {
+        self.unified_session.update_server_time_offset(node);
+    }
+}

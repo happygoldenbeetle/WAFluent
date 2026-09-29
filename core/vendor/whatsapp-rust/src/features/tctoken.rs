@@ -1,0 +1,112 @@
+//! Trusted contact privacy token feature.
+//!
+//! Provides high-level APIs for managing tcTokens, matching WhatsApp Web's
+//! `WAWebTrustedContactsUtils` and `WAWebPrivacyTokenJob`.
+//!
+//! ## Usage
+//! ```ignore
+//! // Issue tokens to contacts
+//! let tokens = client.tc_token().issue_tokens(&[jid]).await?;
+//!
+//! // Prune expired tokens
+//! let count = client.tc_token().prune_expired().await?;
+//! ```
+//!
+//! ## VoIP call integration
+//! Outgoing 1:1 call offers attach the callee's stored token to the offer's
+//! `<privacy>` node and issue a fresh token after send (WA Web's `sendTcToken`
+//! in StartCall.js), both driven from `voip::facade::place_call`. Group-call
+//! initiation is not yet implemented; when it is, it should attach/issue per
+//! participant the same way to avoid 463 nacks on call offers.
+
+use crate::client::Client;
+use crate::request::IqError;
+use crate::store::error::StoreError;
+use thiserror::Error;
+use wacore::iq::tctoken::{IssuePrivacyTokensSpec, ReceivedTcToken};
+use wacore::store::traits::TcTokenEntry;
+use wacore_binary::Jid;
+
+/// Error returned by trusted-contact token operations.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum TcTokenError {
+    /// The IQ requesting tokens from the server failed.
+    #[error("{0}")]
+    Iq(#[from] IqError),
+    /// A token store (persistence) operation failed.
+    #[error("{0}")]
+    Store(#[from] StoreError),
+}
+
+/// Feature handle for trusted contact token operations.
+pub struct TcToken<'a> {
+    client: &'a Client,
+}
+
+impl<'a> TcToken<'a> {
+    pub(crate) fn new(client: &'a Client) -> Self {
+        Self { client }
+    }
+
+    /// Issue privacy tokens for the given contacts.
+    ///
+    /// Sends an IQ to the server requesting tokens for the specified JIDs (should be LID JIDs).
+    /// Stores the received tokens and returns them.
+    pub async fn issue_tokens(&self, jids: &[Jid]) -> Result<Vec<ReceivedTcToken>, TcTokenError> {
+        if jids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let spec = IssuePrivacyTokensSpec::new(jids);
+        let response = self.client.execute(spec).await?;
+        self.client.store_issued_tc_tokens(&response.tokens).await;
+
+        Ok(response.tokens)
+    }
+
+    /// Prune expired tc tokens from the store.
+    ///
+    /// Cutoffs are AB-prop-aware via `Client::tc_token_config()` — the server
+    /// may override the default 28-day window (e.g. 26 buckets = 182 days). The
+    /// received token and the sender bucket expire on independent windows, so a
+    /// row is dropped only when both are stale.
+    pub async fn prune_expired(&self) -> Result<u32, TcTokenError> {
+        use wacore::iq::tctoken::{
+            sender_tc_token_expiration_cutoff_with, tc_token_expiration_cutoff_with,
+        };
+
+        let backend = self.client.persistence_manager.backend();
+        let tc_config = self.client.tc_token_config().await;
+        let token_cutoff = tc_token_expiration_cutoff_with(&tc_config);
+        let sender_cutoff = sender_tc_token_expiration_cutoff_with(&tc_config);
+        let deleted = backend
+            .delete_expired_tc_tokens(token_cutoff, sender_cutoff)
+            .await?;
+
+        if deleted > 0 {
+            log::info!(target: "Client/TcToken", "Pruned {} expired tc_tokens", deleted);
+        }
+
+        Ok(deleted)
+    }
+
+    /// Get a stored tc token for a JID.
+    pub async fn get(&self, jid: &str) -> Result<Option<TcTokenEntry>, TcTokenError> {
+        let backend = self.client.persistence_manager.backend();
+        Ok(backend.get_tc_token(jid).await?)
+    }
+
+    /// Get all JIDs that have stored tc tokens.
+    pub async fn get_all_jids(&self) -> Result<Vec<String>, TcTokenError> {
+        let backend = self.client.persistence_manager.backend();
+        Ok(backend.get_all_tc_token_jids().await?)
+    }
+}
+
+impl Client {
+    /// Access trusted contact token operations.
+    pub fn tc_token(&self) -> TcToken<'_> {
+        TcToken::new(self)
+    }
+}

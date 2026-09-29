@@ -25,8 +25,9 @@ public sealed partial class MainWindow
     {
         StickerButton.Content = Controls.StickerPanel.StickerGlyph();
         if (_core is null) return;
-        _core.Stickers += (stickers, gifs) => _stickerPanel?.SetItems(stickers, gifs);
+        _core.Stickers += (favorites, stickers, gifs) => _stickerPanel?.SetItems(favorites, stickers, gifs);
         _core.MediaReceived += (chatId, messageId, path) => _stickerPanel?.MediaArrived(chatId, messageId, path);
+        _core.MediaFailed += (chatId, messageId, _) => _stickerPanel?.MediaFailed(chatId, messageId);
     }
 
     private void Stickers_Click(object sender, RoutedEventArgs e)

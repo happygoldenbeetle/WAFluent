@@ -104,7 +104,7 @@ public sealed partial class MainWindow : Window
                 Stickers_Click(StickerButton, new RoutedEventArgs());
                 var pictures = Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg").Take(6).ToList();
                 var items = pictures.Select((p, i) => new StickerDto("sample", $"s{i}", 512, 512, p, null)).ToList();
-                _stickerPanel?.SetItems(items, []);
+                _stickerPanel?.SetItems(items[..2], items[2..], []);
             };
         var pollTestDone = false;
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")

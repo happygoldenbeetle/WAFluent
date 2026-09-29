@@ -1,0 +1,434 @@
+use crate::client::Client;
+use crate::request::IqError;
+use futures::FutureExt;
+use log::{debug, warn};
+use rand::RngExt;
+use std::sync::Arc;
+use std::time::Duration;
+use wacore::iq::spec::IqSpec;
+use wacore::protocol::keepalive::{
+    KEEP_ALIVE_INTERVAL_MAX, KEEP_ALIVE_INTERVAL_MIN, KEEP_ALIVE_RESPONSE_DEADLINE,
+    is_dead_socket_at, ms_since, ms_since_at,
+};
+
+#[derive(Debug, PartialEq)]
+enum KeepaliveResult {
+    /// Server responded to the ping.
+    Ok,
+    /// Ping failed but the connection may recover (e.g. timeout, server error).
+    TransientFailure,
+    /// Connection is dead — loop should exit immediately.
+    FatalFailure,
+}
+
+/// Classifies an IQ error into a keepalive result.
+///
+/// Fatal errors indicate the connection is already gone — there is no point
+/// waiting for the grace window.  Transient errors (timeout, unexpected
+/// server response) still count as failures but allow the grace window to
+/// decide whether to force-reconnect.
+fn classify_keepalive_error(e: &IqError) -> KeepaliveResult {
+    match e {
+        IqError::Socket(_)
+        | IqError::EncryptSend(_)
+        | IqError::ClientState(_)
+        | IqError::Disconnected(_)
+        | IqError::NotConnected
+        | IqError::InternalChannelClosed
+        | IqError::DuplicateRequestId(_)
+        | IqError::EncodeError(_) => KeepaliveResult::FatalFailure,
+        // Exhaustive: forces a compile error when new IqError variants are added
+        // so the developer must decide the classification.
+        IqError::Timeout
+        | IqError::ServerError { .. }
+        | IqError::UnexpectedResponseType { .. }
+        | IqError::ParseError(_) => KeepaliveResult::TransientFailure,
+    }
+}
+
+/// Whether a keepalive ping error is just collateral of a teardown already
+/// being handled elsewhere (the connection is gone, so the ping had nowhere to
+/// go) rather than a genuine failure the keepalive surfaced first.
+///
+/// Used ONLY to pick the log level. It must stay narrower than the
+/// `FatalFailure` set: Socket/EncryptSend/ClientState/EncodeError are also
+/// fatal for control flow, but they mean the socket or send pipeline broke
+/// while we still believed we were connected — a real failure that the
+/// keepalive may be the first (or only) thing to observe, so it must stay loud.
+fn is_benign_teardown(e: &IqError) -> bool {
+    matches!(
+        e,
+        IqError::NotConnected | IqError::Disconnected(_) | IqError::InternalChannelClosed
+    )
+}
+
+impl Client {
+    /// Sends a keepalive ping and updates the server time offset from
+    /// the pong's `t` attribute using RTT-adjusted midpoint calculation.
+    ///
+    /// WA Web: `sendPing` → `onClockSkewUpdate(Math.round((start + rtt/2) / 1000 - serverTime))`
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(name = "wa.conn.keepalive.ping", level = "debug", skip_all)
+    )]
+    async fn send_keepalive(&self) -> KeepaliveResult {
+        if !self.is_connected() {
+            return KeepaliveResult::FatalFailure;
+        }
+
+        // WA Web: skip ping if there are pending IQs
+        // (`activePing || ackHandlers.length || pendingIqs.size`)
+        let has_pending = !self.response_waiters_guard().is_empty();
+        if has_pending {
+            debug!(target: "Client/Keepalive", "Skipping ping: IQ responses pending");
+            return KeepaliveResult::Ok;
+        }
+
+        debug!(target: "Client/Keepalive", "Sending keepalive ping");
+
+        // wall_rtt_ms feeds the WA Web onClockSkewUpdate formula, which
+        // mixes start_ms with serverTime — both halves must be wall-clock.
+        // rtt_monotonic is for the log only.
+        let start_ms = wacore::time::now_millis();
+        let rtt_start = wacore::time::Instant::now();
+        let iq = wacore::iq::keepalive::KeepaliveSpec::with_timeout(KEEP_ALIVE_RESPONSE_DEADLINE)
+            .build_iq();
+        match self.send_iq(iq).await {
+            Ok(response_node) => {
+                let rtt_monotonic = rtt_start.elapsed();
+                let wall_rtt_ms = wacore::time::now_millis().saturating_sub(start_ms).max(0);
+                debug!(target: "Client/Keepalive", "Received keepalive pong (RTT: {rtt_monotonic:.2?})");
+                self.unified_session.update_server_time_offset_with_rtt(
+                    response_node.get(),
+                    start_ms,
+                    wall_rtt_ms,
+                );
+                KeepaliveResult::Ok
+            }
+            Err(e) => {
+                let result = classify_keepalive_error(&e);
+                // Log level is keyed on benign-teardown, NOT on FatalFailure: only
+                // an already-gone connection (NotConnected/Disconnected/channel
+                // closed, handled elsewhere) is quiet collateral. A broken
+                // socket/send pipeline is also fatal for control flow but is a real
+                // failure the keepalive may see first, so it stays loud — as do all
+                // transient failures.
+                if is_benign_teardown(&e) {
+                    debug!(target: "Client/Keepalive", "Keepalive skipped, connection already closing: {e:?}");
+                } else {
+                    warn!(target: "Client/Keepalive", "Keepalive ping failed: {e:?}");
+                }
+                result
+            }
+        }
+    }
+
+    // Deliberately NOT instrumented: a span here would live for the whole
+    // connection (tens of minutes), polluting duration/throughput metrics and
+    // only reporting at disconnect. Per-ping visibility comes from
+    // `wa.conn.keepalive.ping` on send_keepalive.
+    pub(crate) async fn keepalive_loop(self: Arc<Self>) {
+        let mut error_count = 0u32;
+        let mut cleanup_counter = 0u32;
+        let sent_msg_ttl = self.cache_config.sent_message_ttl_secs;
+        // Capture the per-connection signal once — re-subscribing each iteration
+        // would let a racing reset_connection_shutdown swap the underlying
+        // notifier mid-loop and strand this task on the next connection's signal.
+        let shutdown_signal = self.connection_shutdown_signal();
+
+        loop {
+            // Fresh listener each iteration (event_listener is edge-triggered);
+            // the Weak underneath stays pinned to this connection's notifier.
+            let shutdown = wacore::runtime::wait_for_shutdown(&shutdown_signal);
+
+            let interval_ms = rand::make_rng::<rand::rngs::StdRng>().random_range(
+                KEEP_ALIVE_INTERVAL_MIN.as_millis()..=KEEP_ALIVE_INTERVAL_MAX.as_millis(),
+            );
+            let interval = Duration::from_millis(interval_ms as u64);
+
+            futures::select! {
+                _ = self.runtime.sleep(interval).fuse() => {
+                    if !self.is_connected() {
+                        debug!(target: "Client/Keepalive", "Not connected, exiting keepalive loop.");
+                        return;
+                    }
+
+                    // Periodic DB retention (~every 12 ticks ≈ 5 min). Driven by
+                    // the interval tick itself, BEFORE the idle-ping early-return,
+                    // so busy connections (which skip the ping) still prune.
+                    cleanup_counter += 1;
+                    if cleanup_counter >= 12 {
+                        cleanup_counter = 0;
+                        self.spawn_retention_cleanup(sent_msg_ttl);
+                    }
+
+                    // Same reason as the retention sweep above: driven by the
+                    // tick rather than by send_keepalive, because a connection
+                    // with steady inbound traffic takes the early return below
+                    // and would never sweep. A phash waiter whose ack was lost
+                    // has nothing else to remove it, and it reads as an
+                    // outstanding IQ.
+                    self.response_waiters_guard().drop_expired_phash();
+
+                    let last_recv = self.stats.last_data_received_ms();
+
+                    // WA Web: maybeScheduleHealthCheck — only send ping when idle.
+                    // If we recently received data, the connection is proven alive;
+                    // skip the ping and reschedule (same as WA Web rescheduling the
+                    // healthCheckTimer after activity).
+                    if let Some(since_recv) = ms_since(last_recv)
+                        && since_recv < KEEP_ALIVE_INTERVAL_MIN.as_millis() as u64
+                    {
+                        // Connection alive — reset error state, skip ping.
+                        if error_count > 0 {
+                            debug!(target: "Client/Keepalive", "Keepalive restored (recent activity).");
+                            error_count = 0;
+                        }
+                        continue;
+                    }
+
+                    // Probe the connection BEFORE checking dead-socket so that a
+                    // successful pong updates last_received_ms and prevents a
+                    // false-positive dead-socket trigger on an idle-but-healthy
+                    // connection.  WA Web uses a separate 20 s timer that is
+                    // cancelled on any receive; our periodic loop needs to send the
+                    // ping first to give the server a chance to prove it is alive.
+                    match self.send_keepalive().await {
+                        KeepaliveResult::Ok => {
+                            if error_count > 0 {
+                                debug!(target: "Client/Keepalive", "Keepalive restored after {error_count} failure(s).");
+                            }
+                            error_count = 0;
+                        }
+                        KeepaliveResult::FatalFailure => {
+                            debug!(target: "Client/Keepalive", "Fatal keepalive failure, exiting loop.");
+                            return;
+                        }
+                        KeepaliveResult::TransientFailure => {
+                            error_count += 1;
+                            warn!(target: "Client/Keepalive", "Keepalive timeout, error count: {error_count}");
+                        }
+                    }
+
+                    // WA Web: deadSocketTimer is an independent 20s watchdog armed on
+                    // the FIRST send after a receive (onOrBefore keeps the earliest
+                    // deadline) and cancelled on every receive. We approximate this by
+                    // checking is_dead_socket on EVERY keepalive tick — not just after
+                    // a failed ping. This catches scenarios where pending IQs caused
+                    // the ping to be skipped, or where the ping "succeeded" but the
+                    // connection died immediately after.
+                    let first_send = self.stats.first_send_since_recv_ms();
+                    let last_recv = self.stats.last_data_received_ms();
+                    let now = wacore::protocol::keepalive::now_ms();
+                    if is_dead_socket_at(first_send, last_recv, now) {
+                        let elapsed = ms_since_at(first_send, now).unwrap_or(0);
+                        warn!(
+                            target: "Client/Keepalive",
+                            "No data received for {:.1}s after send (dead socket), forcing reconnect.",
+                            elapsed as f64 / 1000.0
+                        );
+                        self.reconnect_immediately().await;
+                        return;
+                    }
+                },
+                _ = shutdown.fuse() => {
+                    debug!(target: "Client/Keepalive", "Shutdown signaled, exiting keepalive loop.");
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Fire-and-forget DB retention sweeps. Each TTL gates its own delete so
+    /// they enable/disable independently. `0` disables a sweep. TTLs are
+    /// converted with a checked cast (absurd values clamp instead of wrapping
+    /// the cutoff negative).
+    fn spawn_retention_cleanup(&self, sent_msg_ttl: u64) {
+        let now = wacore::time::now_secs();
+        let cutoff_for = |ttl: u64| now.saturating_sub(i64::try_from(ttl).unwrap_or(i64::MAX));
+
+        if sent_msg_ttl > 0 {
+            let backend = self.persistence_manager.backend();
+            let cutoff = cutoff_for(sent_msg_ttl);
+            self.runtime
+                .spawn(Box::pin(async move {
+                    if let Err(e) = backend.delete_expired_sent_messages(cutoff).await {
+                        log::debug!(target: "Client/Keepalive", "Sent message cleanup error: {e}");
+                    }
+                }))
+                .detach();
+        }
+
+        // Pending inbound buffer retention (inbound durability hook): a row a
+        // permanently-failing hook never commits would otherwise linger once the
+        // server stops redelivering it. Run unconditionally (not gated on the hook
+        // being set now) so rows buffered by a hook in a previous run are still
+        // swept after it is disabled. Backends without the buffer return 0 from
+        // the default impl, so this is a cheap no-op there.
+        {
+            const PENDING_INBOUND_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+            let backend = self.persistence_manager.backend();
+            let cutoff = cutoff_for(PENDING_INBOUND_TTL_SECS);
+            self.runtime
+                .spawn(Box::pin(async move {
+                    if let Err(e) = backend.delete_expired_pending_inbound(cutoff).await {
+                        log::debug!(target: "Client/Keepalive", "Pending inbound cleanup error: {e}");
+                    }
+                }))
+                .detach();
+        }
+
+        // msg_secrets retention: prune rows whose per-row deadline has passed.
+        // expires_at is absolute, so the cutoff is simply "now"; per-kind
+        // horizons and never-expire (0) rows are baked in at write time.
+        if self.cache_config.msg_secret_policy.prunes() {
+            let backend = self.persistence_manager.backend();
+            self.runtime
+                .spawn(Box::pin(async move {
+                    match backend.delete_expired_msg_secrets(now).await {
+                        Ok(n) if n > 0 => {
+                            log::debug!(target: "Client/Keepalive", "Pruned {n} expired msg_secrets");
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::debug!(target: "Client/Keepalive", "msg_secrets cleanup error: {e}");
+                        }
+                    }
+                }))
+                .detach();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::socket::error::{EncryptSendError, SocketError};
+    use wacore_binary::builder::NodeBuilder;
+
+    #[test]
+    fn test_classify_timeout_is_transient() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::Timeout),
+            KeepaliveResult::TransientFailure,
+            "Timeout should be transient — connection may recover"
+        );
+    }
+
+    #[test]
+    fn test_classify_not_connected_is_fatal() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::NotConnected),
+            KeepaliveResult::FatalFailure,
+        );
+    }
+
+    #[test]
+    fn test_classify_internal_channel_closed_is_fatal() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::InternalChannelClosed),
+            KeepaliveResult::FatalFailure,
+        );
+    }
+
+    #[test]
+    fn test_classify_duplicate_request_id_is_fatal() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::DuplicateRequestId("duplicate".into())),
+            KeepaliveResult::FatalFailure,
+        );
+    }
+
+    #[test]
+    fn test_classify_socket_error_is_fatal() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::Socket(SocketError::SocketClosed)),
+            KeepaliveResult::FatalFailure,
+        );
+    }
+
+    #[test]
+    fn test_classify_disconnected_is_fatal() {
+        let node = NodeBuilder::new("disconnect").build();
+        assert_eq!(
+            classify_keepalive_error(&IqError::Disconnected(Box::new(node))),
+            KeepaliveResult::FatalFailure,
+        );
+    }
+
+    #[test]
+    fn test_classify_server_error_is_transient() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::ServerError {
+                code: 500,
+                text: "internal".to_string(),
+                error_type: None,
+                backoff: None,
+            }),
+            KeepaliveResult::TransientFailure,
+            "ServerError should be transient — server may recover"
+        );
+    }
+
+    #[test]
+    fn test_classify_parse_error_is_transient() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::ParseError(anyhow::anyhow!("bad response"))),
+            KeepaliveResult::TransientFailure,
+            "ParseError should be transient — bad response, not a dead connection"
+        );
+    }
+
+    #[test]
+    fn test_classify_unexpected_response_type_is_transient() {
+        assert_eq!(
+            classify_keepalive_error(&IqError::UnexpectedResponseType {
+                got: Some("get".to_string()),
+            }),
+            KeepaliveResult::TransientFailure,
+        );
+    }
+
+    // Happy path: the connection was already gone, so a failed ping is just
+    // teardown collateral and is logged quietly.
+    #[test]
+    fn benign_teardown_errors_are_quiet() {
+        assert!(is_benign_teardown(&IqError::NotConnected));
+        assert!(is_benign_teardown(&IqError::InternalChannelClosed));
+        let node = NodeBuilder::new("disconnect").build();
+        assert!(is_benign_teardown(&IqError::Disconnected(Box::new(node))));
+    }
+
+    // Bad path: a broken socket/send pipeline or an encode failure is fatal for
+    // control flow but is a REAL failure (we still thought we were connected), so
+    // it must NOT be treated as benign — it has to stay loud. Transient failures
+    // stay loud too. This is the guard against the keepalive ping silently
+    // swallowing the first sign of a real connection/send break.
+    #[test]
+    fn real_failures_are_never_treated_as_benign() {
+        assert!(!is_benign_teardown(&IqError::Socket(
+            SocketError::SocketClosed
+        )));
+        assert!(!is_benign_teardown(&IqError::EncryptSend(
+            EncryptSendError::transport(anyhow::anyhow!("broken pipe"))
+        )));
+        assert!(!is_benign_teardown(&IqError::EncodeError(anyhow::anyhow!(
+            "encode failed"
+        ))));
+        assert!(!is_benign_teardown(&IqError::Timeout));
+        assert!(!is_benign_teardown(&IqError::ParseError(anyhow::anyhow!(
+            "bad response"
+        ))));
+        assert!(!is_benign_teardown(&IqError::ServerError {
+            code: 500,
+            text: "internal".to_string(),
+            error_type: None,
+            backoff: None,
+        }));
+        assert!(!is_benign_teardown(&IqError::UnexpectedResponseType {
+            got: Some("get".to_string()),
+        }));
+    }
+
+    // ms_since, is_dead_socket, and constants tests live in wacore::protocol::keepalive
+}

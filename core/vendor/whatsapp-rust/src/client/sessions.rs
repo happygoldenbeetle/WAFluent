@@ -1,0 +1,995 @@
+//! E2E Session management for Client.
+
+use anyhow::Result;
+use rand::rngs::StdRng;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use wacore::libsignal::protocol::{
+    IdentityChange, PreKeyBundle, SignalProtocolError, UsePQRatchet, process_prekey_bundle,
+};
+use wacore::libsignal::store::SessionStore;
+use wacore::types::jid::JidExt;
+use wacore_binary::Jid;
+
+use super::Client;
+use crate::types::events::{Event, OfflineSyncCompleted};
+
+impl Client {
+    /// Install a supplied pre-key bundle into the shared Signal cache.
+    ///
+    /// The caller owns batching and the final durability flush. Keeping those
+    /// outside lets multi-device establishment reuse one adapter and one flush.
+    pub(crate) async fn install_prekey_bundle_cached(
+        &self,
+        jid: &Jid,
+        bundle: &PreKeyBundle,
+        adapter: &mut crate::store::signal_adapter::SignalProtocolStoreAdapter,
+        rng: &mut StdRng,
+    ) -> Result<IdentityChange, SignalProtocolError> {
+        let signal_address = jid.to_protocol_address();
+        let session_mutex = self.session_lock_for(signal_address.as_str()).await;
+        let session_guard = session_mutex.lock().await;
+
+        let identity_change = process_prekey_bundle(
+            &signal_address,
+            &mut adapter.session_store,
+            &mut adapter.identity_store,
+            bundle,
+            rng,
+            UsePQRatchet::No,
+        )
+        .await?;
+
+        drop(session_guard);
+        if identity_change == IdentityChange::ReplacedExisting {
+            self.react_to_local_identity_change(jid);
+        }
+        Ok(identity_change)
+    }
+
+    /// WA Web: `WAWebOfflineResumeConst.OFFLINE_STANZA_TIMEOUT_MS = 60000`
+    pub(crate) const DEFAULT_OFFLINE_SYNC_TIMEOUT: Duration = Duration::from_secs(60);
+
+    pub(crate) async fn complete_offline_sync(&self, count: i32) {
+        self.offline_sync_metrics
+            .active
+            .store(false, Ordering::Release);
+        match self.offline_sync_metrics.start_time.lock() {
+            Ok(mut guard) => *guard = None,
+            Err(poison) => *poison.into_inner() = None,
+        }
+
+        // Run the finisher once (the semaphore swap is not idempotent). The
+        // guard is a dedicated flag, NOT offline_sync_completed: that one only
+        // flips after the tail commit so the tail's acks still observe it as
+        // false and join the aggregate offline-receipt drain (WA Web
+        // `sendAggregateOfflineReceipts`) instead of going out 1:1.
+        if self
+            .offline_sync_finish_started
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+
+        let Some(client) = self.self_weak.get().and_then(|w| w.upgrade()) else {
+            // Practically unreachable (the run loop owns a strong Arc), but a
+            // silent skip would leave the client batching forever with a
+            // widened semaphore — leave consistent live state behind instead.
+            log::error!(
+                "complete_offline_sync: self_weak upgrade failed; dropping the drain tail and switching to live mode"
+            );
+            self.inbound_commit_batch.force_live_dropping_entries();
+            self.publish_offline_sync_live_state(count, None);
+            return;
+        };
+
+        // The `ib` offline end marker is processed INLINE on the read loop, and
+        // the tail commit awaits the processing permit plus the durable write,
+        // Signal flush and the consumer's durability hook. Parking the read
+        // loop on that would starve IQ responses and pongs — a hook awaiting
+        // any server round-trip would deadlock, and a merely slow hook would
+        // trip the keepalive at the end of every drain. Ordering does not need
+        // the inline await: the single permit already serializes the finisher
+        // against stanza processing, so run it off-loop.
+        let generation = self.connection_generation.load(Ordering::Acquire);
+        self.runtime
+            .spawn(Box::pin(async move {
+                client.finish_offline_sync(count, generation).await;
+            }))
+            .detach();
+    }
+
+    /// Off-read-loop tail of [`complete_offline_sync`]: commit the drain tail,
+    /// then flip the completed flag, widen the semaphore and flush the
+    /// aggregate receipts. `generation` guards against a reconnect racing this
+    /// task — the new connection resets the drain state and must not have its
+    /// flag/semaphore/batcher touched by the old connection's finisher.
+    async fn finish_offline_sync(self: &Arc<Self>, count: i32, generation: u64) {
+        // Commit the drain tail and flip the batcher to live mode under the
+        // still-single processing permit (see flush_inbound_commits_under_permit
+        // for the raceless-transition argument), BEFORE widening the semaphore.
+        // Receipts flush after, so every receipt's message is durably committed
+        // first (WA Web's createSnapshot ordering).
+        let durable = self.finish_inbound_commit_drain(generation).await;
+
+        if self.connection_generation.load(Ordering::Acquire) != generation {
+            log::debug!(
+                "finish_offline_sync: connection generation changed during the tail commit; leaving the new connection's state alone"
+            );
+            return;
+        }
+
+        self.publish_offline_sync_live_state(count, Some(durable));
+    }
+
+    /// The drain→live state publication, shared by the finisher and its
+    /// upgrade-failure fallback (non-async so the codegen stays out of their
+    /// state machines).
+    ///
+    /// Readers that observe offline_sync_completed=true short-circuit without
+    /// touching the semaphore (wait_for_offline_delivery_end returns early),
+    /// so the ordering of flag flip vs. semaphore swap is not observable: any
+    /// in-flight worker keeps using its old 1-permit Arc and drains normally;
+    /// newly-spawned workers pick up the 64-permit semaphore via
+    /// read_message_semaphore(). The flag flip happens-before the receipt
+    /// drain takes the buffer lock, so late offline receipts either land in
+    /// the flush or observe the flag and send 1:1
+    /// (see try_buffer_offline_receipt).
+    ///
+    /// `durable`: `Some(true)` flushes the buffered offline receipts;
+    /// `Some(false)` drops them — the tail's durable write failed, its entries
+    /// are back in the batcher unacked, and receipting SKDM/session state that
+    /// never became durable would trade a redeliverable failure for a
+    /// crash-permanent one. In that case the batcher stays in drain mode AND
+    /// the semaphore stays at one permit: the whole-cache flush inside a
+    /// retry commit is only safe while no other stanza can be mid-decrypt
+    /// with unenqueued ratchet advances. The first durable flush completes
+    /// the deferred transition (see `complete_deferred_live_transition`) and
+    /// widens the semaphore then. `None` (upgrade-failure fallback) leaves
+    /// the buffer alone for the connection-state reset to clear.
+    fn publish_offline_sync_live_state(&self, count: i32, durable: Option<bool>) {
+        self.offline_sync_completed.store(true, Ordering::Release);
+        if durable != Some(false) {
+            self.swap_message_semaphore(64);
+        }
+        match durable {
+            Some(true) => self.flush_offline_receipts(),
+            Some(false) => {
+                log::warn!(
+                    "finish_offline_sync: tail commit not durable; dropping buffered offline receipts so the server redelivers"
+                );
+                self.clear_offline_receipt_buffer();
+            }
+            None => {}
+        }
+        self.offline_sync_notifier.notify(usize::MAX);
+        self.core.event_bus.dispatch(Event::OfflineSyncCompleted(
+            OfflineSyncCompleted::builder().count(count).build(),
+        ));
+    }
+
+    /// Wait for offline message delivery to complete (with timeout).
+    pub(crate) async fn wait_for_offline_delivery_end(&self) {
+        self.wait_for_offline_delivery_end_with_timeout(Self::DEFAULT_OFFLINE_SYNC_TIMEOUT)
+            .await;
+    }
+
+    pub(crate) async fn wait_for_offline_delivery_end_with_timeout(&self, timeout: Duration) {
+        let wait_generation = self.connection_generation.load(Ordering::Acquire);
+        let offline_fut = self.offline_sync_notifier.listen();
+        if self.offline_sync_completed.load(Ordering::Relaxed) {
+            return;
+        }
+
+        if wacore::runtime::timeout(&*self.runtime, timeout, offline_fut)
+            .await
+            .is_err()
+        {
+            // Guard: don't complete sync for a stale connection generation.
+            // A reconnect may have happened while we were waiting, making this
+            // timeout belong to the old connection.
+            if self.connection_generation.load(Ordering::Acquire) != wait_generation
+                || self.expected_disconnect.load(Ordering::Relaxed)
+            {
+                log::debug!(
+                    target: "Client/OfflineSync",
+                    "Offline sync timeout ignored: connection generation changed or disconnected",
+                );
+                return;
+            }
+
+            let processed = self
+                .offline_sync_metrics
+                .processed_messages
+                .load(Ordering::Acquire);
+            let expected = self
+                .offline_sync_metrics
+                .total_messages
+                .load(Ordering::Acquire);
+            log::warn!(
+                target: "Client/OfflineSync",
+                "Offline sync timed out after {:?} (processed {} of {} items); marking sync complete",
+                timeout,
+                processed,
+                expected,
+            );
+            self.complete_offline_sync(i32::try_from(processed).unwrap_or(i32::MAX))
+                .await;
+            // The finisher runs as a spawned task; keep this helper's contract
+            // that live state is in place when it returns (callers start
+            // session/send work right after). Ticked so a reconnect or
+            // shutdown mid-commit cannot strand this waiter, and bounded by a
+            // second `timeout` window: when the marker-triggered finisher was
+            // ALREADY running and its tail commit/hook is stuck, the
+            // complete_offline_sync above started nothing, and an unbounded
+            // wait here would defeat this helper's whole point — callers
+            // proceed and the finisher keeps running in the background.
+            let deadline = wacore::time::Instant::now() + timeout;
+            loop {
+                let listener = self.offline_sync_notifier.listen();
+                if self.offline_sync_completed.load(Ordering::Acquire)
+                    || self.connection_generation.load(Ordering::Acquire) != wait_generation
+                    || self.expected_disconnect.load(Ordering::Relaxed)
+                {
+                    return;
+                }
+                if wacore::time::Instant::now() >= deadline {
+                    log::warn!(
+                        target: "Client/OfflineSync",
+                        "Drain finisher still running {:?} after the offline sync timeout; proceeding without it",
+                        timeout,
+                    );
+                    return;
+                }
+                let _ = wacore::runtime::timeout(&*self.runtime, Duration::from_secs(1), listener)
+                    .await;
+            }
+        }
+    }
+
+    pub(crate) fn begin_history_sync_task(
+        &self,
+        payload_bytes: usize,
+    ) -> crate::sync_task::HistorySyncTaskTracker {
+        self.history_sync_activity.begin(payload_bytes)
+    }
+
+    pub async fn wait_for_startup_sync(&self, timeout: Duration) -> Result<()> {
+        use anyhow::anyhow;
+        use wacore::time::Instant;
+
+        let deadline = Instant::now() + timeout;
+
+        // Register the notified future *before* checking state to avoid missing
+        // a notify_waiters() that fires between the check and the await.
+        let offline_fut = self.offline_sync_notifier.listen();
+        if !self.offline_sync_completed.load(Ordering::Relaxed) {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            wacore::runtime::timeout(&*self.runtime, remaining, offline_fut)
+                .await
+                .map_err(|_| anyhow!("Timeout waiting for offline sync completion"))?;
+        }
+
+        loop {
+            let history_fut = self.history_sync_activity.listen();
+            if self.history_sync_activity.tasks() == 0 {
+                return Ok(());
+            }
+
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            wacore::runtime::timeout(&*self.runtime, remaining, history_fut)
+                .await
+                .map_err(|_| anyhow!("Timeout waiting for history sync tasks to become idle"))?;
+        }
+    }
+
+    /// Ensure E2E sessions exist for the given device JIDs.
+    /// Waits for offline delivery, resolves LID mappings, then batches prekey fetches.
+    #[cfg_attr(feature = "tracing", tracing::instrument(name = "wa.session.ensure", level = "debug", skip_all, fields(count = device_jids.len()), err(Debug)))]
+    pub(crate) async fn ensure_e2e_sessions(&self, device_jids: &[Jid]) -> Result<()> {
+        if device_jids.is_empty() {
+            return Ok(());
+        }
+        self.wait_for_offline_delivery_end().await;
+        let resolved_jids = self.resolve_lid_mappings(device_jids).await;
+        self.ensure_sessions_inner(resolved_jids).await
+    }
+
+    /// Like `ensure_e2e_sessions` but skips `resolve_lid_mappings`. Use when the
+    /// caller already resolved JIDs to the correct namespace (e.g., after
+    /// alternate PN/LID key normalization in retry handling).
+    #[cfg_attr(feature = "tracing", tracing::instrument(name = "wa.session.ensure_resolved", level = "debug", skip_all, fields(count = jids.len()), err(Debug)))]
+    pub(crate) async fn ensure_e2e_sessions_resolved(&self, jids: &[Jid]) -> Result<()> {
+        if jids.is_empty() {
+            return Ok(());
+        }
+        self.wait_for_offline_delivery_end().await;
+        self.ensure_sessions_inner(jids.to_vec()).await
+    }
+}
+
+/// Whether a prekey fetch failed because the server considers the devices
+/// unregistered.
+///
+/// Batch-wide by nature: the fetch is one IQ, so a `406` answers for every jid
+/// in it rather than naming one.
+///
+/// Asked through `server_rejection` rather than by downcasting to one error
+/// type. This preflight calls `fetch_pre_keys` directly and gets a
+/// `crate::request::IqError::ServerError`; the fan-out reaches the same fetch
+/// through `SendContextResolver`, which re-wraps it as a
+/// `wacore::request::ServerErrorCode` to cross the crate boundary. A downcast
+/// to either one alone silently answers `false` for the other, and the failure
+/// mode of that is the send failing exactly as it did before.
+/// The `<error code>` the server attaches to a device it no longer knows.
+const UNREGISTERED_DEVICE_CODE: u16 = 406;
+
+fn is_device_unregistered(err: &anyhow::Error) -> bool {
+    use crate::error::ErrorChainExt;
+    err.server_rejection()
+        .is_some_and(|r| r.code == UNREGISTERED_DEVICE_CODE)
+}
+
+/// The distinct users named by `jids`, in first-seen order.
+///
+/// A prekey batch is usually several devices of the same one or two users, and
+/// every invalidation takes the registry lock and deletes rows, so visiting a
+/// user once per device would pay that repeatedly for no effect. Split out from
+/// the invalidation so the deduplication is observable on its own: through the
+/// cache it is not, since a user invalidated twice looks exactly like a user
+/// invalidated once.
+fn distinct_users(jids: &[Jid]) -> smallvec::SmallVec<[&str; 4]> {
+    let mut seen: smallvec::SmallVec<[&str; 4]> = smallvec::SmallVec::new();
+    for jid in jids {
+        if !seen.contains(&jid.user.as_str()) {
+            seen.push(jid.user.as_str());
+        }
+    }
+    seen
+}
+
+impl Client {
+    /// Refreshes the device list of every user named in `jids`, once each.
+    async fn invalidate_device_caches_for(&self, jids: &[Jid]) {
+        for user in distinct_users(jids) {
+            self.invalidate_device_cache(user).await;
+        }
+    }
+}
+
+impl Client {
+    /// Core session-check + prekey-fetch logic shared by both entry points.
+    #[cfg_attr(feature = "tracing", tracing::instrument(name = "wa.session.ensure_inner", level = "debug", skip_all, fields(count = jids.len()), err(Debug)))]
+    async fn ensure_sessions_inner(&self, mut jids: Vec<Jid>) -> Result<()> {
+        use wacore::types::jid::JidExt;
+
+        // Warm-cache pre-filter: a cached session answers synchronously, so
+        // the common live-send case skips the probe-stream machinery below
+        // entirely. Contended or unknown entries fall through to the probe.
+        // Retain in place (reusing the input allocation) and rewrite one reusable
+        // address per jid instead of allocating a fresh ProtocolAddress for every
+        // lookup key. A plain local (not thread-local): the async probe below owns
+        // its own address per concurrent task.
+        let mut reusable_addr = wacore::types::jid::make_reusable_protocol_address();
+        jids.retain(|jid| {
+            jid.reset_protocol_address(&mut reusable_addr);
+            self.signal_cache.try_has_session(&reusable_addr) != Some(true)
+        });
+        if jids.is_empty() {
+            return Ok(());
+        }
+
+        let device_snapshot = self.persistence_manager.get_device_snapshot();
+
+        // Probe sessions concurrently: a cold-cache multi-recipient ensure would
+        // otherwise serialize the per-device DB reads (warm hits serialize on the
+        // cache mutex anyway). Order is irrelevant — misses are chunked for the fetch.
+        use futures::StreamExt;
+        const SESSION_PROBE_CONCURRENCY: usize = 16;
+        let backend = device_snapshot.backend.clone();
+        let jids_needing_sessions: Vec<Jid> = futures::stream::iter(jids)
+            .map(|jid| {
+                let backend = backend.clone();
+                async move {
+                    let signal_addr = jid.to_protocol_address();
+                    // Check cache first (includes unflushed sessions), fall back to backend.
+                    match self.signal_cache.has_session(&signal_addr, &*backend).await {
+                        Ok(true) => None,
+                        Ok(false) => Some(jid),
+                        Err(e) => {
+                            log::warn!("Failed to check session for {}: {}", jid.observe(), e);
+                            None
+                        }
+                    }
+                }
+            })
+            .buffer_unordered(SESSION_PROBE_CONCURRENCY)
+            .filter_map(|needed| async move { needed })
+            .collect()
+            .await;
+
+        if jids_needing_sessions.is_empty() {
+            return Ok(());
+        }
+
+        for batch in jids_needing_sessions.chunks(crate::session::SESSION_CHECK_BATCH_SIZE) {
+            self.fetch_and_establish_sessions(batch).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Fetch prekeys and establish sessions for a batch of JIDs.
+    /// Returns the number of sessions successfully established.
+    #[cfg_attr(feature = "tracing", tracing::instrument(name = "wa.session.fetch_establish", level = "debug", skip_all, fields(count = jids.len()), err(Debug)))]
+    async fn fetch_and_establish_sessions(&self, jids: &[Jid]) -> Result<usize, anyhow::Error> {
+        if jids.is_empty() {
+            return Ok(0);
+        }
+
+        let prekey_bundles = match self
+            .fetch_pre_keys(jids, Some(wacore::iq::prekeys::PreKeyFetchReason::Identity))
+            .await
+        {
+            Ok(bundles) => bundles,
+            // A `406` means the server no longer knows these devices, so the
+            // cached list that named them is stale. Refresh it before giving up,
+            // or the retry resolves the same absent device and collects the same
+            // 406 forever. It cannot affect the send in flight, whose device set
+            // is already resolved.
+            //
+            // The error still propagates, and deliberately so. The fetch is one
+            // IQ over a batch of up to `SESSION_CHECK_BATCH_SIZE` devices, and a
+            // 406 answers for the whole batch without naming which device it is
+            // about. Continuing would mean treating every device in that batch
+            // as having no prekeys, so a registered device that merely lacked a
+            // local session would be skipped by the fan-out and the message
+            // would go out to fewer devices than intended, with nothing to say
+            // so. A failed send is visible and now retries against a refreshed
+            // list; a silently short fan-out is neither.
+            Err(e) if is_device_unregistered(&e) => {
+                log::debug!(
+                    "Prekey fetch returned 406 for {} device(s); \
+                     refreshing their device lists before failing the send",
+                    jids.len()
+                );
+                self.invalidate_device_caches_for(jids).await;
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
+
+        // The server named these individually, which is the per-device signal a
+        // batch-wide failure cannot give: refresh exactly their device lists and
+        // leave the rest of the batch alone. The send continues, because the
+        // devices that did come back with a bundle are unaffected and skipping
+        // them would deliver to fewer devices for a reason that only concerns
+        // the named ones.
+        if !prekey_bundles.rejected.is_empty() {
+            let rejected: Vec<Jid> = prekey_bundles
+                .rejected
+                .iter()
+                .filter(|device| device.code == UNREGISTERED_DEVICE_CODE)
+                .map(|device| device.jid.clone())
+                .collect();
+            if !rejected.is_empty() {
+                log::debug!(
+                    "prekey fetch rejected {} of {} device(s) as unregistered; \
+                     refreshing their device lists",
+                    rejected.len(),
+                    jids.len()
+                );
+                self.invalidate_device_caches_for(&rejected).await;
+            }
+        }
+
+        let mut adapter = self.signal_adapter().await;
+        let mut rng = rand::make_rng::<StdRng>();
+
+        let mut success_count = 0;
+        let mut missing_count = 0;
+        let mut failed_count = 0;
+
+        for jid in jids {
+            if let Some(bundle) = prekey_bundles.bundles.get(jid) {
+                match self
+                    .install_prekey_bundle_cached(jid, bundle, &mut adapter, &mut rng)
+                    .await
+                {
+                    Ok(_) => {
+                        success_count += 1;
+                        log::debug!("Successfully established session with {}", jid.observe());
+                    }
+                    Err(e) => {
+                        failed_count += 1;
+                        log::warn!("Failed to establish session with {}: {}", jid.observe(), e);
+                    }
+                }
+            } else {
+                missing_count += 1;
+                if jid.device == 0 {
+                    log::warn!(
+                        "Server did not return prekeys for primary phone {}",
+                        jid.observe()
+                    );
+                } else {
+                    log::debug!("Server did not return prekeys for {}", jid.observe());
+                }
+            }
+        }
+
+        if missing_count > 0 || failed_count > 0 {
+            log::debug!(
+                "Session establishment: {} succeeded, {} missing prekeys, {} failed (of {} requested)",
+                success_count,
+                missing_count,
+                failed_count,
+                jids.len()
+            );
+        }
+
+        // Flush after all sessions established. Batch-safe: retry receipts
+        // reach here mid-drain, and post-timeout senders reach here during a
+        // deferred live transition — in both windows a raw whole-cache flush
+        // would persist rowless drain entries' ratchet advances.
+        if success_count > 0 {
+            self.flush_signal_cache_batch_safe().await?;
+        }
+
+        Ok(success_count)
+    }
+
+    /// Log primary phone (device 0) session state at login.
+    /// Migration is lazy via try_pn_to_lid_migration_decrypt on first message.
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "wa.session.primary_phone_check",
+            level = "debug",
+            skip_all,
+            err(Debug)
+        )
+    )]
+    pub(crate) async fn establish_primary_phone_session_immediate(&self) -> Result<()> {
+        let device_snapshot = self.persistence_manager.get_device_snapshot();
+
+        let own_pn = device_snapshot
+            .pn
+            .clone()
+            .ok_or_else(|| anyhow::Error::from(crate::client::ClientError::NotLoggedIn))?;
+
+        let Some(ref own_lid) = device_snapshot.lid else {
+            log::debug!("No own LID yet, skipping primary phone session check");
+            return Ok(());
+        };
+
+        let primary_phone_lid = own_lid.with_device(0);
+        let primary_phone_pn = own_pn.with_device(0);
+
+        let lid_exists = self
+            .check_session_exists(&primary_phone_lid)
+            .await
+            .unwrap_or(false);
+        let pn_exists = self
+            .check_session_exists(&primary_phone_pn)
+            .await
+            .unwrap_or(false);
+
+        match (lid_exists, pn_exists) {
+            (true, _) => log::debug!("LID session with {} exists", primary_phone_lid.observe()),
+            (false, true) => {
+                log::debug!("PN-only session for own device 0 — will migrate on first message")
+            }
+            (false, false) => {
+                log::debug!("No session with own device 0 — will establish on first message")
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Whether `message_encrypt` for `jid` would emit a pkmsg (no session, or a
+    /// session with an un-acked pre-key still pending). Reuses the send path's
+    /// pre-flight so the voip offer treats a session-present-but-unacked device as
+    /// pkmsg too, not as plain msg.
+    #[cfg(feature = "voip-runtime")]
+    pub(crate) async fn would_emit_pkmsg(&self, jid: &Jid) -> Result<bool, anyhow::Error> {
+        let device_store = self.persistence_manager.get_device_arc().await;
+        let mut adapter = self.signal_adapter_from(device_store);
+        let signal_addr = jid.to_protocol_address();
+        wacore::send::pkmsg_would_be_emitted(&mut adapter.session_store, &signal_addr).await
+    }
+
+    /// Check if a session exists for the given JID.
+    pub(crate) async fn check_session_exists(&self, jid: &Jid) -> Result<bool, anyhow::Error> {
+        let device_snapshot = self.persistence_manager.get_device_snapshot();
+        let signal_addr = jid.to_protocol_address();
+
+        device_snapshot
+            .contains_session(&signal_addr)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to check session for {}: {}", jid.observe(), e))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wacore_binary::{JidExt, Server};
+
+    /// The 406 the preflight now tolerates is recognised by its server code and
+    /// nothing else: any other failure must still fail the send, or a transport
+    /// or auth error would be silently downgraded into "these devices have no
+    /// prekeys" and the message would go out to fewer devices than it should.
+    #[test]
+    fn only_a_406_counts_as_an_unregistered_device() {
+        // Both spellings, because they are both real: this preflight calls
+        // `fetch_pre_keys` directly and receives the first, while the fan-out
+        // goes through `SendContextResolver`, which re-wraps it as the second.
+        let as_iq_error = |code| {
+            anyhow::Error::new(crate::request::IqError::ServerError {
+                code,
+                text: "not-acceptable".to_string(),
+                error_type: None,
+                backoff: None,
+            })
+        };
+        let as_shared = |code| {
+            anyhow::Error::new(wacore::request::ServerErrorCode {
+                code,
+                text: "not-acceptable".to_string(),
+                error_type: None,
+                backoff: None,
+            })
+        };
+
+        assert!(
+            is_device_unregistered(&as_iq_error(406)),
+            "the error this preflight actually receives must be recognised"
+        );
+        assert!(is_device_unregistered(&as_shared(406)));
+
+        for code in [400, 401, 403, 404, 429, 500, 503] {
+            assert!(
+                !is_device_unregistered(&as_iq_error(code)),
+                "a {code} must not be treated as an unregistered device"
+            );
+            assert!(!is_device_unregistered(&as_shared(code)));
+        }
+
+        // Not every failure is a server error at all.
+        assert!(!is_device_unregistered(&anyhow::anyhow!("socket closed")));
+    }
+
+    /// A prekey batch is several devices of the same one or two users, and each
+    /// invalidation takes the registry lock and deletes rows, so the users are
+    /// visited once each rather than once per device.
+    ///
+    /// Asserted on the list rather than through the cache: an entry invalidated
+    /// twice is indistinguishable from one invalidated once, so a cache-level
+    /// test would pass no matter how many times each user was visited.
+    #[test]
+    fn a_batch_names_each_user_once_in_order() {
+        let a = Jid::pn("5511900000050");
+        let b = Jid::pn("5511900000051");
+        let jids = vec![
+            a.with_device(0),
+            a.with_device(1),
+            b.with_device(0),
+            a.with_device(2),
+            b.with_device(3),
+        ];
+
+        assert_eq!(
+            distinct_users(&jids).as_slice(),
+            [a.user.as_str(), b.user.as_str()],
+            "each user once, in the order the batch first names them"
+        );
+
+        assert!(distinct_users(&[]).is_empty());
+        assert_eq!(
+            distinct_users(std::slice::from_ref(&a.with_device(7))).as_slice(),
+            [a.user.as_str()]
+        );
+    }
+
+    #[test]
+    fn test_primary_phone_jid_creation_from_pn() {
+        let own_pn = Jid::pn("559999999999");
+        let primary_phone_jid = own_pn.with_device(0);
+
+        assert_eq!(primary_phone_jid.user, "559999999999");
+        assert_eq!(primary_phone_jid.server, Server::Pn);
+        assert_eq!(primary_phone_jid.device, 0);
+        assert_eq!(primary_phone_jid.agent, 0);
+        assert_eq!(primary_phone_jid.to_string(), "559999999999@s.whatsapp.net");
+    }
+
+    #[test]
+    fn test_primary_phone_jid_overwrites_existing_device() {
+        // Edge case: pn with device ID should still produce device 0
+        let own_pn = Jid::pn_device("559999999999", 33);
+        let primary_phone_jid = own_pn.with_device(0);
+
+        assert_eq!(primary_phone_jid.user, "559999999999");
+        assert_eq!(primary_phone_jid.server, Server::Pn);
+        assert_eq!(primary_phone_jid.device, 0);
+    }
+
+    #[test]
+    fn test_primary_phone_jid_is_not_ad() {
+        let primary_phone_jid = Jid::pn("559999999999").with_device(0);
+        assert!(!primary_phone_jid.is_ad()); // device 0 is NOT an additional device
+    }
+
+    #[test]
+    fn test_linked_device_is_ad() {
+        let linked_device_jid = Jid::pn_device("559999999999", 33);
+        assert!(linked_device_jid.is_ad()); // device > 0 IS an additional device
+    }
+
+    #[test]
+    fn test_primary_phone_jid_from_lid() {
+        let own_lid = Jid::lid("100000000000001");
+        let primary_phone_jid = own_lid.with_device(0);
+
+        assert_eq!(primary_phone_jid.user, "100000000000001");
+        assert_eq!(primary_phone_jid.server, Server::Lid);
+        assert_eq!(primary_phone_jid.device, 0);
+        assert!(!primary_phone_jid.is_ad());
+    }
+
+    #[test]
+    fn test_primary_phone_jid_roundtrip() {
+        let own_pn = Jid::pn("559999999999");
+        let primary_phone_jid = own_pn.with_device(0);
+
+        let jid_string = primary_phone_jid.to_string();
+        assert_eq!(jid_string, "559999999999@s.whatsapp.net");
+
+        let parsed: Jid = jid_string.parse().expect("JID should be parseable");
+        assert_eq!(parsed.user, "559999999999");
+        assert_eq!(parsed.server, Server::Pn);
+        assert_eq!(parsed.device, 0);
+    }
+
+    #[test]
+    fn test_with_device_preserves_identity() {
+        let pn = Jid::pn("1234567890");
+        let pn_device_0 = pn.with_device(0);
+        let pn_device_5 = pn.with_device(5);
+
+        assert_eq!(pn_device_0.user, pn_device_5.user);
+        assert_eq!(pn_device_0.server, pn_device_5.server);
+        assert_eq!(pn_device_0.device, 0);
+        assert_eq!(pn_device_5.device, 5);
+
+        let lid = Jid::lid("100000012345678");
+        let lid_device_0 = lid.with_device(0);
+        let lid_device_33 = lid.with_device(33);
+
+        assert_eq!(lid_device_0.user, lid_device_33.user);
+        assert_eq!(lid_device_0.server, lid_device_33.server);
+        assert_eq!(lid_device_0.device, 0);
+        assert_eq!(lid_device_33.device, 33);
+    }
+
+    #[test]
+    fn test_primary_phone_vs_companion_devices() {
+        let user = "559999999999";
+        let primary = Jid::pn(user).with_device(0);
+        let companion_web = Jid::pn_device(user, 33);
+        let companion_desktop = Jid::pn_device(user, 34);
+
+        // All share the same user
+        assert_eq!(primary.user, companion_web.user);
+        assert_eq!(primary.user, companion_desktop.user);
+
+        // But have different device IDs
+        assert_eq!(primary.device, 0);
+        assert_eq!(companion_web.device, 33);
+        assert_eq!(companion_desktop.device, 34);
+
+        // Primary is NOT AD, companions ARE AD
+        assert!(!primary.is_ad());
+        assert!(companion_web.is_ad());
+        assert!(companion_desktop.is_ad());
+    }
+
+    /// Session check must succeed before establishment (fail-safe behavior).
+    #[test]
+    fn test_session_check_behavior_documentation() {
+        // Ok(true) -> skip, Ok(false) -> establish, Err -> fail-safe
+        enum SessionCheckResult {
+            Exists,
+            NotExists,
+            CheckFailed,
+        }
+
+        fn should_establish_session(
+            check_result: SessionCheckResult,
+        ) -> Result<bool, &'static str> {
+            match check_result {
+                SessionCheckResult::Exists => Ok(false),   // Don't establish
+                SessionCheckResult::NotExists => Ok(true), // Do establish
+                SessionCheckResult::CheckFailed => Err("Cannot verify - fail safe"),
+            }
+        }
+
+        // Test cases
+        assert_eq!(
+            should_establish_session(SessionCheckResult::Exists),
+            Ok(false)
+        );
+        assert_eq!(
+            should_establish_session(SessionCheckResult::NotExists),
+            Ok(true)
+        );
+        assert!(should_establish_session(SessionCheckResult::CheckFailed).is_err());
+    }
+
+    /// Protocol address format: {user}[:device]@{server}.0
+    #[test]
+    fn test_protocol_address_format_for_session_lookup() {
+        use wacore::types::jid::JidExt;
+
+        let pn = Jid::pn("559999999999").with_device(0);
+        let addr = pn.to_protocol_address();
+        assert_eq!(addr.name(), "559999999999@c.us");
+        assert_eq!(u32::from(addr.device_id()), 0);
+        assert_eq!(addr.to_string(), "559999999999@c.us.0");
+
+        let companion = Jid::pn_device("559999999999", 33);
+        let companion_addr = companion.to_protocol_address();
+        assert_eq!(companion_addr.name(), "559999999999:33@c.us");
+        assert_eq!(companion_addr.to_string(), "559999999999:33@c.us.0");
+
+        let lid = Jid::lid("100000000000001").with_device(0);
+        let lid_addr = lid.to_protocol_address();
+        assert_eq!(lid_addr.name(), "100000000000001@lid");
+        assert_eq!(u32::from(lid_addr.device_id()), 0);
+        assert_eq!(lid_addr.to_string(), "100000000000001@lid.0");
+
+        let lid_device = Jid::lid_device("100000000000001", 33);
+        let lid_device_addr = lid_device.to_protocol_address();
+        assert_eq!(lid_device_addr.name(), "100000000000001:33@lid");
+        assert_eq!(lid_device_addr.to_string(), "100000000000001:33@lid.0");
+    }
+
+    #[test]
+    fn test_filter_logic_for_session_establishment() {
+        let jids = vec![
+            Jid::pn_device("111", 0),
+            Jid::pn_device("222", 0),
+            Jid::pn_device("333", 0),
+        ];
+
+        // Simulate contains_session results
+        let session_exists = |jid: &Jid| -> Result<bool, &'static str> {
+            match jid.user.as_str() {
+                "111" => Ok(true),        // Session exists
+                "222" => Ok(false),       // No session
+                "333" => Err("DB error"), // Error
+                _ => Ok(false),
+            }
+        };
+
+        // Apply filter logic (matching ensure_e2e_sessions behavior)
+        let mut jids_needing_sessions = Vec::with_capacity(jids.len());
+        for jid in &jids {
+            match session_exists(jid) {
+                Ok(true) => {}                                        // Skip - session exists
+                Ok(false) => jids_needing_sessions.push(jid.clone()), // Needs session
+                Err(e) => eprintln!("Warning: failed to check {}: {}", jid, e), // Skip on error
+            }
+        }
+
+        // Only "222" should need a session
+        assert_eq!(jids_needing_sessions.len(), 1);
+        assert_eq!(jids_needing_sessions[0].user, "222");
+    }
+
+    // PN and LID have independent Signal sessions
+
+    #[test]
+    fn test_dual_addressing_pn_and_lid_are_independent() {
+        let pn_address = Jid::pn("551199887766").with_device(0);
+        let lid_address = Jid::lid("236395184570386").with_device(0);
+
+        assert_ne!(pn_address.user, lid_address.user);
+        assert_ne!(pn_address.server, lid_address.server);
+
+        use wacore::types::jid::JidExt;
+        let pn_signal_addr = pn_address.to_protocol_address();
+        let lid_signal_addr = lid_address.to_protocol_address();
+
+        assert_ne!(pn_signal_addr.name(), lid_signal_addr.name());
+        assert_eq!(pn_signal_addr.name(), "551199887766@c.us");
+        assert_eq!(lid_signal_addr.name(), "236395184570386@lid");
+        assert_eq!(pn_address.device, 0);
+        assert_eq!(lid_address.device, 0);
+    }
+
+    #[test]
+    fn test_lid_extraction_from_own_device() {
+        let own_lid_with_device = Jid::lid_device("236395184570386", 61);
+        let primary_lid = own_lid_with_device.with_device(0);
+
+        assert_eq!(primary_lid.user, "236395184570386");
+        assert_eq!(primary_lid.device, 0);
+        assert!(!primary_lid.is_ad());
+    }
+
+    /// PN sessions established proactively, LID sessions established by primary phone.
+    #[test]
+    fn test_stale_session_scenario_documentation() {
+        fn should_establish_pn_session(pn_exists: bool) -> bool {
+            !pn_exists
+        }
+
+        fn should_establish_lid_session(_lid_exists: bool) -> bool {
+            false // Primary phone establishes LID sessions via pkmsg
+        }
+
+        // PN exists -> don't establish
+        assert!(!should_establish_pn_session(true));
+        // PN doesn't exist -> establish
+        assert!(should_establish_pn_session(false));
+        // LID never established proactively
+        assert!(!should_establish_lid_session(true));
+        assert!(!should_establish_lid_session(false));
+    }
+
+    /// Retry mechanism: error=1 (NoSession), error=4 (InvalidMessage/MAC failure)
+    #[test]
+    fn test_retry_mechanism_for_stale_sessions() {
+        const RETRY_ERROR_NO_SESSION: u8 = 1;
+        const RETRY_ERROR_INVALID_MESSAGE: u8 = 4;
+
+        fn action_for_error(error_code: u8) -> &'static str {
+            match error_code {
+                RETRY_ERROR_NO_SESSION => "Establish new session via prekey",
+                RETRY_ERROR_INVALID_MESSAGE => "Delete stale session, resend message",
+                _ => "Unknown error",
+            }
+        }
+
+        assert_eq!(
+            action_for_error(RETRY_ERROR_NO_SESSION),
+            "Establish new session via prekey"
+        );
+        assert_eq!(
+            action_for_error(RETRY_ERROR_INVALID_MESSAGE),
+            "Delete stale session, resend message"
+        );
+    }
+
+    #[test]
+    fn test_session_establishment_lookup_normalization() {
+        use std::collections::HashMap;
+        use wacore_binary::Jid;
+
+        // Represents the bundle map returned by fetch_pre_keys
+        // (keys are normalized by parsing logic as verified in wacore/src/prekeys.rs)
+        let mut prekey_bundles: HashMap<Jid, ()> = HashMap::new(); // Using () as mock bundle placeholder
+
+        let normalized_jid = Jid::lid("123456789"); // agent=0
+        prekey_bundles.insert(normalized_jid.clone(), ());
+
+        // Represents the JID from the device list (e.g. from ensure_e2e_sessions)
+        // which might have agent=1 due to some upstream source or parsing quirk
+        let mut requested_jid = Jid::lid("123456789");
+        requested_jid.agent = 1;
+
+        // The agent is inert on a LID, so it does not hide the bundle: the raw
+        // lookup finds it. Normalising the key first was the workaround this
+        // replaced, and the helper that did it is gone.
+        assert!(
+            prekey_bundles.contains_key(&requested_jid),
+            "an inert agent must not hide the bundle"
+        );
+        assert_eq!(requested_jid, normalized_jid);
+    }
+}

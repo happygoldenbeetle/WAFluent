@@ -91,6 +91,11 @@ pub fn clear_cache(ctx: &Ctx) {
     let _ = std::fs::remove_dir_all(ctx.data_dir.join("media"));
 }
 
+/// Downloads now, outside the queue (a favourite sticker about to be sent).
+pub async fn fetch_now(ctx: &Ctx, client: &Arc<Client>, chat_id: &str, message_id: &str) -> Result<String, String> {
+    fetch(ctx, client, &Request { chat_id: chat_id.into(), message_id: message_id.into(), force: false }).await
+}
+
 async fn fetch(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<String, String> {
     let (mut media, cached) = ctx.db().media(&req.chat_id, &req.message_id).ok_or("no attachment")?;
     if cached == GONE && !req.force {
@@ -136,6 +141,10 @@ async fn fetch(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<String,
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}.{}", file_safe(&req.message_id), extension(&media.mimetype, media.media_type)));
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    if media.file_sha256.is_empty() {
+        use sha2::Digest;
+        ctx.db().set_file_sha256(&req.chat_id, &req.message_id, &sha2::Sha256::digest(&bytes));
+    }
 
     let path = path.to_string_lossy().into_owned();
     ctx.db().set_media_path(&req.chat_id, &req.message_id, &path);

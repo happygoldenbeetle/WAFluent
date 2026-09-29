@@ -141,6 +141,10 @@ async fn run(dir: PathBuf) {
         backfill_sent: Arc::default(),
     };
     ctx.status("starting", None);
+    whatsapp_rust::wafluent_hooks::on_sticker_mutation({
+        let ctx = ctx.clone();
+        move |m| favorite_sticker(&ctx, m)
+    });
 
     // Show what we already have while connecting.
     let cached = ctx.db().chats();
@@ -257,11 +261,11 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         }
         Command::OpenNumber { phone } => open_number(ctx, client, &phone).await,
         Command::LoadStickers => {
-            let (stickers, gifs) = {
+            let (favorites, stickers, gifs) = {
                 let db = ctx.db();
-                (db.recent_media("sticker", 120), db.recent_media("gif", 60))
+                (db.favorites(), db.recent_media("sticker", 120), db.recent_media("gif", 60))
             };
-            ctx.send(Out::Stickers { stickers, gifs });
+            ctx.send(Out::Stickers { favorites, stickers, gifs });
         }
         Command::SendStored { chat_id, message_id, to } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -615,6 +619,61 @@ fn resync_chat_settings_once(ctx: &Ctx, client: &Arc<Client>) {
     });
 }
 
+/// A sticker starred or unstarred on the phone (app state, via the patched library).
+fn favorite_sticker(ctx: &Ctx, m: whatsapp_rust::wafluent_hooks::StickerMutation) {
+    let action = m.action.as_ref();
+    let key = m.index.get(1).cloned().or_else(|| action.and_then(|a| a.image_hash.clone())).unwrap_or_default();
+    if key.is_empty() {
+        return;
+    }
+    let media = action.filter(|a| !m.removed && a.is_favorite != Some(false)).and_then(|a| {
+        Some(extract::Media {
+            media_type: "sticker",
+            direct_path: a.direct_path.clone()?,
+            media_key: a.media_key.clone()?,
+            file_sha256: Vec::new(),
+            file_enc_sha256: a.file_enc_sha256.clone()?,
+            file_length: a.file_length.unwrap_or(0),
+            mimetype: a.mimetype.clone().unwrap_or_else(|| "image/webp".into()),
+            width: a.width.unwrap_or(0),
+            height: a.height.unwrap_or(0),
+            seconds: 0,
+            waveform: Vec::new(),
+        })
+    });
+    match media {
+        Some(media) => ctx.db().set_favorite(&key, &media),
+        None => ctx.db().remove_favorite(&key),
+    }
+}
+
+/// Favourite stickers were dropped before the library patch; pull the app state once more
+/// so the ones starred earlier arrive too. Later changes come as they happen.
+fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
+    const FLAG: &str = "favorite_stickers_synced_v1";
+    if ctx.db().flag(FLAG) {
+        return;
+    }
+    let (ctx, client) = (ctx.clone(), Arc::clone(client));
+    tokio::spawn(async move {
+        use whatsapp_rust::sync_task::MajorSyncTask;
+        use whatsapp_rust::wacore::appstate::hash::HashState;
+        use whatsapp_rust::wacore::appstate::patch_decode::WAPatchName;
+        // After the chat settings resync, which touches two of these.
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        let backend = client.persistence_manager().backend();
+        for name in [WAPatchName::Regular, WAPatchName::RegularLow, WAPatchName::RegularHigh] {
+            if let Err(e) = backend.set_version(name.as_str(), HashState::default()).await {
+                warn!("could not reset {}: {e}", name.as_str());
+            }
+            let _ = backend.clear_mutation_macs(name.as_str()).await;
+            client.process_sync_task(MajorSyncTask::AppStateSync { name, full_sync: true }).await;
+        }
+        ctx.db().set_flag(FLAG);
+        info!("favourite stickers synced: {}", ctx.db().favorites().len());
+    });
+}
+
 async fn set_pinned(ctx: &Ctx, client: &Arc<Client>, chat_id: String, pinned: bool) {
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
     let actions = client.chat_actions();
@@ -681,6 +740,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.status("connected", None);
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
+            resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);
             avatars::queue_stale(ctx);
         }

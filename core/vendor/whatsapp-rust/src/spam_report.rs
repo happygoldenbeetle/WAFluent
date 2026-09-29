@@ -1,0 +1,148 @@
+//! Spam reporting feature.
+//!
+//! Types and IQ specification are defined in `wacore::iq::spam_report`.
+
+use crate::client::Client;
+use crate::request::IqError;
+use wacore::iq::spam_report::SpamReportSpec;
+
+// Re-export types from wacore
+pub use wacore::types::{SpamFlow, SpamReportRequest, SpamReportResult, build_spam_list_node};
+
+impl Client {
+    /// Send a spam report to WhatsApp.
+    ///
+    /// This sends a `spam_list` IQ stanza to report one or more messages as spam.
+    ///
+    /// # Arguments
+    /// * `request` - The spam report request containing message details
+    ///
+    /// # Returns
+    /// * `Ok(SpamReportResult)` - If the report was successfully submitted
+    /// * `Err` - If there was an error sending or processing the report
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let result = client.send_spam_report(SpamReportRequest {
+    ///     message_id: "MSG_ID".to_string(),
+    ///     message_timestamp: 1234567890,
+    ///     from_jid: Some(sender_jid),
+    ///     spam_flow: SpamFlow::MessageMenu,
+    ///     ..Default::default()
+    /// }).await?;
+    /// ```
+    pub async fn send_spam_report(
+        &self,
+        request: SpamReportRequest,
+    ) -> Result<SpamReportResult, IqError> {
+        use wacore::iq::abprops::web;
+
+        let mut spec = SpamReportSpec::new(request);
+
+        // Attach the reported contact's tctoken so the report is accepted for a
+        // privacy-restricted account, matching WA Web's OutSpamTCTokenMixin.
+        if self
+            .ab_props()
+            .is_enabled(web::ENABLE_SPAM_REPORT_IQ_WITH_PRIVACY_TOKEN)
+            .await
+            && let Some(reported) = spec.request.from_jid.clone()
+            && let Some(token) = self.lookup_tc_token_for_jid(&reported).await
+        {
+            spec = spec.with_tc_token(token);
+        }
+
+        self.execute(spec).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wacore_binary::Jid;
+
+    #[test]
+    fn test_spam_flow_as_str() {
+        assert_eq!(SpamFlow::MessageMenu.as_str(), "MessageMenu");
+        assert_eq!(
+            SpamFlow::GroupSpamBannerReport.as_str(),
+            "GroupSpamBannerReport"
+        );
+        assert_eq!(SpamFlow::ContactInfo.as_str(), "ContactInfo");
+    }
+
+    #[test]
+    fn test_build_spam_list_node_basic() {
+        let request = SpamReportRequest {
+            message_id: "TEST123".to_string(),
+            message_timestamp: 1234567890,
+            spam_flow: SpamFlow::MessageMenu,
+            ..Default::default()
+        };
+
+        let node = build_spam_list_node(&request);
+
+        assert_eq!(node.tag, "spam_list");
+        assert!(
+            node.attrs
+                .get("spam_flow")
+                .is_some_and(|v| v == "MessageMenu")
+        );
+
+        let message = node
+            .get_optional_child_by_tag(&["message"])
+            .expect("spam_list node should have message child");
+        assert!(message.attrs.get("id").is_some_and(|v| v == "TEST123"));
+        assert!(message.attrs.get("t").is_some_and(|v| v == "1234567890"));
+    }
+
+    #[test]
+    fn test_build_spam_list_node_with_raw_message() {
+        let request = SpamReportRequest {
+            message_id: "TEST456".to_string(),
+            message_timestamp: 1234567890,
+            from_jid: Some(Jid::pn("5511999887766")),
+            spam_flow: SpamFlow::MessageMenu,
+            raw_message: Some(vec![0x01, 0x02, 0x03]),
+            media_type: Some("image".to_string()),
+            ..Default::default()
+        };
+
+        let node = build_spam_list_node(&request);
+        let message = node
+            .get_optional_child_by_tag(&["message"])
+            .expect("spam_list node should have message child");
+        let raw = message
+            .get_optional_child_by_tag(&["raw"])
+            .expect("message node should have raw child");
+
+        assert!(raw.attrs.get("v").is_some_and(|v| v == "3"));
+        assert!(raw.attrs.get("mediatype").is_some_and(|v| v == "image"));
+    }
+
+    #[test]
+    fn test_build_spam_list_node_group() {
+        let request = SpamReportRequest {
+            message_id: "TEST789".to_string(),
+            message_timestamp: 1234567890,
+            group_jid: Some(Jid::group("120363025918861132")),
+            group_subject: Some("Test Group".to_string()),
+            participant_jid: Some(Jid::pn("5511999887766")),
+            spam_flow: SpamFlow::GroupInfoReport,
+            ..Default::default()
+        };
+
+        let node = build_spam_list_node(&request);
+
+        assert!(
+            node.attrs
+                .get("spam_flow")
+                .is_some_and(|v| v == "GroupInfoReport")
+        );
+        assert!(
+            node.attrs
+                .get("jid")
+                .is_some_and(|v| v == "120363025918861132@g.us")
+        );
+        assert!(node.attrs.get("subject").is_some_and(|v| v == "Test Group"));
+    }
+}

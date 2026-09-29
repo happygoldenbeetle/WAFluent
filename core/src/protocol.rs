@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Event {
     /// The sticker panel's contents: recent stickers and GIFs.
-    Stickers { stickers: Vec<StickerDto>, gifs: Vec<StickerDto> },
+    Stickers { favorites: Vec<StickerDto>, stickers: Vec<StickerDto>, gifs: Vec<StickerDto> },
     /// Someone in the chat is typing ("typing"), recording a voice note ("recording") or
     /// stopped ("paused"). `who` names them in groups.
     Typing { chat_id: String, who: String, state: &'static str },
