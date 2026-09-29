@@ -85,6 +85,24 @@ public sealed partial class MainWindow : Window
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
+        // WAFLUENT_SELFTEST=poll-dialog | contact-dialog | photo-dialog: opens that attach dialog.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "poll-dialog" or "contact-dialog" or "photo-dialog")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                switch (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST"))
+                {
+                    case "poll-dialog": await CreatePollAsync(); break;
+                    case "contact-dialog": await ShareContactAsync(); break;
+                    default:
+                        var files = new List<Windows.Storage.StorageFile>();
+                        foreach (var path in Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg").Take(2))
+                            files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
+                        files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(@"C:\Windows\win.ini"));
+                        await PreviewAndSendAsync(files, asDocuments: false);
+                        break;
+                }
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

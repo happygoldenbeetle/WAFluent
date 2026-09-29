@@ -442,3 +442,202 @@ pub async fn send_gif(ctx: &Ctx, client: &Arc<Client>, to: String, path: String,
     ctx.send(Out::Message { chat_id: to.clone(), message: dto });
     send_chat(ctx, &to);
 }
+
+// ───────────── Attach menu: photos, videos, documents, contacts, polls ─────────────
+
+/// A file to upload and send (from the attach menu).
+pub struct Outgoing {
+    pub path: String,
+    pub kind: String,
+    pub caption: String,
+    pub mime: String,
+    pub width: u32,
+    pub height: u32,
+    pub seconds: u32,
+    pub thumb: Option<String>,
+}
+
+/// Uploads a picture, video or document and sends it; the chat shows it once it's sent.
+pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: Outgoing) {
+    use whatsapp_rust::download::MediaType;
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let what = match file.kind.as_str() {
+        "image" => "photo",
+        "video" => "video",
+        _ => "file",
+    };
+    let data = match std::fs::read(&file.path) {
+        Ok(data) => data,
+        Err(e) => {
+            warn!("send {}: {e}", file.path);
+            notice(ctx, false, format!("The {what} couldn't be read."));
+            return;
+        }
+    };
+    let media_type = match file.kind.as_str() {
+        "image" => MediaType::Image,
+        "video" => MediaType::Video,
+        _ => MediaType::Document,
+    };
+    let up = match client.upload(data, media_type, Default::default()).await {
+        Ok(up) => up,
+        Err(e) => {
+            warn!("upload of {} failed: {e}", file.path);
+            notice(ctx, false, format!("The {what} couldn't be uploaded."));
+            return;
+        }
+    };
+    let thumb = file.thumb.as_deref().and_then(|p| std::fs::read(p).ok()).filter(|t| !t.is_empty());
+    let caption = (!file.caption.trim().is_empty()).then(|| file.caption.trim().to_string());
+    let file_name = std::path::Path::new(&file.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut message = wa::Message::default();
+    match file.kind.as_str() {
+        "image" => {
+            message.image_message = MessageField::some(wa::message::ImageMessage {
+                url: Some(up.url),
+                direct_path: Some(up.direct_path),
+                media_key: Some(up.media_key.to_vec()),
+                media_key_timestamp: Some(up.media_key_timestamp),
+                file_sha256: Some(up.file_sha256.to_vec()),
+                file_enc_sha256: Some(up.file_enc_sha256.to_vec()),
+                file_length: Some(up.file_length),
+                mimetype: Some(file.mime.clone()),
+                width: Some(file.width),
+                height: Some(file.height),
+                jpeg_thumbnail: thumb,
+                caption,
+                ..Default::default()
+            })
+        }
+        "video" => {
+            message.video_message = MessageField::some(wa::message::VideoMessage {
+                url: Some(up.url),
+                direct_path: Some(up.direct_path),
+                media_key: Some(up.media_key.to_vec()),
+                media_key_timestamp: Some(up.media_key_timestamp),
+                file_sha256: Some(up.file_sha256.to_vec()),
+                file_enc_sha256: Some(up.file_enc_sha256.to_vec()),
+                file_length: Some(up.file_length),
+                mimetype: Some(file.mime.clone()),
+                width: Some(file.width),
+                height: Some(file.height),
+                seconds: Some(file.seconds),
+                jpeg_thumbnail: thumb,
+                streaming_sidecar: up.streaming_sidecar,
+                caption,
+                ..Default::default()
+            })
+        }
+        _ => {
+            message.document_message = MessageField::some(wa::message::DocumentMessage {
+                url: Some(up.url),
+                direct_path: Some(up.direct_path),
+                media_key: Some(up.media_key.to_vec()),
+                media_key_timestamp: Some(up.media_key_timestamp),
+                file_sha256: Some(up.file_sha256.to_vec()),
+                file_enc_sha256: Some(up.file_enc_sha256.to_vec()),
+                file_length: Some(up.file_length),
+                mimetype: Some(file.mime.clone()),
+                title: Some(file_name.clone()),
+                file_name: Some(file_name),
+                jpeg_thumbnail: thumb,
+                caption,
+                ..Default::default()
+            })
+        }
+    }
+    let sent = match client.send_message(jid, message.clone()).await {
+        Ok(sent) => sent,
+        Err(e) => {
+            warn!("send to {chat_id} failed: {e}");
+            notice(ctx, false, format!("The {what} couldn't be sent."));
+            return;
+        }
+    };
+    store_sent(ctx, &chat_id, sent.message_id, &message, Some(&file.path), None);
+}
+
+/// Shares a contact card (a vCard with one number).
+pub async fn send_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, name: String, phone: String) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    let vcard = format!("BEGIN:VCARD\nVERSION:3.0\nN:;{name};;;\nFN:{name}\nTEL;type=CELL;type=VOICE;waid={digits}:+{digits}\nEND:VCARD");
+    let mut message = wa::Message::default();
+    message.contact_message = MessageField::some(wa::message::ContactMessage {
+        display_name: Some(name),
+        vcard: Some(vcard),
+        ..Default::default()
+    });
+    match client.send_message(jid, message.clone()).await {
+        Ok(sent) => store_sent(ctx, &chat_id, sent.message_id, &message, None, None),
+        Err(e) => {
+            warn!("contact to {chat_id} failed: {e}");
+            notice(ctx, false, "The contact couldn't be sent.");
+        }
+    }
+}
+
+/// Starts a poll; its secret is kept so everyone's votes can be read.
+pub async fn send_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, question: String, options: Vec<String>, multiple: bool) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let options: Vec<String> = options.into_iter().map(|o| o.trim().to_string()).filter(|o| !o.is_empty()).collect();
+    let selectable = if multiple { 0 } else { 1 };
+    let (sent, secret) = match client.polls().create(jid.clone(), question.trim(), &options, selectable).await {
+        Ok(result) => result,
+        Err(e) => {
+            warn!("poll to {chat_id} failed: {e}");
+            notice(ctx, false, "The poll couldn't be sent.");
+            return;
+        }
+    };
+    // The same poll, for storing and showing (the library doesn't hand back what it sent).
+    let mut message = wa::Message::default();
+    message.poll_creation_message = MessageField::some(wa::message::PollCreationMessage {
+        name: Some(question.trim().to_string()),
+        options: options
+            .iter()
+            .map(|o| wa::message::poll_creation_message::Option { option_name: Some(o.clone()), ..Default::default() })
+            .collect(),
+        selectable_options_count: Some(selectable),
+        ..Default::default()
+    });
+    let own = client.persistence_manager().get_device_snapshot();
+    let me = if jid.server == Server::Lid { own.lid.as_ref().or(own.pn.as_ref()) } else { own.pn.as_ref().or(own.lid.as_ref()) };
+    let creator = me.map(|j| j.to_non_ad_string()).unwrap_or_default();
+    store_sent(ctx, &chat_id, sent.message_id, &message, None, Some((&secret, &creator)));
+}
+
+/// Stores a message you just sent the way received ones are stored, and shows it.
+/// `local`: the file it came from (opens without downloading). `poll`: secret and creator.
+fn store_sent(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, local: Option<&str>, poll: Option<(&[u8], &str)>) {
+    let Some(content) = extract::content(message) else { return };
+    let stored = StoredMessage {
+        id,
+        from_me: true,
+        sender: String::new(),
+        push_name: String::new(),
+        ts: store::unix_now(),
+        kind: content.kind.to_string(),
+        text: content.text,
+        file_name: content.file_name,
+        status: 1,
+    };
+    let dto = {
+        let db = ctx.db();
+        db.ensure_chat(chat_id, chat_id.ends_with("@g.us"));
+        db.insert_message(chat_id, &stored);
+        if let Some(media) = &content.media {
+            db.insert_media(chat_id, &stored.id, media);
+            if let Some(path) = local {
+                db.set_media_path(chat_id, &stored.id, path);
+            }
+        }
+        db.insert_extra(chat_id, &stored.id, &content.thumb, content.extra.as_ref());
+        if let Some((secret, creator)) = poll {
+            db.set_poll(chat_id, &stored.id, secret, creator);
+        }
+        db.to_dto(chat_id, stored)
+    };
+    ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto });
+    send_chat(ctx, chat_id);
+}

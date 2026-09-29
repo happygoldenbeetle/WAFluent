@@ -234,6 +234,23 @@ pub enum Command {
     /// Upload an MP4 from GIF search and send it as a GIF (GIPHY attribution). `thumb`: a
     /// small JPEG preview file.
     SendGif { to: String, path: String, width: u32, height: u32, thumb: Option<String> },
+    /// Upload a file and send it: `kind` "image", "video" or "document". `thumb`: a small
+    /// JPEG preview file (pictures and videos).
+    SendMedia {
+        chat_id: String,
+        path: String,
+        kind: String,
+        caption: String,
+        mime: String,
+        width: u32,
+        height: u32,
+        seconds: u32,
+        thumb: Option<String>,
+    },
+    /// Share a contact card (name and number).
+    SendContact { chat_id: String, name: String, phone: String },
+    /// Start a poll; `multiple`: people may pick several options.
+    SendPoll { chat_id: String, question: String, options: Vec<String>, multiple: bool },
     /// You're here (window focused) or away: WhatsApp shows you online, and only sends
     /// typing and online updates to clients that are available.
     SetPresence { available: bool },

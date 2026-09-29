@@ -120,6 +120,17 @@ public sealed class CoreClient : IDisposable
     /// <summary>Sends a sticker or GIF from the panel (not as forwarded).</summary>
     public void SendStored(string chatId, string messageId, string to) => Send(new { cmd = "sendStored", chatId, messageId, to });
 
+    /// <summary>Uploads and sends a file: <paramref name="kind"/> "image", "video" or "document"; <paramref name="thumb"/> a JPEG preview file.</summary>
+    public void SendMedia(string chatId, string path, string kind, string caption, string mime, int width, int height, int seconds, string? thumb) =>
+        Send(new { cmd = "sendMedia", chatId, path, kind, caption, mime, width, height, seconds, thumb });
+
+    /// <summary>Shares a contact card.</summary>
+    public void SendContact(string chatId, string name, string phone) => Send(new { cmd = "sendContact", chatId, name, phone });
+
+    /// <summary>Starts a poll.</summary>
+    public void SendPoll(string chatId, string question, IReadOnlyList<string> options, bool multiple) =>
+        Send(new { cmd = "sendPoll", chatId, question, options, multiple });
+
     /// <summary>Uploads and sends an MP4 from GIF search as a GIF; <paramref name="thumb"/> is a JPEG preview file.</summary>
     public void SendGif(string to, string path, int width, int height, string? thumb) => Send(new { cmd = "sendGif", to, path, width, height, thumb });
 
