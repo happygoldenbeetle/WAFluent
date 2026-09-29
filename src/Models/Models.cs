@@ -146,7 +146,7 @@ public sealed class Message : Observable
         get => _downloadRequested;
         set { if (Set(ref _downloadRequested, value)) Raise(nameof(IsMediaLoading)); }
     }
-    public bool AutoDownloads => Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice;
+    public bool AutoDownloads => Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice || IsGif;
 
     // ───── Previews and per-kind details ─────
 

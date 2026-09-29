@@ -13,6 +13,8 @@ public static class SampleData
     private static string? Preview(string? path) => path is null ? null : Convert.ToBase64String(File.ReadAllBytes(path));
 
     private static readonly string? Picture = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg");
+    /// <summary>The sample GIF's MP4, when WAFLUENT_SAMPLE_GIF points at one (Windows ships none).</summary>
+    private static readonly string? SampleGif = Environment.GetEnvironmentVariable("WAFLUENT_SAMPLE_GIF") is { } gif && File.Exists(gif) ? gif : null;
     private static readonly string? Picture2 = LocalImage(@"C:\Windows\Web\Screen\img103.png", @"C:\Windows\Web\Screen\img101.jpg", @"C:\Windows\Web\Wallpaper\Windows\img19.jpg");
 
     private static Message In(string text, string time, string reaction = "") =>
@@ -73,7 +75,7 @@ public static class SampleData
                 new Message { Id = NewId(), Kind = MessageKind.Voice, Time = "15:22", Seconds = 14, IsOutgoing = true, Delivery = Delivery.Read, HasMedia = true, MediaPath = Picture },
                 new Message { Id = NewId(), Kind = MessageKind.Voice, Time = "15:22", Seconds = 204, IsVoiceNote = false, HasMedia = true, MediaPath = Picture },
                 new Message { Id = NewId(), Kind = MessageKind.Video, Time = "15:23", Seconds = 32, HasMedia = true, Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 200, Text = "The waterfall!" },
-                new Message { Id = NewId(), Kind = MessageKind.Video, Time = "15:23", IsGif = true, HasMedia = true, Thumb = Preview(Picture), MediaWidth = 220, MediaHeight = 160, IsOutgoing = true, Delivery = Delivery.Read },
+                new Message { Id = NewId(), Kind = MessageKind.Video, Time = "15:23", IsGif = true, HasMedia = true, MediaPath = SampleGif, Thumb = Preview(Picture), MediaWidth = 220, MediaHeight = 160, IsOutgoing = true, Delivery = Delivery.Read },
                 new Message { Id = NewId(), Kind = MessageKind.Location, Time = "15:24", Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 150,
                               Latitude = 31.5204, Longitude = 74.3587, PlaceName = "Lahore Fort", PlaceAddress = "Fort Rd, Walled City of Lahore" },
                 new Message { Id = NewId(), Kind = MessageKind.Contact, Time = "15:25", Text = "Sara Khan", Contacts = [new ContactCard("Sara Khan", ["+92 300 1234567"])] },

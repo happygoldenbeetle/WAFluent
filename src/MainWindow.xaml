@@ -73,12 +73,12 @@
                             <!-- Muted: a filled bell with a slash, like the phone (Material "notifications_off"). -->
                             <Path Width="13" Height="13" Stretch="Uniform" Fill="{ThemeResource TextFillColorSecondaryBrush}"
                                   Visibility="{x:Bind IsMuted, Mode=OneWay}" Data="M20,18.69 L7.84,6.14 L5.27,3.49 L4,4.76 L6.8,7.56 L6.8,7.57 C6.28,8.56 6,9.73 6,10.99 V15.99 L4,17.99 V18.99 H17.73 L19.73,20.99 L21,19.72 Z M12,22 C13.11,22 14,21.11 14,20 H10 C10,21.11 10.89,22 12,22 Z M18,14.68 V11 C18,7.92 16.36,5.36 13.5,4.68 V4 C13.5,3.17 12.83,2.5 12,2.5 C11.17,2.5 10.5,3.17 10.5,4 V4.68 C9.5,4.92 8.62,5.4 7.92,6.07 Z" />
-                            <!-- A tilted pushpin, head and needle, like the phone (Material "push_pin" outline, filled). -->
+                            <!-- An upright pushpin, head and needle (Material "push_pin" outline, filled). -->
                             <Path Width="14" Height="14" Stretch="Uniform" RenderTransformOrigin="0.5,0.5"
                                   Fill="{ThemeResource TextFillColorSecondaryBrush}" Visibility="{x:Bind IsPinned, Mode=OneWay}"
                                   Data="M16,9 V4 H17 C17.55,4 18,3.55 18,3 C18,2.45 17.55,2 17,2 H7 C6.45,2 6,2.45 6,3 C6,3.55 6.45,4 7,4 H8 V9 C8,10.66 6.66,12 5,12 V14 H10.97 V21 L11.97,22 L12.97,21 V14 H19 V12 C17.34,12 16,10.66 16,9 Z">
                                 <Path.RenderTransform>
-                                    <CompositeTransform Rotation="45" TranslateY="1" />
+                                    <CompositeTransform TranslateY="0.5" />
                                 </Path.RenderTransform>
                             </Path>
                             <TextBlock Text="@" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"
@@ -456,6 +456,8 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{x:Bind IsGif}" />
                                             <ProgressRing Width="52" Height="52" Foreground="White" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
                                         </Grid>
+                                        <!-- GIFs play by themselves while on screen, over the preview and its badge. -->
+                                        <controls:GifPlayer Source="{x:Bind MediaPath, Mode=OneWay}" Visibility="{x:Bind IsGif}" />
                                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
                                                     Visibility="{x:Bind MediaFailed, Mode=OneWay}">
                                             <FontIcon Glyph="&#xE714;" FontSize="28" Foreground="White" Opacity="0.8" />
@@ -1037,7 +1039,13 @@
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <FontIcon Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <!-- Segoe's pin leans 45°; turned upright. -->
+                        <FontIcon Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  RenderTransformOrigin="0.5,0.5">
+                            <FontIcon.RenderTransform>
+                                <RotateTransform Angle="-45" />
+                            </FontIcon.RenderTransform>
+                        </FontIcon>
                         <StackPanel Grid.Column="1">
                             <TextBlock Text="Pinned message" FontSize="12" Foreground="{ThemeResource ChatAccentTextBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.PinnedMessagePreview, Mode=OneWay}" FontSize="13"

@@ -62,6 +62,16 @@ public sealed partial class MainWindow
     }
 
 #if DEBUG
+    /// <summary>WAFLUENT_SELFTEST=menu: opens the menu of the last text message on screen.</summary>
+    private void SelfTestMenu()
+    {
+        var bubble = Descendants(Messages).OfType<FrameworkElement>().LastOrDefault(f => f.Tag is Message { Kind: MessageKind.Text });
+        if (bubble?.Tag is not Message m) return;
+        var menu = BuildMessageMenu(m, bubble, null);
+        menu.ShouldConstrainToRootBounds = true;
+        menu.ShowAt(bubble);
+    }
+
     /// <summary>
     /// Debug self-check (WAFLUENT_SELFTEST=links): hit-tests the middle of every link on screen
     /// and a point beside it, writing the results to %TEMP%\wafluent-selftest.txt.
@@ -207,9 +217,21 @@ public sealed partial class MainWindow
         return sub;
     }
 
+    /// <summary>A menu icon; Segoe's pins lean 45°, so they're turned upright.</summary>
+    private static FontIcon Icon(string glyph)
+    {
+        var icon = new FontIcon { Glyph = glyph };
+        if (glyph == Glyphs.Pin || glyph == Glyphs.Unpin)
+        {
+            icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+            icon.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = -45 };
+        }
+        return icon;
+    }
+
     private static MenuFlyoutItem Item(string text, string? glyph, Action action, bool enabled = true)
     {
-        var item = new MenuFlyoutItem { Text = text, Icon = glyph is null ? null : new FontIcon { Glyph = glyph }, IsEnabled = enabled };
+        var item = new MenuFlyoutItem { Text = text, Icon = glyph is null ? null : Icon(glyph), IsEnabled = enabled };
         item.Click += (_, _) => action();
         return item;
     }

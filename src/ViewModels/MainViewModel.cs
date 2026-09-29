@@ -82,8 +82,7 @@ public sealed partial class MainViewModel : Observable
     {
         if (_core is null) return;
         foreach (var m in messages)
-            if (m.HasMedia && m.MediaPath is null && !m.MediaFailed
-                && m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice)
+            if (m.HasMedia && m.MediaPath is null && !m.MediaFailed && m.AutoDownloads)
                 _core.DownloadMedia(chat.Id, m.Id);
     }
 
