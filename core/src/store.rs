@@ -149,7 +149,9 @@ impl Store {
         ] {
             let _ = db.execute(sql, []);
         }
-        Ok(Self { db, me: Vec::new() })
+        let store = Self { db, me: Vec::new() };
+        store.merge_split_chats();
+        Ok(store)
     }
 
     /// Runs `f` inside one transaction (history chunks insert thousands of rows).
@@ -170,6 +172,64 @@ impl Store {
             "INSERT INTO aliases(alt, chat_id) VALUES(?1, ?2) ON CONFLICT(alt) DO UPDATE SET chat_id = excluded.chat_id",
             params![alt, chat_id],
         );
+        // The same person under both their number and their LID: one chat, not two
+        // half-chats that each miss the other's messages.
+        if self.chat_exists(alt) {
+            self.merge_chat(alt, chat_id);
+        }
+    }
+
+    fn chat_exists(&self, id: &str) -> bool {
+        self.db.query_row("SELECT 1 FROM chats WHERE id = ?1", [id], |_| Ok(())).is_ok()
+    }
+
+    /// Moves everything stored under `from` into `into` and drops `from`.
+    fn merge_chat(&self, from: &str, into: &str) {
+        if from == into || !self.chat_exists(into) {
+            return;
+        }
+        for table in ["media", "quotes", "reactions"] {
+            let _ = self.db.execute(&format!("UPDATE OR IGNORE {table} SET chat_id = ?2 WHERE chat_id = ?1"), [from, into]);
+            let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [from]);
+        }
+        let _ = self.db.execute("UPDATE OR IGNORE messages SET chat_id = ?2 WHERE chat_id = ?1", [from, into]);
+        let _ = self.db.execute("DELETE FROM messages WHERE chat_id = ?1", [from]);
+        let _ = self.db.execute(
+            "UPDATE chats SET
+                last_ts = MAX(chats.last_ts, f.last_ts),
+                unread  = MAX(chats.unread, f.unread),
+                pinned  = MAX(chats.pinned, f.pinned),
+                name    = CASE WHEN chats.name = '' THEN f.name ELSE chats.name END
+             FROM (SELECT last_ts, unread, pinned, name FROM chats WHERE id = ?1) AS f
+             WHERE chats.id = ?2",
+            [from, into],
+        );
+        let _ = self.db.execute("DELETE FROM chats WHERE id = ?1", [from]);
+        let _ = self.db.execute("UPDATE aliases SET chat_id = ?2 WHERE chat_id = ?1", [from, into]);
+        let _ = self.db.execute("DELETE FROM aliases WHERE alt = chat_id", []);
+    }
+
+    /// Chats split before merging existed (an alias whose other half still has a chat row).
+    fn merge_split_chats(&self) {
+        let pairs: Vec<(String, String)> = self
+            .db
+            .prepare("SELECT a.alt, a.chat_id FROM aliases a JOIN chats c ON c.id = a.alt")
+            .and_then(|mut stmt| stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+            .unwrap_or_default();
+        for (from, into) in pairs {
+            self.merge_chat(&from, &into);
+        }
+    }
+
+    /// A chat's id followed by the other ids it is known by (number / LID).
+    pub fn chat_jids(&self, chat_id: &str) -> Vec<String> {
+        let mut jids = vec![chat_id.to_string()];
+        if let Ok(mut stmt) = self.db.prepare("SELECT alt FROM aliases WHERE chat_id = ?1") {
+            if let Ok(rows) = stmt.query_map([chat_id], |r| r.get::<_, String>(0)) {
+                jids.extend(rows.flatten());
+            }
+        }
+        jids
     }
 
     /// The chat id a JID belongs to (follows phone-number/LID aliases).
@@ -818,8 +878,9 @@ impl Store {
 
     // ───────────── Media ─────────────
 
-    pub fn insert_media(&self, chat_id: &str, message_id: &str, m: &Media) {
-        let _ = self.db.execute(
+    /// True when the attachment details are new (not already stored).
+    pub fn insert_media(&self, chat_id: &str, message_id: &str, m: &Media) -> bool {
+        self.db.execute(
             "INSERT OR IGNORE INTO media(chat_id, message_id, media_type, direct_path, media_key, file_sha256,
                                          file_enc_sha256, file_length, mimetype, width, height, seconds, waveform)
              VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
@@ -828,6 +889,16 @@ impl Store {
                 m.file_enc_sha256, m.file_length as i64, m.mimetype, m.width, m.height, m.seconds,
                 (!m.waveform.is_empty()).then_some(&m.waveform)
             ],
+        )
+        .unwrap_or(0)
+            > 0
+    }
+
+    /// The phone re-uploaded an expired attachment: its new CDN path.
+    pub fn set_direct_path(&self, chat_id: &str, message_id: &str, direct_path: &str) {
+        let _ = self.db.execute(
+            "UPDATE media SET direct_path = ?3 WHERE chat_id = ?1 AND message_id = ?2",
+            params![chat_id, message_id, direct_path],
         );
     }
 

@@ -105,10 +105,15 @@ public sealed class CoreClient : IDisposable
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
 
-    public void DownloadMedia(string chatId, string messageId) => Send(new { cmd = "downloadMedia", chatId, messageId });
+    /// <summary>`force`: also retry one the phone said it no longer has.</summary>
+    public void DownloadMedia(string chatId, string messageId, bool force = false) =>
+        Send(new { cmd = "downloadMedia", chatId, messageId, force });
 
-    /// <summary>Fill in media details for messages stored before media support existed.</summary>
-    public void BackfillMedia(string chatId) => Send(new { cmd = "backfillMedia", chatId });
+    /// <summary>
+    /// Fill in media details for messages stored before media support existed: the phone
+    /// resends the 50 messages before <paramref name="beforeId"/> (default: the newest).
+    /// </summary>
+    public void BackfillMedia(string chatId, string? beforeId) => Send(new { cmd = "backfillMedia", chatId, beforeId });
 
     /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
     public void SendText(string chatId, string text, string? replyTo, string tempId) =>

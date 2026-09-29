@@ -190,11 +190,18 @@ pub enum Command {
     /// Messages before (`before_ts`, `before_id`): served from the local store,
     /// or requested from the phone (history sync on demand) when the store has none.
     LoadOlder { chat_id: String, before_ts: i64, before_id: String, limit: Option<u32> },
-    /// Download (or return the cached copy of) a message's attachment.
-    DownloadMedia { chat_id: String, message_id: String },
-    /// Messages stored before media support have no download details; re-request the
-    /// chat's recent history from the phone to fill them in, then resend `messages`.
-    BackfillMedia { chat_id: String },
+    /// Download (or return the cached copy of) a message's attachment. `force` also
+    /// retries one the phone said it no longer has.
+    DownloadMedia {
+        chat_id: String,
+        message_id: String,
+        #[serde(default)]
+        force: bool,
+    },
+    /// Messages stored before media support have no download details: re-request the 50
+    /// messages before `before_id` (default: the newest) from the phone. Each message that
+    /// gains its details comes back as `messageUpdated`.
+    BackfillMedia { chat_id: String, before_id: Option<String> },
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },

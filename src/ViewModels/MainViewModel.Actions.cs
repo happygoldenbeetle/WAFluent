@@ -49,6 +49,8 @@ public sealed partial class MainViewModel
             fresh.MediaPath ??= old.MediaPath;
             fresh.Selecting = old.Selecting;
             chat.Messages[i] = fresh;
+            // A message whose download details just arrived from the phone: fetch it now.
+            if (!old.HasMedia && fresh.HasMedia) RequestMedia(chat, [fresh]);
         };
         core.MessageRemoved += (chatId, messageId) =>
         {

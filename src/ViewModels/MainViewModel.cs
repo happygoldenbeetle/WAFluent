@@ -67,13 +67,14 @@ public sealed partial class MainViewModel : Observable
         _byId.TryGetValue(chatId, out var chat) ? chat.Messages.FirstOrDefault(m => m.Id == messageId) : null;
 
     /// <summary>
-    /// Auto-downloads pictures, stickers and voice notes for messages now on screen (newest
-    /// first, like WhatsApp on Wi-Fi). Already-downloaded files come straight back from the cache.
+    /// Auto-downloads pictures, stickers and voice notes for messages now on screen, like
+    /// WhatsApp on Wi-Fi. The core serves the latest request first, so sending oldest to
+    /// newest gets the bottom of the chat first. Downloaded files come straight from the cache.
     /// </summary>
     private void RequestMedia(Chat chat, IEnumerable<Message> messages)
     {
         if (_core is null) return;
-        foreach (var m in messages.Reverse())
+        foreach (var m in messages)
             if (m.HasMedia && m.MediaPath is null && !m.MediaFailed
                 && m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice)
                 _core.DownloadMedia(chat.Id, m.Id);
@@ -84,16 +85,27 @@ public sealed partial class MainViewModel : Observable
     {
         if (_core is null || _selectedChat is null || !message.HasMedia) return;
         message.MediaFailed = false;   // back to the loading spinner
-        _core.DownloadMedia(_selectedChat.Id, message.Id);
+        _core.DownloadMedia(_selectedChat.Id, message.Id, force: true);
     }
 
-    /// <summary>Messages saved before media support lack download details; ask once per chat to fill them in.</summary>
-    private void BackfillIfNeeded(Chat chat, IEnumerable<MessageDto> messages)
+    /// <summary>
+    /// Messages saved before media support lack download details (they show as "📷 Photo").
+    /// Asks the phone to resend them: each request covers the 50 messages before its anchor,
+    /// the message just after a missing one. <paramref name="after"/> is the message that
+    /// follows this batch in the chat (for older pages). Upgraded messages come back one by
+    /// one as updates.
+    /// </summary>
+    private void BackfillIfNeeded(Chat chat, IReadOnlyList<MessageDto> batch, string? after = null)
     {
-        if (_core is null || chat.BackfillRequested) return;
-        if (!messages.Any(d => d.Media is null && d.Kind is "image" or "voice" or "audio" or "sticker")) return;
-        chat.BackfillRequested = true;
-        _core.BackfillMedia(chat.Id);
+        if (_core is null) return;
+        for (var i = batch.Count - 1; i >= 0; i--)
+        {
+            var d = batch[i];
+            if (d.Media is not null || d.Kind is not ("image" or "voice" or "audio" or "sticker" or "video" or "gif" or "document")) continue;
+            var anchor = i + 1 < batch.Count ? batch[i + 1].Id : after;
+            _core.BackfillMedia(chat.Id, anchor);
+            i -= 49;   // the rest of that window comes with the same answer
+        }
     }
 
     // ───────────── Profile pictures ─────────────
@@ -385,10 +397,13 @@ public sealed partial class MainViewModel : Observable
         if (complete) chat.HistoryComplete = true;
 
         var known = chat.Messages.Select(m => m.Id).ToHashSet();
-        var older = messages.Where(d => !known.Contains(d.Id)).Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
-        if (older.Count == 0) return;
+        var fresh = messages.Where(d => !known.Contains(d.Id)).ToList();
+        if (fresh.Count == 0) return;
+        var after = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider)?.Id;
+        var older = fresh.Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
         Prepend(chat, older);
         RequestMedia(chat, older);
+        BackfillIfNeeded(chat, fresh, after);
 
         // Keep filling until there's enough to scroll through.
         if (!complete && chat.Messages.Count(m => m.Kind != MessageKind.DateDivider) < 25) LoadOlder(chat);

@@ -42,8 +42,10 @@ pub(crate) struct Ctx {
     pub(crate) avatars: mpsc::UnboundedSender<avatars::Request>,
     /// Attachment download queue (see media.rs).
     media: mpsc::UnboundedSender<media::Request>,
-    /// Chats re-requested from the phone to fill in missing media details.
-    backfill: Arc<Mutex<HashSet<String>>>,
+    /// (chat, anchor message) pairs already re-requested from the phone to fill in media details.
+    backfill: Arc<Mutex<HashSet<(String, String)>>>,
+    /// Spaces those requests out so a long chat doesn't flood the phone.
+    backfill_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Ctx {
@@ -125,6 +127,7 @@ async fn run(dir: PathBuf) {
         avatars: avatar_tx,
         media: media_tx,
         backfill: Arc::default(),
+        backfill_gate: Arc::default(),
     };
     ctx.status("starting", None);
 
@@ -231,19 +234,32 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
             load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
         }
-        Command::DownloadMedia { chat_id, message_id } => {
-            let _ = ctx.media.send(media::Request { chat_id, message_id });
+        Command::DownloadMedia { chat_id, message_id, force } => {
+            let _ = ctx.media.send(media::Request { chat_id, message_id, force });
         }
-        Command::BackfillMedia { chat_id } => {
-            if !ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone()) {
+        Command::BackfillMedia { chat_id, before_id } => {
+            let anchor = {
+                let db = ctx.db();
+                match before_id {
+                    Some(id) => db.message(&chat_id, &id).map(|m| (m.id, m.from_me, m.ts)),
+                    None => db.newest(&chat_id),
+                }
+            };
+            let (Some((id, from_me, ts)), Ok(jid)) = (anchor, chat_id.parse::<Jid>()) else { return };
+            let key = (chat_id.clone(), id.clone());
+            if !ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).insert(key.clone()) {
                 return; // already asked this session
             }
-            let newest = ctx.db().newest(&chat_id);
-            let (Some((id, from_me, ts)), Ok(jid)) = (newest, chat_id.parse::<Jid>()) else { return };
-            if let Err(e) = client.fetch_message_history(&jid, &id, from_me, ts * 1000, 50).await {
-                warn!("media backfill request failed for {chat_id}: {e}");
-                ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
-            }
+            // One request at a time, 1.5 s apart; keep reading commands meanwhile.
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move {
+                let _turn = ctx.backfill_gate.lock().await;
+                if let Err(e) = client.fetch_message_history(&jid, &id, from_me, ts * 1000, 50).await {
+                    warn!("media backfill request failed for {chat_id}: {e}");
+                    ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).remove(&key);
+                }
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+            });
         }
         Command::SendText { chat_id, text, reply_to, temp_id } => {
             // Sending waits on the server; keep reading commands meanwhile.
@@ -614,11 +630,17 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let on_demand = lazy.sync_type() == wa::history_sync::HistorySyncType::ON_DEMAND as i32;
             let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
             match result {
-                Ok(Ok(chats)) => {
-                    info!("history chunk: {} conversations (progress {progress:?}, on-demand {on_demand})", chats.len());
+                Ok(Ok(Ingested { chats, upgraded })) => {
+                    info!(
+                        "history chunk: {} conversations, {} messages gained media details (progress {progress:?}, on-demand {on_demand})",
+                        chats.len(),
+                        upgraded.len()
+                    );
+                    for (chat_id, message_id) in &upgraded {
+                        send_message_update(ctx, chat_id, message_id);
+                    }
                     if on_demand {
                         answer_pending_history(ctx, &chats);
-                        answer_backfill(ctx, &chats);
                     } else {
                         avatars::queue_stale(ctx);   // new chats from the sync
                     }
@@ -832,43 +854,49 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
 }
 
 /// An ON_DEMAND chunk arrived: hand each waiting chat whatever is now older than its anchor.
-fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashSet<String>) {
-    let answered: Vec<(String, (i64, String))> = {
-        let mut pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
-        let ids: Vec<String> = pending.keys().filter(|id| chats_in_chunk.contains(*id)).cloned().collect();
-        ids.into_iter().filter_map(|id| pending.remove(&id).map(|anchor| (id, anchor))).collect()
+///
+/// A chunk can answer a different request for the same chat (media backfill), so one that
+/// brings nothing older than the anchor leaves the chat waiting; only an empty answer
+/// (the phone has nothing more) marks the history complete.
+fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>) {
+    let waiting: Vec<(String, (i64, String), usize)> = {
+        let pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
+        pending
+            .iter()
+            .filter_map(|(id, anchor)| chats_in_chunk.get(id).map(|n| (id.clone(), anchor.clone(), *n)))
+            .collect()
     };
-    for (chat_id, (ts, id)) in answered {
+    for (chat_id, (ts, id), in_chunk) in waiting {
         let messages = ctx.db().messages_before(&chat_id, ts, &id, 200);
-        let complete = messages.is_empty();
+        let complete = in_chunk == 0;
+        if messages.is_empty() && !complete {
+            continue;
+        }
+        ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
         ctx.send(Out::OlderMessages { chat_id, messages, complete });
     }
 }
 
-/// Chats whose media details were just refilled get their message list resent.
-fn answer_backfill(ctx: &Ctx, chats_in_chunk: &HashSet<String>) {
-    let done: Vec<String> = {
-        let backfill = ctx.backfill.lock().unwrap_or_else(|p| p.into_inner());
-        backfill.iter().filter(|id| chats_in_chunk.contains(*id)).cloned().collect()
-    };
-    for chat_id in done {
-        let messages = ctx.db().messages(&chat_id, 300);
-        ctx.send(Out::Messages { chat_id, messages });
-    }
+struct Ingested {
+    /// Chat id -> messages the chunk carried for it.
+    chats: HashMap<String, usize>,
+    /// Messages already stored without download details that now have them.
+    upgraded: Vec<(String, String)>,
 }
 
-/// Decodes one history-sync chunk into the store. Returns the chat ids it covered.
+/// Decodes one history-sync chunk into the store.
 fn ingest_history(
     lazy: &whatsapp_rust::wacore::types::events::LazyHistorySync,
     db: &Mutex<Store>,
-) -> Result<HashSet<String>, String> {
+) -> Result<Ingested, String> {
     let mut stream = lazy.stream();
     let mut store = db.lock().unwrap_or_else(|p| p.into_inner());
     store.batch(|s| {
-        let mut chats = HashSet::new();
+        let mut chats = HashMap::new();
+        let mut upgraded = Vec::new();
         while let Some(conv) = stream.next_conversation().map_err(|e| e.to_string())? {
-            if let Some(chat_id) = ingest_conversation(s, &conv) {
-                chats.insert(chat_id);
+            if let Some(chat_id) = ingest_conversation(s, &conv, &mut upgraded) {
+                chats.insert(chat_id, conv.messages.len());
             }
         }
         let rest = stream.remainder().map_err(|e| e.to_string())?;
@@ -883,11 +911,11 @@ fn ingest_history(
                 if s.chat(lid).is_some() { s.add_alias(pn, lid) } else { s.add_alias(lid, pn) }
             }
         }
-        Ok(chats)
+        Ok(Ingested { chats, upgraded })
     })
 }
 
-fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
+fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(String, String)>) -> Option<String> {
     if is_hidden_chat(&conv.id) {
         return None;
     }
@@ -934,16 +962,14 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
             s.set_push_name(&sender, &push_name);
         }
         let id = key.id.clone().unwrap_or_default();
-        if let Some(media) = &content.media {
-            s.insert_media(&chat_id, &id, media);
-        }
+        let new_media = content.media.as_ref().is_some_and(|media| s.insert_media(&chat_id, &id, media));
         if let Some(quote) = extract::quote(msg) {
             s.insert_quote(&chat_id, &id, &quote);
         }
-        s.insert_message(
+        let inserted = s.insert_message(
             &chat_id,
             &StoredMessage {
-                id,
+                id: id.clone(),
                 from_me,
                 sender,
                 push_name,
@@ -954,6 +980,9 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation) -> Option<String> {
                 status: if from_me { delivery(wmi) } else { 0 },
             },
         );
+        if new_media && !inserted {
+            upgraded.push((chat_id.clone(), id));
+        }
     }
     Some(chat_id)
 }

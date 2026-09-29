@@ -197,9 +197,6 @@ public sealed class Chat : Observable
     /// <summary>Nothing older exists on this device or the phone.</summary>
     public bool HistoryComplete { get; set; }
 
-    /// <summary>Already asked the phone to fill in missing media details this session.</summary>
-    public bool BackfillRequested { get; set; }
-
     private bool _loadingOlder;
     /// <summary>Waiting for older messages (spinner at the top of the conversation).</summary>
     public bool LoadingOlder { get => _loadingOlder; set => Set(ref _loadingOlder, value); }

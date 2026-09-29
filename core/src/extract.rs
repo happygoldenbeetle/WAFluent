@@ -46,10 +46,37 @@ fn bytes(b: &Option<Vec<u8>>) -> Vec<u8> {
     b.clone().unwrap_or_default()
 }
 
+/// The message inside the wrappers: device-sent, disappearing, view-once, document with
+/// caption, edited (all `get_base_message`), and the newer ones it doesn't know: album
+/// items, lottie stickers, @group mentions, spoilers, messages to Meta AI.
+pub fn base(message: &wa::Message) -> &wa::Message {
+    let mut m = message.get_base_message();
+    for _ in 0..4 {
+        let inner = [
+            &m.associated_child_message,
+            &m.lottie_sticker_message,
+            &m.group_mentioned_message,
+            &m.spoiler_message,
+            &m.bot_invoke_message,
+            &m.bot_forwarded_message,
+            &m.question_message,
+            &m.question_reply_message,
+            &m.limit_sharing_message,
+        ]
+        .into_iter()
+        .find_map(|w| w.as_option().and_then(|w| w.message.as_option()));
+        match inner {
+            Some(next) => m = next.get_base_message(),
+            None => break,
+        }
+    }
+    m
+}
+
 /// `None` for messages with nothing to show (reactions, edits, revokes, key
 /// distribution, ...). Those are protocol traffic, not chat bubbles.
 pub fn content(message: &wa::Message) -> Option<Content> {
-    let m = message.get_base_message();
+    let m = base(message);
 
     if let Some(text) = m.conversation.as_deref().filter(|t| !t.is_empty()) {
         return Some(Content::new("text", text));
@@ -73,7 +100,7 @@ pub fn content(message: &wa::Message) -> Option<Content> {
             ..Default::default()
         }));
     }
-    if let Some(vid) = m.video_message.as_option() {
+    if let Some(vid) = m.video_message.as_option().or_else(|| m.ptv_message.as_option()) {
         let kind = if vid.gif_playback == Some(true) { "gif" } else { "video" };
         return Some(Content::new(kind, vid.caption.clone().unwrap_or_default()).with_media(Media {
             media_type: "video",
@@ -145,8 +172,49 @@ pub fn content(message: &wa::Message) -> Option<Content> {
         .as_option()
         .or_else(|| m.poll_creation_message_v2.as_option())
         .or_else(|| m.poll_creation_message_v3.as_option())
+        .or_else(|| m.poll_creation_message_v5.as_option())
+        .or_else(|| m.poll_creation_message_v6.as_option())
     {
         return Some(Content::new("poll", poll.name.clone().unwrap_or_default()));
+    }
+    if let Some(inner) = m.poll_creation_message_v4.as_option().and_then(|w| w.message.as_option()) {
+        return content(inner);
+    }
+    if let Some(live) = m.live_location_message.as_option() {
+        return Some(Content::new("location", live.caption.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| "Live location".into())));
+    }
+    if let Some(contacts) = m.contacts_array_message.as_option() {
+        let label = contacts.display_name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| format!("{} contacts", contacts.contacts.len()));
+        return Some(Content::new("contact", label));
+    }
+    if let Some(invite) = m.group_invite_message.as_option() {
+        let name = invite.group_name.clone().unwrap_or_default();
+        return Some(Content::new("text", format!("👥 Invitation to join the group \"{name}\"")));
+    }
+    if let Some(event) = m.event_message.as_option() {
+        let name = event.name.clone().unwrap_or_default();
+        let state = if event.is_canceled == Some(true) { " (cancelled)" } else { "" };
+        return Some(Content::new("text", format!("📅 {name}{state}")));
+    }
+    if let Some(call) = m.call_log_messsage.as_option() {
+        let what = if call.is_video == Some(true) { "Video call" } else { "Voice call" };
+        return Some(Content::new("text", format!("📞 {what}")));
+    }
+    if let Some(pack) = m.sticker_pack_message.as_option() {
+        return Some(Content::new("text", format!("💟 Sticker pack: {}", pack.name.clone().unwrap_or_default())));
+    }
+    // Business messages: their text, without the buttons.
+    let business = m
+        .buttons_message
+        .as_option()
+        .and_then(|b| b.content_text.clone())
+        .or_else(|| m.interactive_message.as_option().and_then(|i| i.body.as_option()).and_then(|b| b.text.clone()))
+        .or_else(|| m.interactive_response_message.as_option().and_then(|i| i.body.as_option()).and_then(|b| b.text.clone()))
+        .or_else(|| m.list_message.as_option().and_then(|l| l.description.clone().or_else(|| l.title.clone())))
+        .or_else(|| m.list_response_message.as_option().and_then(|l| l.title.clone()))
+        .or_else(|| m.template_button_reply_message.as_option().and_then(|t| t.selected_display_text.clone()));
+    if let Some(text) = business.filter(|t| !t.is_empty()) {
+        return Some(Content::new("text", text));
     }
 
     // Reactions, protocol messages (revoke/edit/app-state keys), sender-key
@@ -167,7 +235,7 @@ pub enum Control {
 pub fn control(message: &wa::Message) -> Option<Control> {
     use wa::message::pin_in_chat_message::Type as PinType;
     use wa::message::protocol_message::Type;
-    let m = message.get_base_message();
+    let m = base(message);
     if let Some(pm) = m.protocol_message.as_option() {
         let id = pm.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
         return match pm.r#type {
@@ -189,7 +257,7 @@ pub fn control(message: &wa::Message) -> Option<Control> {
 
 /// A reaction: (id of the message reacted to, emoji). An empty emoji removes it.
 pub fn reaction(message: &wa::Message) -> Option<(String, String)> {
-    let r = message.get_base_message().reaction_message.as_option()?;
+    let r = base(message).reaction_message.as_option()?;
     let id = r.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
     Some((id, r.text.clone().unwrap_or_default()))
 }
@@ -205,7 +273,7 @@ pub struct Quote {
 
 /// `Some` when the message is a reply (swipe / "Reply" on another message).
 pub fn quote(message: &wa::Message) -> Option<Quote> {
-    let m = message.get_base_message();
+    let m = base(message);
     let info = m.extended_text_message.as_option().and_then(|x| x.context_info.as_option())
         .or_else(|| m.image_message.as_option().and_then(|x| x.context_info.as_option()))
         .or_else(|| m.video_message.as_option().and_then(|x| x.context_info.as_option()))
