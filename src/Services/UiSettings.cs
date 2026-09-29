@@ -26,9 +26,6 @@ public sealed class UiSettings
     /// <summary>The Windows accent colour instead of WhatsApp green (Helpers/AppColors).</summary>
     public bool UseSystemAccent { get; set; }
 
-    /// <summary>Bubbles look and move like iMessage (off: the classic WhatsApp ones).</summary>
-    public bool IMessageBubbles { get; set; }
-
     /// <summary>Blur profile photos, names and numbers (Controls/Redact).</summary>
     public bool DeveloperMode { get; set; }
 

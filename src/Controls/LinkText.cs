@@ -56,10 +56,7 @@ public static partial class LinkText
                 var uri = email ? "mailto:" + match.Value : match.Value.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? "https://" + match.Value : match.Value;
                 var link = new Hyperlink
                 {
-                    // Green in WhatsApp bubbles; white on your blue iMessage bubbles, blue on grey ones.
-                    Foreground = !Ui.IMessage ? Themed.Brush("ChatAccentTextBrush")
-                               : m.IsOutgoing ? new SolidColorBrush(Microsoft.UI.Colors.White)
-                               : Themed.Brush("IMessageOutgoingBrush"),
+                    Foreground = Themed.Brush("ChatAccentTextBrush"),
                     UnderlineStyle = UnderlineStyle.Single,
                 };
                 link.Inlines.Add(new Run { Text = match.Value });

@@ -97,7 +97,7 @@ public sealed partial class ChatLayout : VirtualizingLayout
                 Remember(i, height);
                 arranged.Add((element, y, height));
             }
-            y += height + (i < count - 1 ? Gap(context.GetItemAt(i), context.GetItemAt(i + 1)) : 0);
+            y += height + (i < count - 1 ? Spacing : 0);
         }
 
         // Rows that scrolled out of the window (or whose message was removed) go back to the pool.
@@ -131,14 +131,6 @@ public sealed partial class ChatLayout : VirtualizingLayout
             element.Arrange(new Rect(0, top, finalSize.Width, height));
         return finalSize;
     }
-
-    /// <summary>iMessage look: bubbles in a run (same person, next to each other) sit 2 px apart.</summary>
-    private double Gap(object a, object b) =>
-        Helpers.Ui.IMessage && a is Models.Message x && b is Models.Message y
-        && x.Kind != Models.MessageKind.DateDivider && y.Kind != Models.MessageKind.DateDivider
-        && x.IsOutgoing == y.IsOutgoing && x.SenderName == y.SenderName && !x.HasTail
-            ? 2
-            : Spacing;
 
     private void Remember(int index, double height)
     {

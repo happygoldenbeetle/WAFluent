@@ -24,8 +24,6 @@
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#FAFAFA" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14000000" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#D9FDD3" />
-            <SolidColorBrush x:Key="IMessageOutgoingBrush" Color="#007AFF" />
-            <SolidColorBrush x:Key="IMessageIncomingBrush" Color="#E9E9EB" />
             <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="BubbleShadowBrush" Color="#1A0B141A" />
             <SolidColorBrush x:Key="BubbleTextBrush" Color="#111B21" />
@@ -65,8 +63,6 @@
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#144D37" />
-            <SolidColorBrush x:Key="IMessageOutgoingBrush" Color="#0A84FF" />
-            <SolidColorBrush x:Key="IMessageIncomingBrush" Color="#2C2C2E" />
             <SolidColorBrush x:Key="IncomingBubbleBrush" Color="#2E2E2E" />
             <SolidColorBrush x:Key="BubbleShadowBrush" Color="#40000000" />
             <SolidColorBrush x:Key="BubbleTextBrush" Color="#F2F2F2" />
@@ -106,8 +102,6 @@
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />
-            <SolidColorBrush x:Key="IMessageOutgoingBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="IMessageIncomingBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="IncomingBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="BubbleShadowBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="BubbleTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -182,37 +176,14 @@
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
-                            <!-- Settings › iMessage-style bubbles. -->
-                            <VisualStateGroup x:Name="Look">
-                                <VisualState x:Name="Classic" />
-                                <VisualState x:Name="IMessageIncoming">
-                                    <VisualState.Setters>
-                                        <Setter Target="Chrome.Background" Value="{ThemeResource IMessageIncomingBrush}" />
-                                        <Setter Target="Chrome.CornerRadius" Value="18" />
-                                        <Setter Target="Chrome.BorderThickness" Value="0" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState x:Name="IMessageOutgoing">
-                                    <VisualState.Setters>
-                                        <Setter Target="Chrome.Background" Value="{ThemeResource IMessageOutgoingBrush}" />
-                                        <Setter Target="Chrome.CornerRadius" Value="18" />
-                                        <Setter Target="Chrome.BorderThickness" Value="0" />
-                                        <Setter Target="Presenter.Foreground" Value="White" />
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
-                        <!-- iMessage's tail: curls out of the bottom corner of the last bubble in a run. -->
-                        <Path x:Name="TailShape" Visibility="Collapsed" Width="22" Height="20" VerticalAlignment="Bottom" HorizontalAlignment="Left"
-
-                              Data="M7,0 C7,9 6,14.5 0.6,19 Q0,19.6 1.2,19.8 C6.5,20.3 10.5,18.8 13,16.8 L22,20 L22,0 Z" />
                         <Border x:Name="Chrome"
                                 Background="{ThemeResource IncomingBubbleBrush}"
                                 BorderBrush="{ThemeResource BubbleShadowBrush}"
                                 BorderThickness="0,0,0,1"
                                 CornerRadius="8"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter x:Name="Presenter" Content="{TemplateBinding Content}"
+                            <ContentPresenter Content="{TemplateBinding Content}"
                                               ContentTemplate="{TemplateBinding ContentTemplate}"
                                               HorizontalContentAlignment="Stretch"
                                               Foreground="{ThemeResource BubbleTextBrush}" />
