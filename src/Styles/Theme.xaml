@@ -239,15 +239,9 @@
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Foreground" Value="{ThemeResource MetaTextBrush}" />
     </Style>
-    <!-- The composer's + menu (MainWindow.Media.cs): the emoji panel's frosted look, roomier rows. -->
+    <!-- The composer's + menu (MainWindow.Media.cs): every default, plus the emoji panel's frosted
+         background (the default one doesn't draw for menus kept inside the window). -->
     <Style x:Key="AttachMenuPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
         <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource SurfaceStrokeColorFlyoutBrush}" />
-        <Setter Property="Padding" Value="4,6,4,6" />
-        <Setter Property="CornerRadius" Value="8" />
-    </Style>
-    <Style x:Key="AttachMenuItemStyle" TargetType="MenuFlyoutItem" BasedOn="{StaticResource DefaultMenuFlyoutItemStyle}">
-        <Setter Property="Padding" Value="14,9,20,9" />
-        <Setter Property="FontSize" Value="14" />
     </Style>
 </ResourceDictionary>

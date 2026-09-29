@@ -42,7 +42,7 @@ public sealed partial class MainWindow
     ];
 
     /// <summary>
-    /// The + button: WhatsApp's attach menu, filled icons in their colours on the emoji panel's frosted background.
+    /// The + button: WhatsApp's attach menu, filled icons in their colours, looking like every other menu.
     /// The items don't send anything yet (sending media is still to come).
     /// </summary>
     private void Attach_Click(object sender, RoutedEventArgs e)
@@ -53,7 +53,6 @@ public sealed partial class MainWindow
             ShouldConstrainToRootBounds = true,
         };
         menu.MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["AttachMenuPresenterStyle"];
-        var itemStyle = (Style)Application.Current.Resources["AttachMenuItemStyle"];
         foreach (var (text, data, color) in AttachItems)
         {
             var icon = new PathIcon
@@ -64,7 +63,7 @@ public sealed partial class MainWindow
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            menu.Items.Add(new MenuFlyoutItem { Text = text, Icon = icon, Style = itemStyle });
+            menu.Items.Add(new MenuFlyoutItem { Text = text, Icon = icon });
         }
         menu.ShowAt(AttachButton);
     }
