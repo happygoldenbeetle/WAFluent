@@ -179,27 +179,30 @@ public sealed partial class MainWindow
             story.Children.Add(grow);
             story.Begin();
         }
-        if (option.Selected && !was.Selected && row.FindName("PollCheck") is UIElement check)
-            PopCheck(check);
+        if (option.Selected && !was.Selected && row.FindName("PollCheck") is UIElement fill && row.FindName("PollTick") is UIElement tick)
+            FillCheck(fill, tick);
     }
 
-    /// <summary>The tick springs in from small, fading up.</summary>
-    private static void PopCheck(UIElement check)
+    /// <summary>The green fill grows out from the middle of the hollow circle; the tick fades in as it fills.</summary>
+    private static void FillCheck(UIElement fill, UIElement tick)
     {
-        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(check);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(fill);
         var compositor = visual.Compositor;
+        var easeOut = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.8f), new System.Numerics.Vector2(0.3f, 1f));
         visual.CenterPoint = new System.Numerics.Vector3(10, 10, 0);
-        var spring = compositor.CreateSpringVector3Animation();
-        spring.InitialValue = new System.Numerics.Vector3(0.3f, 0.3f, 1);
-        spring.FinalValue = System.Numerics.Vector3.One;
-        spring.DampingRatio = 0.5f;
-        spring.Period = TimeSpan.FromMilliseconds(55);
-        visual.StartAnimation("Scale", spring);
+        var grow = compositor.CreateVector3KeyFrameAnimation();
+        grow.InsertKeyFrame(0, new System.Numerics.Vector3(0, 0, 1));
+        grow.InsertKeyFrame(1, System.Numerics.Vector3.One, easeOut);
+        grow.Duration = TimeSpan.FromMilliseconds(260);
+        visual.StartAnimation("Scale", grow);
+
+        var tickVisual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(tick);
         var fade = compositor.CreateScalarKeyFrameAnimation();
         fade.InsertKeyFrame(0, 0);
+        fade.InsertKeyFrame(0.55f, 0);
         fade.InsertKeyFrame(1, 1);
-        fade.Duration = TimeSpan.FromMilliseconds(160);
-        visual.StartAnimation("Opacity", fade);
+        fade.Duration = TimeSpan.FromMilliseconds(320);
+        tickVisual.StartAnimation("Opacity", fade);
     }
 
     private void PollOption_Tapped(object sender, TappedRoutedEventArgs e)
