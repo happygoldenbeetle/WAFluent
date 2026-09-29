@@ -350,7 +350,16 @@ public sealed partial class StickerPanel : Grid
         tab.Background = on ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
     /// <summary>A sticker: a rounded square with its corner peeled.</summary>
-    public static UIElement StickerGlyph(double size = 16) => new Microsoft.UI.Xaml.Shapes.Path
+    public static UIElement StickerGlyph(double size = 16)
+    {
+        var glyph = StickerPath(size);
+        // Re-colour once shown and on theme changes: created before the light theme applies.
+        glyph.Loaded += (_, _) => glyph.Stroke = Themed.Brush("TextFillColorPrimaryBrush");
+        glyph.ActualThemeChanged += (_, _) => glyph.Stroke = Themed.Brush("TextFillColorPrimaryBrush");
+        return glyph;
+    }
+
+    private static Microsoft.UI.Xaml.Shapes.Path StickerPath(double size) => new Microsoft.UI.Xaml.Shapes.Path
     {
         Data = (Geometry)Microsoft.UI.Xaml.Markup.XamlBindingHelper.ConvertValue(typeof(Geometry),
             "M4.5,0.7 H12.5 A3.8,3.8 0 0 1 16.3,4.5 V10.2 L10.2,16.3 H4.5 A3.8,3.8 0 0 1 0.7,12.5 V4.5 A3.8,3.8 0 0 1 4.5,0.7 Z M10.2,16.3 V13 A2.8,2.8 0 0 1 13,10.2 H16.3"),

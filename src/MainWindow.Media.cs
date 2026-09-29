@@ -16,6 +16,55 @@ namespace WhatsAppNative;
 /// </summary>
 public sealed partial class MainWindow
 {
+    // ───────────── Attach menu ─────────────
+
+    private MenuFlyout? _attachMenu;
+
+    /// <summary>
+    /// The + button: WhatsApp's attach menu, each kind in its own colour. The items don't
+    /// send anything yet (sending media is still to come).
+    /// </summary>
+    private void Attach_Click(object sender, RoutedEventArgs e)
+    {
+        if (_attachMenu is null)
+        {
+            _attachMenu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft, ShouldConstrainToRootBounds = true };
+            var itemStyle = new Style(typeof(MenuFlyoutItem));
+            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(14, 9, 20, 9)));
+            itemStyle.Setters.Add(new Setter(Control.FontSizeProperty, 14.0));
+            _attachMenu.MenuFlyoutPresenterStyle = new Style(typeof(MenuFlyoutPresenter));
+            _attachMenu.MenuFlyoutPresenterStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4, 6, 4, 6)));
+            _attachMenu.MenuFlyoutPresenterStyle.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(12)));
+            foreach (var (text, icon, color) in new (string, IconElement, uint)[]
+            {
+                ("Document", new FontIcon { Glyph = "\uE8A5" }, 0xFF7F66FF),
+                ("Photos & videos", new FontIcon { Glyph = "\uE8B9" }, 0xFF007BFC),
+                ("Camera", new FontIcon { Glyph = "\uE722" }, 0xFFFF2E74),
+                ("Audio", new FontIcon { Glyph = "\uE7F6" }, 0xFFFA6533),
+                ("Contact", new FontIcon { Glyph = "\uE77B" }, 0xFF009DE2),
+                ("Poll", new FontIcon { Glyph = "\uE9D5" }, 0xFFFFBC38),
+                ("Event", new FontIcon { Glyph = "\uE787" }, 0xFFFF2E74),
+                ("New sticker", NewStickerIcon(), 0xFF02A698),
+            })
+            {
+                icon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(
+                    (byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color));
+                _attachMenu.Items.Add(new MenuFlyoutItem { Text = text, Icon = icon, Style = itemStyle });
+            }
+        }
+        _attachMenu.ShowAt(AttachButton);
+    }
+
+    /// <summary>A sticker with its corner peeled, filled (the menu's "New sticker").</summary>
+    private static PathIcon NewStickerIcon()
+    {
+        var shape = (Microsoft.UI.Xaml.Media.Geometry)Microsoft.UI.Xaml.Markup.XamlBindingHelper.ConvertValue(typeof(Microsoft.UI.Xaml.Media.Geometry),
+            "M4.5,0.7 H12.5 A3.8,3.8 0 0 1 16.3,4.5 V9.4 H13.2 A3.8,3.8 0 0 0 9.4,13.2 V16.3 H4.5 A3.8,3.8 0 0 1 0.7,12.5 V4.5 A3.8,3.8 0 0 1 4.5,0.7 Z M10.9,16.1 V13.4 A2.5,2.5 0 0 1 13.4,10.9 H16.1 Z");
+        // Drawn on a 17-unit grid; the font icons beside it have ~14 px of ink.
+        shape.Transform = new Microsoft.UI.Xaml.Media.ScaleTransform { ScaleX = 0.84, ScaleY = 0.84 };
+        return new PathIcon { Data = shape, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+    }
+
     // ───────────── Stickers and GIFs ─────────────
 
     private Flyout? _stickerFlyout;

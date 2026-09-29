@@ -83,6 +83,8 @@ public sealed partial class MainWindow : Window
         // Online while the window is in front, like WhatsApp Desktop.
         Activated += (_, e) => ViewModel.SetPresence(e.WindowActivationState != WindowActivationState.Deactivated);
 #if DEBUG
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
+            Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
