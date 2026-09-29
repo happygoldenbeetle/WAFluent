@@ -68,9 +68,12 @@ public sealed partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
             Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
         // WAFLUENT_SELFTEST=poll: votes for the second option of the first poll after 6 s.
+        var pollTestDone = false;
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")
             Messages.Loaded += async (_, _) =>
             {
+                if (pollTestDone) return;   // Loaded can fire more than once
+                pollTestDone = true;
                 await Task.Delay(6000);
                 var log = Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt");
                 if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Poll) is { } poll)
@@ -84,7 +87,7 @@ public sealed partial class MainWindow : Window
                     await Task.Delay(500);
                     var later = Messages.TryGetElement(index) as FrameworkElement;
                     line += $"; 500 ms later: {later?.GetHashCode()} context is new: {ReferenceEquals(later?.DataContext, after)}, tag is new: {ReferenceEquals(later?.Tag, after)}";
-                    File.WriteAllText(log, line);
+                    File.WriteAllText(log, $"{DateTime.Now:HH:mm:ss.fff} " + line);
                 }
                 else File.WriteAllText(log, $"no poll; chat {ViewModel.SelectedChat?.Name}");
             };

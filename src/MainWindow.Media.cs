@@ -148,6 +148,60 @@ public sealed partial class MainWindow
 
     // ───────────── Polls ─────────────
 
+    /// <summary>What each option last showed: (poll, option) -> (bar length, yours).</summary>
+    private static readonly Dictionary<(string Poll, string Option), (double Fraction, bool Selected)> PollShown = new();
+
+    /// <summary>
+    /// The poll bubble is rebuilt when a vote lands; animate from what was on screen: bars
+    /// slide to their new length and a new tick pops in. Rows merely scrolling back into view
+    /// (nothing changed) and first sightings stay still.
+    /// </summary>
+    private void PollOption_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: PollOption option } row) return;
+        var key = (option.Owner.Id, option.Name);
+        var seen = PollShown.TryGetValue(key, out var was);
+        PollShown[key] = (option.Fraction, option.Selected);
+        if (!seen) return;
+
+        if (Math.Abs(was.Fraction - option.Fraction) > 0.001 && row.FindName("PollScale") is Microsoft.UI.Xaml.Media.ScaleTransform scale)
+        {
+            var grow = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                From = was.Fraction,
+                To = option.Fraction,
+                Duration = TimeSpan.FromMilliseconds(420),
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut },
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(grow, scale);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(grow, "ScaleX");
+            var story = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            story.Children.Add(grow);
+            story.Begin();
+        }
+        if (option.Selected && !was.Selected && row.FindName("PollCheck") is UIElement check)
+            PopCheck(check);
+    }
+
+    /// <summary>The tick springs in from small, fading up.</summary>
+    private static void PopCheck(UIElement check)
+    {
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(check);
+        var compositor = visual.Compositor;
+        visual.CenterPoint = new System.Numerics.Vector3(10, 10, 0);
+        var spring = compositor.CreateSpringVector3Animation();
+        spring.InitialValue = new System.Numerics.Vector3(0.3f, 0.3f, 1);
+        spring.FinalValue = System.Numerics.Vector3.One;
+        spring.DampingRatio = 0.5f;
+        spring.Period = TimeSpan.FromMilliseconds(55);
+        visual.StartAnimation("Scale", spring);
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0, 0);
+        fade.InsertKeyFrame(1, 1);
+        fade.Duration = TimeSpan.FromMilliseconds(160);
+        visual.StartAnimation("Opacity", fade);
+    }
+
     private void PollOption_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (ViewModel.IsSelecting || sender is not FrameworkElement { Tag: PollOption option }) return;

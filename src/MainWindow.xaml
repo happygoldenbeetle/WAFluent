@@ -644,7 +644,8 @@
                                     <ItemsControl ItemsSource="{x:Bind PollOptions, Mode=OneWay}" IsTabStop="False">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="models:PollOption">
-                                                <Grid ColumnSpacing="10" RowSpacing="7" Padding="0,5" Background="Transparent" Tag="{x:Bind}" Tapped="PollOption_Tapped">
+                                                <Grid ColumnSpacing="10" RowSpacing="7" Padding="0,5" Background="Transparent" Tag="{x:Bind}" Tapped="PollOption_Tapped"
+                                                      Loaded="PollOption_Loaded">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" />
                                                         <ColumnDefinition Width="*" />
@@ -654,11 +655,12 @@
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
-                                                    <!-- Circle for one choice, rounded square for several; filled green with a tick when it's yours. -->
-                                                    <Grid Width="20" Height="20" VerticalAlignment="Top">
+                                                    <!-- Circle for one choice, rounded square for several; filled green with a tick when it's yours.
+                                                         Centred on the option's text and bar together. -->
+                                                    <Grid Grid.RowSpan="2" Width="20" Height="20" VerticalAlignment="Center">
                                                         <Border CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" BorderThickness="1.6"
                                                                 BorderBrush="{ThemeResource MetaTextBrush}" Visibility="{x:Bind helpers:Ui.Collapsed(Selected)}" />
-                                                        <Border CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" Background="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind Selected}">
+                                                        <Border x:Name="PollCheck" CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" Background="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind Selected}">
                                                             <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" />
                                                         </Border>
                                                     </Grid>
@@ -668,7 +670,7 @@
                                                         <Rectangle RadiusX="3" RadiusY="3" Fill="{ThemeResource FileCardDividerBrush}" />
                                                         <Rectangle RadiusX="3" RadiusY="3" Fill="{ThemeResource ChatAccentBrush}" RenderTransformOrigin="0,0.5">
                                                             <Rectangle.RenderTransform>
-                                                                <ScaleTransform ScaleX="{x:Bind Fraction}" />
+                                                                <ScaleTransform x:Name="PollScale" ScaleX="{x:Bind Fraction}" />
                                                             </Rectangle.RenderTransform>
                                                         </Rectangle>
                                                     </Grid>
