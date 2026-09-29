@@ -8,6 +8,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Event {
+    /// Someone in the chat is typing ("typing"), recording a voice note ("recording") or
+    /// stopped ("paused"). `who` names them in groups.
+    Typing { chat_id: String, who: String, state: &'static str },
+    /// A contact came online or left; `last_seen` (Unix seconds) when they share it.
+    Presence { chat_id: String, online: bool, last_seen: Option<i64> },
     /// The chat asked for with `openNumber` (already sent as `chat`): show it.
     Opened { chat_id: String },
     /// Connection lifecycle. `state`: starting | qr | connecting | syncing | connected | loggedOut | error
@@ -218,6 +223,13 @@ pub enum Command {
     /// Open (or start) the 1:1 chat with a phone number, e.g. from a shared contact card.
     /// Answers `opened`, or a `notice` when the number isn't on WhatsApp.
     OpenNumber { phone: String },
+    /// You're here (window focused) or away: WhatsApp shows you online, and only sends
+    /// typing and online updates to clients that are available.
+    SetPresence { available: bool },
+    /// Watch a 1:1 chat's online / last seen / typing (sent when you open it).
+    WatchPresence { chat_id: String },
+    /// Your own typing state in a chat: "typing", "recording" or "paused".
+    SendTyping { chat_id: String, state: String },
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },

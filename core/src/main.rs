@@ -256,6 +256,42 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             tokio::spawn(async move { vote_poll(&ctx, &client, chat_id, message_id, options).await });
         }
         Command::OpenNumber { phone } => open_number(ctx, client, &phone).await,
+        Command::SetPresence { available } => {
+            let client = Arc::clone(client);
+            tokio::spawn(async move {
+                let result = if available { client.presence().set_available().await } else { client.presence().set_unavailable().await };
+                if let Err(e) = result {
+                    warn!("presence {available} failed: {e}");
+                }
+            });
+        }
+        Command::WatchPresence { chat_id } => {
+            if chat_id.ends_with("@g.us") {
+                return; // group typing arrives without subscribing
+            }
+            let Ok(jid) = chat_id.parse::<Jid>() else { return };
+            let client = Arc::clone(client);
+            tokio::spawn(async move {
+                if let Err(e) = client.presence().subscribe(jid).await {
+                    warn!("presence subscribe {chat_id} failed: {e}");
+                }
+            });
+        }
+        Command::SendTyping { chat_id, state } => {
+            use whatsapp_rust::features::ChatStateType;
+            let Ok(jid) = chat_id.parse::<Jid>() else { return };
+            let state = match state.as_str() {
+                "typing" => ChatStateType::Composing,
+                "recording" => ChatStateType::Recording,
+                _ => ChatStateType::Paused,
+            };
+            let client = Arc::clone(client);
+            tokio::spawn(async move {
+                if let Err(e) = client.chatstate().send(&jid, state).await {
+                    warn!("typing state to {jid} failed: {e}");
+                }
+            });
+        }
         Command::DownloadMedia { chat_id, message_id, force } => {
             let _ = ctx.media.send(media::Request { chat_id, message_id, force });
         }
@@ -640,6 +676,25 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chats…".into())),
         Event::Disconnected(_) => ctx.status("connecting", None),
         Event::LoggedOut(_) => forget_everything(ctx),
+        Event::ChatPresence(update) => {
+            use whatsapp_rust::wacore::types::presence::{ChatPresence, ChatPresenceMedia};
+            let (chat_id, who) = {
+                let db = ctx.db();
+                let chat_id = db.canonical(&update.source.chat.to_non_ad_string());
+                let who = if update.source.is_group { db.person_name(&update.source.sender.to_non_ad_string(), "") } else { String::new() };
+                (chat_id, who)
+            };
+            let state = match (&update.state, &update.media) {
+                (ChatPresence::Composing, ChatPresenceMedia::Audio) => "recording",
+                (ChatPresence::Composing, _) => "typing",
+                _ => "paused",
+            };
+            ctx.send(Out::Typing { chat_id, who, state });
+        }
+        Event::Presence(update) => {
+            let chat_id = ctx.db().canonical(&update.from.to_non_ad_string());
+            ctx.send(Out::Presence { chat_id, online: !update.unavailable, last_seen: update.last_seen.map(|t| t.timestamp()) });
+        }
         Event::PictureUpdate(update) => {
             let jid = update.jid.to_non_ad();
             let own = client.persistence_manager().get_device_snapshot();

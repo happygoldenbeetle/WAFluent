@@ -64,10 +64,19 @@ public sealed partial class MainWindow : Window
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
+        // Online while the window is in front, like WhatsApp Desktop.
+        Activated += (_, e) => ViewModel.SetPresence(e.WindowActivationState != WindowActivationState.Deactivated);
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
             Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
         // WAFLUENT_SELFTEST=poll: votes for the second option of the first poll after 6 s.
+        // WAFLUENT_SELFTEST=typing: the open chat "types" after 3 s.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "typing")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                if (ViewModel.SelectedChat is { } chat) chat.TypingText = "typing…";
+            };
         var pollTestDone = false;
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")
             Messages.Loaded += async (_, _) =>
@@ -226,6 +235,7 @@ public sealed partial class MainWindow : Window
     {
         UpdateShortcodes();
         var hasText = ComposerBox.Text.Trim().Length > 0;
+        ViewModel.ComposerEdited(hasText);
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
         MicButton.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -257,6 +267,7 @@ public sealed partial class MainWindow : Window
     private void SendCurrent()
     {
         if (!ViewModel.Send(ComposerBox.Text)) return;
+        ViewModel.StopTyping();
         ComposerBox.Text = "";
         ComposerBox.Focus(FocusState.Programmatic);
         ScrollToBottom();

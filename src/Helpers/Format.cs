@@ -22,6 +22,16 @@ public static class Format
         return local.ToString("d", CultureInfo.CurrentCulture);
     }
 
+    /// <summary>"last seen today at 14:54", "last seen yesterday at 9:02", "last seen 12/09/2026 at 18:30".</summary>
+    public static string LastSeen(DateTime local)
+    {
+        if (local == DateTime.MinValue) return "";
+        var day = local.Date == DateTime.Today ? "today"
+                : local.Date == DateTime.Today.AddDays(-1) ? "yesterday"
+                : local.ToString("d", CultureInfo.CurrentCulture);
+        return $"last seen {day} at {local:H:mm}";
+    }
+
     /// <summary>Divider between days in a conversation.</summary>
     public static string DayLabel(DateTime local)
     {

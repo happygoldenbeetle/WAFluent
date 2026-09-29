@@ -164,23 +164,54 @@ public sealed partial class MainWindow
         PollShown[key] = (option.Fraction, option.Selected);
         if (!seen) return;
 
-        if (Math.Abs(was.Fraction - option.Fraction) > 0.001 && row.FindName("PollScale") is Microsoft.UI.Xaml.Media.ScaleTransform scale)
+        if (Math.Abs(was.Fraction - option.Fraction) > 0.001 && row.FindName("PollTrack") is FrameworkElement track)
         {
-            var grow = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                From = was.Fraction,
-                To = option.Fraction,
-                Duration = TimeSpan.FromMilliseconds(420),
-                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut },
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(grow, scale);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(grow, "ScaleX");
-            var story = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-            story.Children.Add(grow);
-            story.Begin();
+            _pollBarFrom[track] = was.Fraction;   // animates once the track has its width
+            if (track.ActualWidth > 0) SizePollBar(track, option);
         }
         if (option.Selected && !was.Selected && row.FindName("PollCheck") is UIElement fill && row.FindName("PollTick") is UIElement tick)
             FillCheck(fill, tick);
+    }
+
+    /// <summary>Bars waiting to slide from their old length (a fraction) once they have a width.</summary>
+    private readonly Dictionary<FrameworkElement, double> _pollBarFrom = new();
+
+    private void PollTrack_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: null } track && FindPollOption(track) is { } option) SizePollBar(track, option);
+    }
+
+    private static PollOption? FindPollOption(FrameworkElement element)
+    {
+        for (DependencyObject? d = element; d is not null; d = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(d))
+            if (d is FrameworkElement { Tag: PollOption option }) return option;
+        return null;
+    }
+
+    /// <summary>The fill's width is its share of the track; a pending change slides there from the old share.</summary>
+    private void SizePollBar(FrameworkElement track, PollOption option)
+    {
+        if (track.FindName("PollFill") is not FrameworkElement fill || track.ActualWidth <= 0) return;
+        var to = Math.Round(track.ActualWidth * option.Fraction);
+        if (_pollBarFrom.Remove(track, out var from))
+        {
+            var slide = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                From = Math.Round(track.ActualWidth * from),
+                To = to,
+                Duration = TimeSpan.FromMilliseconds(420),
+                EnableDependentAnimation = true,
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut },
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(slide, fill);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(slide, "Width");
+            var story = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            story.Children.Add(slide);
+            story.Completed += (_, _) => { story.Stop(); fill.Width = Math.Round(track.ActualWidth * option.Fraction); };
+            story.Begin();
+            return;
+        }
+        fill.Width = to;
     }
 
     /// <summary>The green fill grows out from the middle of the hollow circle; the tick fades in as it fills.</summary>

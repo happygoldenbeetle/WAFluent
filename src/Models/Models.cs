@@ -244,8 +244,37 @@ public sealed class Chat : Observable
     /// <summary>WhatsApp JID for live chats; empty for sample data.</summary>
     public string Id { get; init; } = "";
     public bool IsGroup { get; init; }
-    public string Status { get; init; } = "";
-    public bool IsTyping { get; init; }
+    private string _status = "", _typing = "";
+
+    /// <summary>1:1: "online" or "last seen …" (when they share it). Groups: who's in it.</summary>
+    public string Status
+    {
+        get => _status;
+        set { if (Set(ref _status, value)) { Raise(nameof(HeaderStatus)); Raise(nameof(HasStatusText)); } }
+    }
+
+    public bool HasStatusText => _status.Length > 0;
+
+    /// <summary>"typing…", "recording audio…", "Sara is typing…"; empty when nobody is.</summary>
+    public string TypingText
+    {
+        get => _typing;
+        set
+        {
+            if (!Set(ref _typing, value)) return;
+            Raise(nameof(IsTyping));
+            Raise(nameof(HeaderStatus));
+        }
+    }
+
+    public bool IsTyping
+    {
+        get => _typing.Length > 0;
+        init => _typing = value ? "typing…" : "";
+    }
+
+    /// <summary>Under the name in the chat header: typing beats online / last seen.</summary>
+    public string HeaderStatus => IsTyping ? _typing : _status;
     public bool HasMention { get; init; }
     public bool HasStatus { get; init; }   // unseen status update: green ring around the avatar
     public DateTime LastActivity { get; set; }

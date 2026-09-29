@@ -39,6 +39,60 @@ public sealed partial class MainViewModel
     /// <summary>A short confirmation or error for the toast (ok, text).</summary>
     public event Action<bool, string>? Toast;
 
+    private readonly Dictionary<Chat, int> _typingVersion = new();
+
+    /// <summary>
+    /// Someone started or stopped typing. It clears itself after 20 s without a refresh, as the
+    /// "paused" can get lost (they closed the app, lost signal).
+    /// </summary>
+    private async void OnTyping(string chatId, string who, string state)
+    {
+        if (!_byId.TryGetValue(chatId, out var chat)) return;
+        var version = _typingVersion[chat] = _typingVersion.GetValueOrDefault(chat) + 1;
+        var what = state == "recording" ? "recording audio…" : "typing…";
+        chat.TypingText = state == "paused" ? "" : who.Length > 0 && chat.IsGroup ? $"{who} is {what}" : what;
+        if (state == "paused") return;
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        if (_typingVersion.GetValueOrDefault(chat) == version) chat.TypingText = "";
+    }
+
+    // ───── Your own typing ─────
+
+    private DateTime _typingSentAt;
+    private int _typingEdits;
+
+    /// <summary>
+    /// The composer changed: tell the chat you're typing (at most every 8 s), and that you
+    /// stopped once nothing has changed for 4 s.
+    /// </summary>
+    public async void ComposerEdited(bool hasText)
+    {
+        if (_core is null || _selectedChat is not { Id.Length: > 0 } chat) return;
+        var edit = ++_typingEdits;
+        if (!hasText)
+        {
+            StopTyping();
+            return;
+        }
+        if (DateTime.Now - _typingSentAt > TimeSpan.FromSeconds(8))
+        {
+            _typingSentAt = DateTime.Now;
+            _core.SendTyping(chat.Id, "typing");
+        }
+        await Task.Delay(TimeSpan.FromSeconds(4));
+        if (edit == _typingEdits && _selectedChat == chat) StopTyping();
+    }
+
+    public void StopTyping()
+    {
+        if (_core is null || _selectedChat is not { Id.Length: > 0 } chat || _typingSentAt == default) return;
+        _typingSentAt = default;
+        _core.SendTyping(chat.Id, "paused");
+    }
+
+    /// <summary>The window came to the front or went away: WhatsApp shows you online accordingly.</summary>
+    public void SetPresence(bool available) => _core?.SetPresence(available);
+
     /// <summary>A message changed (vote, edit, download details): its bubble is swapped in place.</summary>
     private void ApplyUpdate(Chat chat, MessageDto dto)
     {
@@ -74,6 +128,12 @@ public sealed partial class MainViewModel
             Raise(nameof(HasStarred));
         };
         core.Notice += Notify;
+        core.Typing += OnTyping;
+        core.Presence += (chatId, online, lastSeen) =>
+        {
+            if (_byId.TryGetValue(chatId, out var chat) && !chat.IsGroup)
+                chat.Status = online ? "online" : lastSeen is { } s ? Format.LastSeen(Format.FromUnix(s)) : "";
+        };
         core.Opened += chatId =>
         {
             if (!_byId.TryGetValue(chatId, out var chat)) return;

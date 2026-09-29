@@ -61,6 +61,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
+    public event Action<string, string, string>? Typing;                     // chat, who (groups), typing | recording | paused
+    public event Action<string, bool, long?>? Presence;                      // chat, online, last seen (Unix s)
     public event Action<bool, string>? Notice;                               // ok, text for a toast   // chat, message ids, 2 delivered / 3 read
 
     public static string DataDirectory { get; } =
@@ -110,6 +112,15 @@ public sealed class CoreClient : IDisposable
     /// <summary>Your choice in a poll (none = take your vote back).</summary>
     public void VotePoll(string chatId, string messageId, IReadOnlyList<string> options) =>
         Send(new { cmd = "votePoll", chatId, messageId, options });
+
+    /// <summary>Online while the window is in front: WhatsApp only sends typing/online updates then.</summary>
+    public void SetPresence(bool available) => Send(new { cmd = "setPresence", available });
+
+    /// <summary>Follow a 1:1 chat's online / last seen / typing.</summary>
+    public void WatchPresence(string chatId) => Send(new { cmd = "watchPresence", chatId });
+
+    /// <summary>Your typing state: "typing", "recording" or "paused".</summary>
+    public void SendTyping(string chatId, string state) => Send(new { cmd = "sendTyping", chatId, state });
 
     /// <summary>Opens (or starts) the chat with a phone number; answered by <see cref="Opened"/>.</summary>
     public void OpenNumber(string phone) => Send(new { cmd = "openNumber", phone });
@@ -267,6 +278,18 @@ public sealed class CoreClient : IDisposable
             case "starred":
                 var items = root.GetProperty("items").Deserialize<List<StarredDto>>(Json) ?? [];
                 Post(() => StarredReceived?.Invoke(items));
+                break;
+            case "typing":
+                var typingChat = root.GetProperty("chatId").GetString() ?? "";
+                var who = root.GetProperty("who").GetString() ?? "";
+                var typingState = root.GetProperty("state").GetString() ?? "";
+                Post(() => Typing?.Invoke(typingChat, who, typingState));
+                break;
+            case "presence":
+                var presenceChat = root.GetProperty("chatId").GetString() ?? "";
+                var online = root.GetProperty("online").GetBoolean();
+                long? lastSeen = root.TryGetProperty("lastSeen", out var ls) && ls.ValueKind == System.Text.Json.JsonValueKind.Number ? ls.GetInt64() : null;
+                Post(() => Presence?.Invoke(presenceChat, online, lastSeen));
                 break;
             case "opened":
                 var openedChat = root.GetProperty("chatId").GetString() ?? "";

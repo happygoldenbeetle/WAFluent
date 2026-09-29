@@ -344,6 +344,7 @@ public sealed partial class MainViewModel : Observable
         {
             if (!chat.MessagesLoaded) _core.LoadMessages(chat.Id);
             if (chat.Unread > 0) _core.MarkRead(chat.Id);
+            if (!chat.IsGroup) _core.WatchPresence(chat.Id);   // online / last seen / typing
         }
         chat.Unread = 0;
     }
