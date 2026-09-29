@@ -12,6 +12,10 @@ public static class Ui
     public static Visibility Collapsed(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
     public static Visibility NotEmpty(string? value) => Visible(!string.IsNullOrEmpty(value));
     public static Visibility HasDelivery(Delivery d) => Visible(d != Delivery.None);
+
+    /// <summary>Chat list: the last message's parts give way to "typing…".</summary>
+    public static Visibility TextUnlessTyping(string? value, bool typing) => Visible(!typing && !string.IsNullOrEmpty(value));
+    public static Visibility DeliveryUnlessTyping(Delivery d, bool typing) => Visible(!typing && d != Delivery.None);
     public static Visibility IsNull(object? value) => Visible(value is null);
     public static Visibility IsNotNull(object? value) => Visible(value is not null);
     public static Visibility Positive(int value) => Visible(value > 0);

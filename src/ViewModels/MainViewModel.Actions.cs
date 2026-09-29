@@ -99,6 +99,19 @@ public sealed partial class MainViewModel
         if (_state == ConnectionState.Connected) _core?.SetPresence(available);
     }
 
+#if DEBUG
+    /// <summary>Self-test: a reply lands in a sample chat the way a live one would.</summary>
+    public void SimulateIncoming(Chat chat, string text)
+    {
+        _typingVersion[chat] = _typingVersion.GetValueOrDefault(chat) + 1;
+        chat.TypingText = "";
+        var now = DateTime.Now;
+        var message = new Message { Id = Guid.NewGuid().ToString("N"), Text = text, Time = now.ToString("H:mm"), Timestamp = now, AnimateIn = true };
+        Append(chat, message);
+        if (chat == _selectedChat) MessageArrived?.Invoke(message);
+    }
+#endif
+
     /// <summary>A message changed (vote, edit, download details): its bubble is swapped in place.</summary>
     private void ApplyUpdate(Chat chat, MessageDto dto)
     {
@@ -108,6 +121,7 @@ public sealed partial class MainViewModel
         var fresh = Format.ToMessage(dto, chat.IsGroup);
         fresh.MediaPath ??= old.MediaPath;
         fresh.Selecting = old.Selecting;
+        fresh.HasTail = old.HasTail;
         chat.Messages[i] = fresh;
         // A message whose download details just arrived from the phone: fetch it now.
         if (!old.HasMedia && fresh.HasMedia) RequestMedia(chat, [fresh]);
@@ -123,7 +137,11 @@ public sealed partial class MainViewModel
         };
         core.MessageRemoved += (chatId, messageId) =>
         {
-            if (_byId.TryGetValue(chatId, out var chat) && IndexOf(chat, messageId) is var i and >= 0) chat.Messages.RemoveAt(i);
+            if (_byId.TryGetValue(chatId, out var chat) && IndexOf(chat, messageId) is var i and >= 0)
+            {
+                chat.Messages.RemoveAt(i);
+                UpdateRuns(chat);
+            }
         };
         core.ChatRemoved += RemoveChat;
         core.StarredReceived += items =>

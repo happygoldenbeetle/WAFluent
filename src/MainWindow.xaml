@@ -38,16 +38,16 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <!-- Groups: who sent the last message ("Maya: "), blurred in developer mode. -->
-                            <controls:Redact Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewSender), Mode=OneWay}" Margin="0,0,3,0">
+                            <controls:Redact Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewSender, IsTyping), Mode=OneWay}" Margin="0,0,3,0">
                                 <TextBlock Text="{x:Bind PreviewSender, Mode=OneWay}" FontSize="13" MaxLines="1"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </controls:Redact>
                             <!-- Nudged down so the ticks sit on the text's baseline, not above it. -->
                             <controls:DeliveryTicks Grid.Column="1" Delivery="{x:Bind LastDelivery, Mode=OneWay}" Margin="0,5,4,0"
-                                                    Visibility="{x:Bind helpers:Ui.HasDelivery(LastDelivery), Mode=OneWay}" />
+                                                    Visibility="{x:Bind helpers:Ui.DeliveryUnlessTyping(LastDelivery, IsTyping), Mode=OneWay}" />
                             <FontIcon Grid.Column="2" Glyph="{x:Bind PreviewGlyph, Mode=OneWay}" FontSize="13" Margin="0,0,5,0"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                      Visibility="{x:Bind helpers:Ui.NotEmpty(PreviewGlyph), Mode=OneWay}" />
+                                      Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewGlyph, IsTyping), Mode=OneWay}" />
                             <TextBlock Grid.Column="3" Text="{x:Bind Preview, Mode=OneWay}" FontSize="13"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
@@ -108,7 +108,7 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <!-- 10 px all round; the text's margins below trim the space above the first line's
                                  capitals and under the last baseline, so the words sit optically centred. -->
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="10">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -188,7 +188,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
@@ -259,7 +259,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="8,4,10,4">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="8,4,10,4">
                                 <StackPanel>
                                     <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,2" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
@@ -328,7 +328,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
@@ -394,7 +394,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
                                     <controls:Redact HorizontalAlignment="Left" Margin="6,2,6,6" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
@@ -476,7 +476,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="4">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="300">
                                     <controls:Redact HorizontalAlignment="Left" Margin="6,2,6,6" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
@@ -558,7 +558,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="6">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="280">
                                     <controls:Redact HorizontalAlignment="Left" Margin="4,2,4,6" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
@@ -626,7 +626,7 @@
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                             </Grid>
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
-                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Padding="10">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="10">
                                 <StackPanel Width="300" Spacing="10">
                                     <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,-2" Visibility="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
@@ -1036,7 +1036,7 @@
                                 </Canvas>
                             </Grid>
                             <!-- They're typing: three bobbing dots in an incoming bubble (Controls/TypingDots.cs). -->
-                            <controls:Bubble HorizontalAlignment="Left" Margin="0,6,0,0" Padding="14,12"
+                            <controls:Bubble x:Name="TypingBubble" Tail="True" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="14,12"
                                              Visibility="{x:Bind helpers:Ui.Visible(ViewModel.SelectedChat.IsTyping), Mode=OneWay}">
                                 <controls:TypingDots DotBrush="{ThemeResource MetaTextBrush}" />
                             </controls:Bubble>

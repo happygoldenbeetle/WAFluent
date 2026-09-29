@@ -59,6 +59,14 @@ public sealed class Message : Observable
     public DateTime Timestamp { get; init; }
     public long UnixTs { get; init; }
     public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }
+
+    private bool _hasTail = true;
+
+    /// <summary>First bubble of a run from the same person: it gets WhatsApp's little tail.</summary>
+    public bool HasTail { get => _hasTail; set => Set(ref _hasTail, value); }
+
+    /// <summary>Just sent or received: its bubble springs in when it first appears.</summary>
+    public bool AnimateIn { get; set; }
     // ───── Reactions ─────
 
     private IReadOnlyList<string> _reactions = [];
