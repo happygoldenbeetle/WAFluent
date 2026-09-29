@@ -209,6 +209,11 @@ public sealed partial class MainViewModel : Observable
 
     private string? _selfAvatarPath;
 
+    /// <summary>You, for "You" in Send contacts: your picture, WhatsApp name and number.</summary>
+    public string? SelfAvatarPath => _selfAvatarPath;
+    public string SelfName { get; private set; } = "";
+    public string SelfPhone { get; private set; } = "";
+
     /// <summary>Picture and name for a voice note's sender: you, the contact, or (groups) the member.</summary>
     public (string? Path, string Name) VoicePicture(Message m)
     {

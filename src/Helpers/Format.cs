@@ -8,6 +8,15 @@ namespace WhatsAppNative.Helpers;
 /// <summary>Turns core data into what the UI shows, WhatsApp style.</summary>
 public static class Format
 {
+    /// <summary>"820 KB", "2 MB", "1.4 GB", like WhatsApp's file sizes.</summary>
+    public static string FileSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.#} GB",
+    };
+
     public static DateTime FromUnix(long seconds) =>
         seconds <= 0 ? DateTime.MinValue : DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
 

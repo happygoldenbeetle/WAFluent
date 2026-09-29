@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Event {
+    /// You: your WhatsApp name and number (for "You" in the contact picker).
+    Me { name: String, phone: String },
     /// The sticker panel's contents: recent stickers and GIFs.
     Stickers { favorites: Vec<StickerDto>, stickers: Vec<StickerDto>, gifs: Vec<StickerDto> },
     /// A favourite sticker was added or removed on the phone (the open panel reloads).
@@ -247,10 +249,11 @@ pub enum Command {
         seconds: u32,
         thumb: Option<String>,
     },
-    /// Share a contact card (name and number).
-    SendContact { chat_id: String, name: String, phone: String },
-    /// Start a poll; `multiple`: people may pick several options.
-    SendPoll { chat_id: String, question: String, options: Vec<String>, multiple: bool },
+    /// Share contact cards (one, or several in one message).
+    SendContacts { chat_id: String, contacts: Vec<ContactCard> },
+    /// Start a poll. `multiple`: people may pick several options; `hide_voters`: votes are
+    /// counted without names; `end_time`: voting closes then (Unix seconds).
+    SendPoll { chat_id: String, question: String, options: Vec<String>, multiple: bool, hide_voters: bool, end_time: Option<i64> },
     /// You're here (window focused) or away: WhatsApp shows you online, and only sends
     /// typing and online updates to clients that are available.
     SetPresence { available: bool },
@@ -309,4 +312,12 @@ pub struct StickerDto {
     /// The sender's small preview (GIFs), base64.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumb: Option<String>,
+}
+
+/// A contact to share: a name and a number.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactCard {
+    pub name: String,
+    pub phone: String,
 }

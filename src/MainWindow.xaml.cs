@@ -92,14 +92,14 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(3000);
                 switch (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST"))
                 {
-                    case "poll-dialog": await CreatePollAsync(); break;
-                    case "contact-dialog": await ShareContactAsync(); break;
+                    case "poll-dialog": OpenPoll(); break;
+                    case "contact-dialog": OpenContacts(); break;
                     default:
                         var files = new List<Windows.Storage.StorageFile>();
                         foreach (var path in Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg").Take(2))
                             files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(path));
                         files.Add(await Windows.Storage.StorageFile.GetFileFromPathAsync(@"C:\Windows\win.ini"));
-                        await PreviewAndSendAsync(files, asDocuments: false);
+                        await OpenComposerAsync(files, documents: false);
                         break;
                 }
             };

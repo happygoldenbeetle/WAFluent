@@ -64,6 +64,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
+    public event Action<string, string>? Me;                                 // your name, number
     public event Action? FavoritesChanged;                                   // starred/unstarred on the phone
     public event Action<IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>>? Stickers;   // favourites, recent stickers, GIFs
     public event Action<string, string, string>? Typing;                     // chat, who (groups), typing | recording | paused
@@ -124,12 +125,13 @@ public sealed class CoreClient : IDisposable
     public void SendMedia(string chatId, string path, string kind, string caption, string mime, int width, int height, int seconds, string? thumb) =>
         Send(new { cmd = "sendMedia", chatId, path, kind, caption, mime, width, height, seconds, thumb });
 
-    /// <summary>Shares a contact card.</summary>
-    public void SendContact(string chatId, string name, string phone) => Send(new { cmd = "sendContact", chatId, name, phone });
+    /// <summary>Shares contact cards (several go as one message).</summary>
+    public void SendContacts(string chatId, IEnumerable<(string Name, string Phone)> contacts) =>
+        Send(new { cmd = "sendContacts", chatId, contacts = contacts.Select(c => new { name = c.Name, phone = c.Phone }).ToList() });
 
-    /// <summary>Starts a poll.</summary>
-    public void SendPoll(string chatId, string question, IReadOnlyList<string> options, bool multiple) =>
-        Send(new { cmd = "sendPoll", chatId, question, options, multiple });
+    /// <summary>Starts a poll; <paramref name="endTime"/>: voting closes then (Unix seconds).</summary>
+    public void SendPoll(string chatId, string question, IReadOnlyList<string> options, bool multiple, bool hideVoters, long? endTime) =>
+        Send(new { cmd = "sendPoll", chatId, question, options, multiple, hideVoters, endTime });
 
     /// <summary>Uploads and sends an MP4 from GIF search as a GIF; <paramref name="thumb"/> is a JPEG preview file.</summary>
     public void SendGif(string to, string path, int width, int height, string? thumb) => Send(new { cmd = "sendGif", to, path, width, height, thumb });
@@ -324,6 +326,11 @@ public sealed class CoreClient : IDisposable
                 var stickers = root.GetProperty("stickers").Deserialize<List<StickerDto>>(Json) ?? [];
                 var gifs = root.GetProperty("gifs").Deserialize<List<StickerDto>>(Json) ?? [];
                 Post(() => Stickers?.Invoke(favorites, stickers, gifs));
+                break;
+            case "me":
+                var myName = root.GetProperty("name").GetString() ?? "";
+                var myPhone = root.GetProperty("phone").GetString() ?? "";
+                Post(() => Me?.Invoke(myName, myPhone));
                 break;
             case "opened":
                 var openedChat = root.GetProperty("chatId").GetString() ?? "";

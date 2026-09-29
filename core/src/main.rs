@@ -272,13 +272,14 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let media = actions::Outgoing { path, kind, caption, mime, width, height, seconds, thumb };
             tokio::spawn(async move { actions::send_media(&ctx, &client, chat_id, media).await });
         }
-        Command::SendContact { chat_id, name, phone } => {
+        Command::SendContacts { chat_id, contacts } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { actions::send_contact(&ctx, &client, chat_id, name, phone).await });
+            tokio::spawn(async move { actions::send_contacts(&ctx, &client, chat_id, contacts).await });
         }
-        Command::SendPoll { chat_id, question, options, multiple } => {
+        Command::SendPoll { chat_id, question, options, multiple, hide_voters, end_time } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { actions::send_poll(&ctx, &client, chat_id, question, options, multiple).await });
+            let poll = actions::NewPoll { question, options, multiple, hide_voters, end_time };
+            tokio::spawn(async move { actions::send_poll(&ctx, &client, chat_id, poll).await });
         }
         Command::SendGif { to, path, width, height, thumb } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -761,6 +762,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let own = client.persistence_manager().get_device_snapshot();
             ctx.db().set_me([&own.pn, &own.lid].into_iter().flatten().map(|j| j.to_non_ad_string()).collect());
             ctx.status("connected", None);
+            ctx.send(Out::Me { name: own.push_name.clone(), phone: own.pn.as_ref().map(|j| j.user.to_string()).unwrap_or_default() });
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
             resync_stickers_once(ctx, client);

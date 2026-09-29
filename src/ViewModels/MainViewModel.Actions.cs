@@ -164,6 +164,7 @@ public sealed partial class MainViewModel
             if (_byId.TryGetValue(chatId, out var chat) && !chat.IsGroup)
                 chat.Status = online ? "online" : lastSeen is { } s ? Format.LastSeen(Format.FromUnix(s)) : "";
         };
+        core.Me += (name, phone) => { SelfName = name; SelfPhone = phone; };
         core.Opened += chatId =>
         {
             if (!_byId.TryGetValue(chatId, out var chat)) return;

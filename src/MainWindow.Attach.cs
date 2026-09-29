@@ -12,8 +12,9 @@ using WhatsAppNative.Models;
 namespace WhatsAppNative;
 
 /// <summary>
-/// The composer's + menu: send documents, photos and videos, a camera shot, a contact card
-/// or a poll. Files are previewed (with a caption) before the core uploads and sends them.
+/// The composer's + menu, laid out like WhatsApp Web: documents, photos and videos and camera
+/// shots open a full send preview over the conversation (a caption each, a thumbnail strip,
+/// + for more, Esc asks before discarding); contacts and polls open as cards.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -52,13 +53,16 @@ public sealed partial class MainWindow
                 VerticalAlignment = VerticalAlignment.Center,
             };
             var item = new MenuFlyoutItem { Text = text, Icon = icon };
-            item.Click += (_, _) => _ = text switch
+            item.Click += (_, _) =>
             {
-                "Document" => PickDocumentsAsync(),
-                "Photos & videos" => PickPhotosAsync(),
-                "Camera" => TakePhotoAsync(),
-                "Contact" => ShareContactAsync(),
-                _ => CreatePollAsync(),
+                switch (text)
+                {
+                    case "Document": _ = PickDocumentsAsync(); break;
+                    case "Photos & videos": _ = PickPhotosAsync(); break;
+                    case "Camera": _ = TakePhotoAsync(); break;
+                    case "Contact": OpenContacts(); break;
+                    default: OpenPoll(); break;
+                }
             };
             menu.Items.Add(item);
         }
@@ -67,33 +71,40 @@ public sealed partial class MainWindow
 
     private Chat? SendTarget => ViewModel.SelectedChat is { } chat && ViewModel.CanSend ? chat : null;
 
-    // ───── Files ─────
+    // ───────────── Send preview (documents, photos and videos, camera) ─────────────
 
-    /// <summary>One file ready to go: what the core needs to upload and describe it.</summary>
-    private sealed record Outgoing(string Path, string Kind, string Mime, int Width, int Height, int Seconds, string? Thumb, ImageSource? Preview);
-
-    private async Task PickDocumentsAsync()
-    {
-        var picker = new FileOpenPicker { ViewMode = PickerViewMode.List, SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
-        picker.FileTypeFilter.Add("*");
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var files = await picker.PickMultipleFilesAsync();
-        if (files is { Count: > 0 }) await PreviewAndSendAsync(files.ToList(), asDocuments: true);
-    }
+    private readonly List<OutgoingFile> _outgoing = [];
+    private OutgoingFile? _shown;
+    private bool _composingDocuments;
+    private MediaPlayerElement? _stagePlayer;
 
     private static readonly string[] PhotoTypes = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
     private static readonly string[] VideoTypes = [".mp4", ".mov", ".m4v", ".3gp", ".mkv", ".avi", ".webm"];
 
-    private async Task PickPhotosAsync()
+    private async Task PickDocumentsAsync()
     {
-        var picker = new FileOpenPicker { ViewMode = PickerViewMode.Thumbnail, SuggestedStartLocation = PickerLocationId.PicturesLibrary };
-        foreach (var type in PhotoTypes.Concat(VideoTypes)) picker.FileTypeFilter.Add(type);
-        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
-        var files = await picker.PickMultipleFilesAsync();
-        if (files is { Count: > 0 }) await PreviewAndSendAsync(files.ToList(), asDocuments: false);
+        if (await PickAsync(documents: true) is { Count: > 0 } files) await OpenComposerAsync(files, documents: true);
     }
 
-    /// <summary>Windows' camera window; the photo is previewed like a picked one.</summary>
+    private async Task PickPhotosAsync()
+    {
+        if (await PickAsync(documents: false) is { Count: > 0 } files) await OpenComposerAsync(files, documents: false);
+    }
+
+    private async Task<IReadOnlyList<StorageFile>?> PickAsync(bool documents)
+    {
+        var picker = new FileOpenPicker
+        {
+            ViewMode = documents ? PickerViewMode.List : PickerViewMode.Thumbnail,
+            SuggestedStartLocation = documents ? PickerLocationId.DocumentsLibrary : PickerLocationId.PicturesLibrary,
+        };
+        if (documents) picker.FileTypeFilter.Add("*");
+        else foreach (var type in PhotoTypes.Concat(VideoTypes)) picker.FileTypeFilter.Add(type);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        return await picker.PickMultipleFilesAsync();
+    }
+
+    /// <summary>Windows' camera window; the photo opens in the send preview.</summary>
     private async Task TakePhotoAsync()
     {
         try
@@ -102,7 +113,7 @@ public sealed partial class MainWindow
             camera.PhotoSettings.Format = Microsoft.Windows.Media.Capture.CameraCaptureUIPhotoFormat.Jpeg;
             camera.PhotoSettings.AllowCropping = false;
             var photo = await camera.CaptureFileAsync(Microsoft.Windows.Media.Capture.CameraCaptureUIMode.Photo);
-            if (photo is not null) await PreviewAndSendAsync([photo], asDocuments: false);
+            if (photo is not null) await OpenComposerAsync([photo], documents: false);
         }
         catch (Exception)
         {
@@ -110,88 +121,252 @@ public sealed partial class MainWindow
         }
     }
 
-    /// <summary>Thumbnails (or file names) and a caption box, then Send uploads each file.</summary>
-    private async Task PreviewAndSendAsync(List<StorageFile> files, bool asDocuments)
+    /// <summary>Opens the preview with these files (or adds them to the one that's open).</summary>
+    private async Task OpenComposerAsync(IReadOnlyList<StorageFile> files, bool documents)
     {
-        if (SendTarget is not { } chat) return;
-        var ready = new List<Outgoing>();
-        foreach (var file in files.Take(30))
+        if (SendTarget is null) return;
+        if (MediaComposer.Visibility != Visibility.Visible)
         {
-            try { ready.Add(await PrepareAsync(file, asDocuments)); }
-            catch (Exception) { ready.Add(new Outgoing(file.Path, "document", Mime(file), 0, 0, 0, null, null)); }
+            _outgoing.Clear();
+            _composingDocuments = documents;
         }
-
-        var strip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        foreach (var item in ready) strip.Children.Add(PreviewTile(item));
-        var caption = new TextBox { PlaceholderText = "Add a caption", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MaxHeight = 120 };
-        var panel = new StackPanel { Spacing = 12, Width = 420 };
-        panel.Children.Add(new ScrollViewer
+        OutgoingFile? first = null;
+        foreach (var file in files)
         {
-            Content = strip,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            HorizontalScrollMode = ScrollMode.Enabled,
-            VerticalScrollMode = ScrollMode.Disabled,
-        });
-        panel.Children.Add(caption);
+            if (_outgoing.Count >= 30) break;
+            OutgoingFile item;
+            try { item = await PrepareAsync(file, _composingDocuments); }
+            catch (Exception) { item = await PlainAsync(file); }
+            _outgoing.Add(item);
+            first ??= item;
+        }
+        MediaComposer.Visibility = Visibility.Visible;
+        Show(first ?? _outgoing.LastOrDefault());
+        MediaCaptionBox.Focus(FocusState.Programmatic);
+    }
+
+    private async void MediaComposerAdd_Click(object sender, RoutedEventArgs e)
+    {
+        if (await PickAsync(_composingDocuments) is { Count: > 0 } files) await OpenComposerAsync(files, _composingDocuments);
+    }
+
+    /// <summary>Shows one file big, with its own caption, and marks it in the strip.</summary>
+    private void Show(OutgoingFile? item)
+    {
+        _shown = item;
+        StopStagePlayer();
+        MediaComposerStage.Children.Clear();
+        RebuildStrip();
+        if (item is null) return;
+        MediaComposerTitle.Text = item.FileName;
+        MediaCaptionBox.Text = item.Caption;
+        MediaCaptionBox.SelectionStart = item.Caption.Length;
+
+        if (item.Kind == "image" && item.Preview is not null)
+        {
+            var image = new Image { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            image.Source = new BitmapImage(new Uri(item.Path));
+            MediaComposerStage.Children.Add(image);
+        }
+        else if (item.Kind == "video" || item.IsAudio)
+        {
+            _stagePlayer = new MediaPlayerElement
+            {
+                Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(item.Path)),
+                AreTransportControlsEnabled = true,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            if (item.IsAudio)
+            {
+                _stagePlayer.Width = 460;
+                _stagePlayer.Height = 110;
+                _stagePlayer.TransportControls.IsCompact = true;
+            }
+            MediaComposerStage.Children.Add(_stagePlayer);
+        }
+        else
+        {
+            // No preview: WhatsApp's card, with the file type's own icon.
+            var card = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            card.Children.Add(new Image { Source = FileIcons.For(item.Path), Width = 110, Height = 110, Margin = new Thickness(0, 0, 0, 16) });
+            card.Children.Add(new TextBlock { Text = "No preview available", FontSize = 24, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
+            card.Children.Add(new TextBlock { Text = item.SizeLabel, FontSize = 14, HorizontalAlignment = HorizontalAlignment.Center, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
+            MediaComposerStage.Children.Add(new Border
+            {
+                Width = 520,
+                Height = 360,
+                MaxWidth = 9999,
+                CornerRadius = new CornerRadius(8),
+                Background = Themed.Brush("ComposerFieldBrush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = card,
+            });
+        }
+    }
+
+    /// <summary>The thumbnails under the caption: the shown one ringed in green, ✕ on hover to drop one.</summary>
+    private void RebuildStrip()
+    {
+        MediaComposerStrip.Children.Clear();
+        foreach (var item in _outgoing)
+        {
+            FrameworkElement face;
+            if (item.Preview is { } preview)
+                face = new Image { Source = preview, Stretch = Stretch.UniformToFill };
+            else if (item.IsAudio)
+                face = new Grid
+                {
+                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFA, 0xA6, 0x1A)),
+                    Children = { new FontIcon { Glyph = "", FontSize = 20, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) } },
+                };
+            else
+                face = new Grid
+                {
+                    Background = Themed.Brush("ComposerFieldBrush"),
+                    Children = { new Image { Source = FileIcons.For(item.Path), Width = 32, Height = 32 } },
+                };
+            var selected = item == _shown;
+            var tile = new Grid
+            {
+                Width = 60,
+                Height = 60,
+                CornerRadius = new CornerRadius(6),
+                BorderThickness = new Thickness(selected ? 2 : 0),
+                BorderBrush = Themed.Brush("ChatAccentBrush"),
+                Padding = new Thickness(selected ? 2 : 0),
+                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            };
+            tile.Children.Add(new Border { CornerRadius = new CornerRadius(4), Child = face });
+            var remove = new Button
+            {
+                Width = 20,
+                Height = 20,
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(10),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 2, 0),
+                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, 0, 0, 0)),
+                BorderThickness = new Thickness(0),
+                Content = new FontIcon { Glyph = "", FontSize = 9, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) },
+                Visibility = Visibility.Collapsed,
+            };
+            ToolTipService.SetToolTip(remove, "Remove");
+            remove.Click += (_, _) => Remove(item);
+            tile.Children.Add(remove);
+            tile.PointerEntered += (_, _) => remove.Visibility = Visibility.Visible;
+            tile.PointerExited += (_, _) => remove.Visibility = Visibility.Collapsed;
+            tile.Tapped += (_, e) => { if (e.OriginalSource is not FontIcon) Show(item); };
+            ToolTipService.SetToolTip(tile, item.FileName);
+            MediaComposerStrip.Children.Add(tile);
+        }
+    }
+
+    private void Remove(OutgoingFile item)
+    {
+        var index = _outgoing.IndexOf(item);
+        _outgoing.Remove(item);
+        if (_outgoing.Count == 0)
+        {
+            CloseComposer();
+            return;
+        }
+        Show(item == _shown ? _outgoing[Math.Min(index, _outgoing.Count - 1)] : _shown);
+    }
+
+    private void MediaCaption_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_shown is not null) _shown.Caption = MediaCaptionBox.Text;
+    }
+
+    private void MediaCaption_PreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Shift)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (shift) return;
+        e.Handled = true;
+        SendComposer();
+    }
+
+    private void MediaCaptionEmoji_Click(object sender, RoutedEventArgs e) => InsertEmoji(MediaCaptionEmoji, MediaCaptionBox);
+
+    /// <summary>The emoji keyboard, typing into <paramref name="box"/> at its caret.</summary>
+    private void InsertEmoji(FrameworkElement anchor, TextBox box)
+    {
+        var caret = box.SelectionStart;
+        OpenEmojiPicker(anchor, emoji =>
+        {
+            caret = Math.Min(caret, box.Text.Length);
+            box.Text = box.Text.Insert(caret, emoji);
+            caret += emoji.Length;
+            box.SelectionStart = caret;
+        }, closeOnPick: false, Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedRight);
+    }
+
+    private void MediaComposerSend_Click(object sender, RoutedEventArgs e) => SendComposer();
+
+    private void SendComposer()
+    {
+        if (SendTarget is not { } chat || _outgoing.Count == 0) return;
+        foreach (var item in _outgoing)
+            _core?.SendMedia(chat.Id, item.Path, item.Kind, item.Caption.Trim(), item.Mime, item.Width, item.Height, item.Seconds, item.Thumb);
+        ShowToast(true, _outgoing.Count == 1 ? "Sending…" : $"Sending {_outgoing.Count} files…");
+        CloseComposer();
+    }
+
+    private void MediaComposerClose_Click(object sender, RoutedEventArgs e) => _ = DiscardComposerAsync();
+
+    private void MediaComposerEscape_Invoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (MediaComposer.Visibility != Visibility.Visible) return;
+        args.Handled = true;
+        _ = DiscardComposerAsync();
+    }
+
+    /// <summary>Esc or ✕: "Discard selection?" first, like WhatsApp.</summary>
+    private async Task DiscardComposerAsync()
+    {
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
-            Title = $"Send to {chat.Name}",
-            Content = panel,
-            PrimaryButtonText = "Send",
+            Title = "Discard selection?",
+            PrimaryButtonText = "Discard",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary) CloseComposer();
+    }
 
-        // The caption goes with the first file, as on the phone.
-        var text = caption.Text.Trim();
-        foreach (var item in ready)
-        {
-            _core?.SendMedia(chat.Id, item.Path, item.Kind, text, item.Mime, item.Width, item.Height, item.Seconds, item.Thumb);
-            text = "";
-        }
-        ShowToast(true, ready.Count == 1 ? "Sending…" : $"Sending {ready.Count} files…");
+    private void CloseComposer()
+    {
+        StopStagePlayer();
+        _outgoing.Clear();
+        _shown = null;
+        MediaComposerStage.Children.Clear();
+        MediaComposerStrip.Children.Clear();
+        MediaComposer.Visibility = Visibility.Collapsed;
         ComposerBox.Focus(FocusState.Programmatic);
     }
 
-    private static FrameworkElement PreviewTile(Outgoing item)
+    private void StopStagePlayer()
     {
-        if (item.Preview is { } preview)
-        {
-            var tile = new Grid { Width = 120, Height = 120, CornerRadius = new CornerRadius(8) };
-            tile.Children.Add(new Image { Source = preview, Stretch = Stretch.UniformToFill });
-            if (item.Kind == "video")
-                tile.Children.Add(new Border
-                {
-                    Width = 36, Height = 36, CornerRadius = new CornerRadius(18),
-                    Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0, 0, 0)),
-                    Child = new FontIcon { Glyph = "", FontSize = 14, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) },
-                });
-            return tile;
-        }
-        var card = new StackPanel { Width = 120, Height = 120, Spacing = 6, Padding = new Thickness(8), VerticalAlignment = VerticalAlignment.Center };
-        card.Children.Add(new Image { Source = FileIcons.For(item.Path), Width = 48, Height = 48 });
-        card.Children.Add(new TextBlock
-        {
-            Text = System.IO.Path.GetFileName(item.Path),
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            MaxLines = 3,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        return new Border { Child = card, CornerRadius = new CornerRadius(8), Background = Themed.Brush("FileCardBrush") };
+        if (_stagePlayer is null) return;
+        _stagePlayer.MediaPlayer?.Pause();
+        _stagePlayer.Source = null;
+        _stagePlayer = null;
     }
 
-    /// <summary>Size, length and a JPEG preview for pictures and videos; documents go as they are.</summary>
-    private static async Task<Outgoing> PrepareAsync(StorageFile file, bool asDocument)
+    /// <summary>Size, length and a JPEG preview for pictures and videos; other files as they are.</summary>
+    private static async Task<OutgoingFile> PrepareAsync(StorageFile file, bool asDocument)
     {
         var ext = System.IO.Path.GetExtension(file.Path).ToLowerInvariant();
         var kind = asDocument ? "document" : VideoTypes.Contains(ext) ? "video" : PhotoTypes.Contains(ext) ? "image" : "document";
-        if (ext == ".gif" && !asDocument) kind = "document";   // animated GIFs would lose their motion as a photo
-        if (kind == "document") return new Outgoing(file.Path, kind, Mime(file), 0, 0, 0, null, null);
+        if (ext == ".gif" && !asDocument) kind = "document";   // an animated GIF would lose its motion as a photo
+        if (kind == "document") return await PlainAsync(file);
 
         int width, height, seconds = 0;
         if (kind == "video")
@@ -206,15 +381,26 @@ public sealed partial class MainWindow
             var decoder = await BitmapDecoder.CreateAsync(stream);
             (width, height) = ((int)decoder.OrientedPixelWidth, (int)decoder.OrientedPixelHeight);
         }
-
-        using var source = kind == "video"
-            ? await file.GetThumbnailAsync(ThumbnailMode.VideosView, 256)
-            : await file.GetThumbnailAsync(ThumbnailMode.PicturesView, 256);
-        var thumb = await JpegThumbAsync(source);
-        var preview = new BitmapImage { DecodePixelWidth = 240 };
-        await preview.SetSourceAsync(await file.GetThumbnailAsync(kind == "video" ? ThumbnailMode.VideosView : ThumbnailMode.PicturesView, 240));
-        return new Outgoing(file.Path, kind, Mime(file), width, height, seconds, thumb, preview);
+        var mode = kind == "video" ? ThumbnailMode.VideosView : ThumbnailMode.PicturesView;
+        string? thumb;
+        using (var source = await file.GetThumbnailAsync(mode, 256)) thumb = await JpegThumbAsync(source);
+        var preview = new BitmapImage { DecodePixelWidth = 120 };
+        using (var small = await file.GetThumbnailAsync(mode, 120)) await preview.SetSourceAsync(small);
+        var size = (long)(await file.GetBasicPropertiesAsync()).Size;
+        return new OutgoingFile
+        {
+            Path = file.Path, Kind = kind, Mime = Mime(file), Width = width, Height = height, Seconds = seconds,
+            Thumb = thumb, Preview = preview, Size = size,
+        };
     }
+
+    private static async Task<OutgoingFile> PlainAsync(StorageFile file) => new()
+    {
+        Path = file.Path,
+        Kind = "document",
+        Mime = Mime(file),
+        Size = (long)(await file.GetBasicPropertiesAsync()).Size,
+    };
 
     /// <summary>A small JPEG (longest side 100 px) for the bubble's preview, in %TEMP%.</summary>
     private static async Task<string?> JpegThumbAsync(Windows.Storage.Streams.IRandomAccessStream? image)
@@ -245,35 +431,105 @@ public sealed partial class MainWindow
     private static string Mime(StorageFile file) =>
         string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType;
 
-    // ───── Contact ─────
+    // ───────────── Cards: Send contacts, Create poll ─────────────
 
-    /// <summary>Pick someone from your chats and share their card.</summary>
-    private async Task ShareContactAsync()
+    private void ShowSheet(FrameworkElement card)
     {
-        if (SendTarget is not { } target) return;
-        var people = ViewModel.ForwardTargets().Where(c => !c.IsGroup && ContactPhone(c).Length > 0).ToList();
-        var search = new TextBox { PlaceholderText = "Search name or number" };
-        var list = new ListView { SelectionMode = ListViewSelectionMode.Single, Height = 360, ItemsSource = people, DisplayMemberPath = nameof(Chat.Name) };
-        search.TextChanged += (_, _) => list.ItemsSource = people
-            .Where(c => c.Name.Contains(search.Text, StringComparison.CurrentCultureIgnoreCase) || ContactPhone(c).Contains(search.Text.Replace(" ", "")))
-            .ToList();
-        var panel = new StackPanel { Spacing = 10, Width = 380 };
-        panel.Children.Add(search);
-        panel.Children.Add(list);
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Content.XamlRoot,
-            Title = "Share contact",
-            Content = panel,
-            PrimaryButtonText = "Send",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-        list.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = list.SelectedItem is Chat;
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || list.SelectedItem is not Chat person) return;
-        _core?.SendContact(target.Id, person.Name, ContactPhone(person));
+        ContactsCard.Visibility = card == ContactsCard ? Visibility.Visible : Visibility.Collapsed;
+        PollCard.Visibility = card == PollCard ? Visibility.Visible : Visibility.Collapsed;
+        AttachSheet.Visibility = Visibility.Visible;
+    }
+
+    private void CloseSheet()
+    {
+        AttachSheet.Visibility = Visibility.Collapsed;
         ComposerBox.Focus(FocusState.Programmatic);
+    }
+
+    private void AttachSheet_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => CloseSheet();
+
+    /// <summary>Clicks inside a card don't reach the dimmed backdrop (which closes it).</summary>
+    private void Card_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) => e.Handled = true;
+
+    private void AttachSheetClose_Click(object sender, RoutedEventArgs e) => CloseSheet();
+
+    private void AttachSheetEscape_Invoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs args)
+    {
+        if (AttachSheet.Visibility != Visibility.Visible) return;
+        args.Handled = true;
+        CloseSheet();
+    }
+
+    // ───── Send contacts ─────
+
+    private List<ContactRow> _contacts = [];
+    private ContactRow? _meRow;
+
+    /// <summary>You first, then your 1:1 chats by name; tick several to send them together.</summary>
+    private void OpenContacts()
+    {
+        if (SendTarget is null) return;
+        var sample = _core is null;   // --sample: no numbers, but the list still shows
+        _meRow = ViewModel.SelfPhone.Length > 0
+            ? new ContactRow { Name = ViewModel.SelfName.Length > 0 ? ViewModel.SelfName : "You", Phone = ViewModel.SelfPhone, AvatarPath = ViewModel.SelfAvatarPath }
+            : null;
+        _contacts = ViewModel.ForwardTargets()
+            .Where(c => !c.IsGroup && (sample || ContactPhone(c).Length > 0))
+            .OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(c => new ContactRow
+            {
+                Name = c.Name,
+                Phone = ContactPhone(c),
+                Subtitle = c.PhoneCode.Length > 0 ? $"{c.PhoneCode} {c.PhoneNational}" : "",
+                AvatarPath = c.AvatarPath,
+            })
+            .ToList();
+        ContactSearch.Text = "";
+        FilterContacts();
+        UpdatePickedContacts();
+        ShowSheet(ContactsCard);
+        ContactSearch.Focus(FocusState.Programmatic);
+    }
+
+    private void ContactSearch_TextChanged(object sender, TextChangedEventArgs e) => FilterContacts();
+
+    private void FilterContacts()
+    {
+        var query = ContactSearch.Text.Trim();
+        var digits = new string(query.Where(char.IsAsciiDigit).ToArray());
+        bool Matches(ContactRow r) => query.Length == 0
+            || r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+            || (digits.Length > 0 && r.Phone.Contains(digits));
+        var groups = new List<ContactGroup>();
+        if (_meRow is not null && Matches(_meRow)) groups.Add(new ContactGroup("You", [_meRow]));
+        var others = _contacts.Where(Matches).ToList();
+        if (others.Count > 0) groups.Add(new ContactGroup("Contacts", others));
+        ContactList.ItemsSource = new Microsoft.UI.Xaml.Data.CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
+    }
+
+    private void ContactList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not ContactRow row) return;
+        row.Picked = !row.Picked;
+        UpdatePickedContacts();
+    }
+
+    private IEnumerable<ContactRow> PickedContacts =>
+        (_meRow is null ? _contacts : _contacts.Prepend(_meRow)).Where(r => r.Picked);
+
+    private void UpdatePickedContacts()
+    {
+        var picked = PickedContacts.ToList();
+        ContactsPicked.Text = string.Join(", ", picked.Select(r => r.Name));
+        ContactsSend.IsEnabled = picked.Count > 0;
+    }
+
+    private void ContactsSend_Click(object sender, RoutedEventArgs e)
+    {
+        if (SendTarget is not { } chat) return;
+        var picked = PickedContacts.Where(r => r.Phone.Length > 0).Select(r => (r.Name, r.Phone)).ToList();
+        if (picked.Count > 0) _core?.SendContacts(chat.Id, picked);
+        CloseSheet();
     }
 
     /// <summary>A 1:1 chat's number, digits only ("" when only a LID is known).</summary>
@@ -284,49 +540,77 @@ public sealed partial class MainWindow
         return chat.Id.EndsWith("@s.whatsapp.net") ? new string(chat.Id.TakeWhile(char.IsAsciiDigit).ToArray()) : "";
     }
 
-    // ───── Poll ─────
+    // ───── Create poll ─────
 
-    /// <summary>Question, up to 12 options (a new box appears as the last one fills), multiple answers.</summary>
-    private async Task CreatePollAsync()
+    public System.Collections.ObjectModel.ObservableCollection<PollOptionDraft> PollOptions { get; } = [];
+
+    private void OpenPoll()
+    {
+        if (SendTarget is null) return;
+        PollQuestion.Text = "";
+        PollOptions.Clear();
+        PollOptions.Add(new PollOptionDraft());
+        PollOptions.Add(new PollOptionDraft());
+        PollMultiple.IsOn = true;
+        PollHideVoters.IsOn = false;
+        PollEnds.IsOn = false;
+        PollEndRow.Visibility = Visibility.Collapsed;
+        var tomorrow = DateTimeOffset.Now.AddDays(1);
+        PollEndDate.Date = tomorrow.Date;
+        PollEndTime.Time = new TimeSpan(tomorrow.Hour, tomorrow.Minute, 0);
+        PollSend.IsEnabled = false;
+        ShowSheet(PollCard);
+        PollQuestion.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>Keeps one empty box at the end (up to 12 options) and checks the poll can be sent.</summary>
+    private void PollInput_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox { DataContext: PollOptionDraft draft } box) draft.Text = box.Text;
+        if (PollOptions.Count > 0 && PollOptions[^1].Text.Length > 0 && PollOptions.Count < 12) PollOptions.Add(new PollOptionDraft());
+        ValidatePoll();
+    }
+
+    /// <summary>An emptied box in the middle goes away (at least two stay).</summary>
+    private void PollOption_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TextBox { DataContext: PollOptionDraft draft } || draft.Text.Trim().Length > 0) return;
+        if (PollOptions.Count > 2 && PollOptions.IndexOf(draft) < PollOptions.Count - 1)
+            DispatcherQueue.TryEnqueue(() => { PollOptions.Remove(draft); ValidatePoll(); });
+    }
+
+    private void PollEmoji_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button) return;
+        var box = button.Tag as TextBox ?? (button.Parent as Panel)?.Children.OfType<TextBox>().FirstOrDefault();
+        if (box is not null) InsertEmoji(button, box);
+    }
+
+    private void PollEnds_Toggled(object sender, RoutedEventArgs e)
+    {
+        PollEndRow.Visibility = PollEnds.IsOn ? Visibility.Visible : Visibility.Collapsed;
+        ValidatePoll();
+    }
+
+    private List<string> PollAnswers() => PollOptions.Select(o => o.Text.Trim()).Where(t => t.Length > 0).ToList();
+
+    private DateTimeOffset? PollEnd() => PollEnds.IsOn && PollEndDate.Date is { } date
+        ? new DateTimeOffset(date.Date + PollEndTime.Time, DateTimeOffset.Now.Offset)
+        : null;
+
+    private void ValidatePoll()
+    {
+        var answers = PollAnswers();
+        PollSend.IsEnabled = PollQuestion.Text.Trim().Length > 0
+                             && answers.Count >= 2
+                             && answers.Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == answers.Count
+                             && (PollEnd() is not { } end || end > DateTimeOffset.Now);
+    }
+
+    private void PollSend_Click(object sender, RoutedEventArgs e)
     {
         if (SendTarget is not { } chat) return;
-        var question = new TextBox { Header = "Question", PlaceholderText = "Ask question" };
-        var options = new StackPanel { Spacing = 6 };
-        var multiple = new ToggleSwitch { Header = "Allow multiple answers", IsOn = true };
-        var panel = new StackPanel { Spacing = 12, Width = 380 };
-        panel.Children.Add(question);
-        panel.Children.Add(new TextBlock { Text = "Options", Margin = new Thickness(0, 4, 0, -4) });
-        panel.Children.Add(options);
-        panel.Children.Add(multiple);
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Content.XamlRoot,
-            Title = "Create poll",
-            Content = new ScrollViewer { Content = panel, MaxHeight = 520 },
-            PrimaryButtonText = "Send",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-        List<string> Filled() => options.Children.OfType<TextBox>().Select(t => t.Text.Trim()).Where(t => t.Length > 0).ToList();
-        void Validate() => dialog.IsPrimaryButtonEnabled = question.Text.Trim().Length > 0 && Filled().Count >= 2
-                                                          && Filled().Distinct(StringComparer.CurrentCultureIgnoreCase).Count() == Filled().Count;
-        void AddOption()
-        {
-            var box = new TextBox { PlaceholderText = "+ Add option", MaxLength = 100 };
-            box.TextChanged += (_, _) =>
-            {
-                var boxes = options.Children.OfType<TextBox>().ToList();
-                if (box == boxes[^1] && box.Text.Length > 0 && boxes.Count < 12) AddOption();
-                Validate();
-            };
-            options.Children.Add(box);
-        }
-        AddOption();
-        AddOption();
-        question.TextChanged += (_, _) => Validate();
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        _core?.SendPoll(chat.Id, question.Text.Trim(), Filled(), multiple.IsOn);
-        ComposerBox.Focus(FocusState.Programmatic);
+        _core?.SendPoll(chat.Id, PollQuestion.Text.Trim(), PollAnswers(), PollMultiple.IsOn, PollHideVoters.IsOn, PollEnd()?.ToUnixTimeSeconds());
+        CloseSheet();
     }
 }

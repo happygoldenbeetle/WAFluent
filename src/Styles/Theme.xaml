@@ -35,6 +35,10 @@
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="#0D000000" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00000000" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#FAFAFA" />
+            <!-- Send preview caption box, and the Send contacts / Create poll cards. -->
+            <SolidColorBrush x:Key="ComposerFieldBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="SheetFooterBrush" Color="#F5F5F5" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#00FFFFFF" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#0D0B141A" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#6B4EAB" />
@@ -74,6 +78,10 @@
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="#1AFFFFFF" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="#00FFFFFF" />
             <SolidColorBrush x:Key="ComposerBrush" Color="#202020" />
+            <!-- Send preview caption box, and the Send contacts / Create poll cards. -->
+            <SolidColorBrush x:Key="ComposerFieldBrush" Color="#2A2A2A" />
+            <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#202020" />
+            <SolidColorBrush x:Key="SheetFooterBrush" Color="#2A2A2A" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#00000000" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#26000000" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#A791FF" />
@@ -113,6 +121,9 @@
             <SolidColorBrush x:Key="BubbleButtonBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="BubbleButtonBorderBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
             <SolidColorBrush x:Key="ComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ComposerFieldBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SheetBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="SheetFooterBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="DatePillBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="{ThemeResource SystemColorHighlightColor}" />
@@ -243,5 +254,52 @@
          background (the default one doesn't draw for menus kept inside the window). -->
     <Style x:Key="AttachMenuPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
         <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
+    </Style>
+    <!-- The attach screens' round Send (WhatsApp Web's): always WhatsApp green, like the badges. -->
+    <Style x:Key="SendFabStyle" TargetType="Button">
+        <Setter Property="Width" Value="56" />
+        <Setter Property="Height" Value="56" />
+        <Setter Property="Foreground" Value="#0B141A" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="FocusVisualMargin" Value="-3" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Circle.Opacity" Value="0.88" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Circle.Opacity" Value="0.75" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.4" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Ellipse x:Name="Circle" Fill="{ThemeResource ChatAccentBrush}" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"
+                                          Foreground="{TemplateBinding Foreground}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- Create poll's fields: a line under the text, no box. -->
+    <Style x:Key="UnderlineTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="0,8,0,8" />
+        <Setter Property="FontSize" Value="15" />
     </Style>
 </ResourceDictionary>

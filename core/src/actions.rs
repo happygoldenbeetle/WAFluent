@@ -557,50 +557,103 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
     store_sent(ctx, &chat_id, sent.message_id, &message, Some(&file.path), None);
 }
 
-/// Shares a contact card (a vCard with one number).
-pub async fn send_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, name: String, phone: String) {
+/// Shares contact cards: one as a contact message, several as one "N contacts" message.
+pub async fn send_contacts(ctx: &Ctx, client: &Arc<Client>, chat_id: String, contacts: Vec<crate::protocol::ContactCard>) {
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
-    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
-    let vcard = format!("BEGIN:VCARD\nVERSION:3.0\nN:;{name};;;\nFN:{name}\nTEL;type=CELL;type=VOICE;waid={digits}:+{digits}\nEND:VCARD");
+    let cards: Vec<wa::message::ContactMessage> = contacts
+        .iter()
+        .map(|c| {
+            let digits: String = c.phone.chars().filter(char::is_ascii_digit).collect();
+            let name = c.name.replace(['\n', ';'], " ");
+            wa::message::ContactMessage {
+                display_name: Some(name.clone()),
+                vcard: Some(format!(
+                    "BEGIN:VCARD\nVERSION:3.0\nN:;{name};;;\nFN:{name}\nTEL;type=CELL;type=VOICE;waid={digits}:+{digits}\nEND:VCARD"
+                )),
+                ..Default::default()
+            }
+        })
+        .collect();
     let mut message = wa::Message::default();
-    message.contact_message = MessageField::some(wa::message::ContactMessage {
-        display_name: Some(name),
-        vcard: Some(vcard),
-        ..Default::default()
-    });
+    match cards.len() {
+        0 => return,
+        1 => message.contact_message = MessageField::some(cards.into_iter().next().unwrap_or_default()),
+        n => {
+            message.contacts_array_message = MessageField::some(wa::message::ContactsArrayMessage {
+                display_name: Some(format!("{n} contacts")),
+                contacts: cards,
+                ..Default::default()
+            })
+        }
+    }
     match client.send_message(jid, message.clone()).await {
         Ok(sent) => store_sent(ctx, &chat_id, sent.message_id, &message, None, None),
         Err(e) => {
-            warn!("contact to {chat_id} failed: {e}");
+            warn!("contacts to {chat_id} failed: {e}");
             notice(ctx, false, "The contact couldn't be sent.");
         }
     }
 }
 
-/// Starts a poll; its secret is kept so everyone's votes can be read.
-pub async fn send_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, question: String, options: Vec<String>, multiple: bool) {
+/// A poll from the Create poll panel.
+pub struct NewPoll {
+    pub question: String,
+    pub options: Vec<String>,
+    pub multiple: bool,
+    pub hide_voters: bool,
+    pub end_time: Option<i64>,
+}
+
+/// Starts a poll, built here like WhatsApp Web does (the library's builder can't do
+/// multiple answers, end times or hidden voters): single-answer polls as v3, others as v1,
+/// with a fresh 32-byte secret that's kept so everyone's votes can be read.
+pub async fn send_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, poll: NewPoll) {
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
-    let options: Vec<String> = options.into_iter().map(|o| o.trim().to_string()).filter(|o| !o.is_empty()).collect();
-    let selectable = if multiple { 0 } else { 1 };
-    let (sent, secret) = match client.polls().create(jid.clone(), question.trim(), &options, selectable).await {
-        Ok(result) => result,
+    let mut options: Vec<String> = Vec::new();
+    for option in poll.options.iter().map(|o| o.trim().to_string()).filter(|o| !o.is_empty()) {
+        if !options.contains(&option) {
+            options.push(option);
+        }
+    }
+    if options.len() < 2 || poll.question.trim().is_empty() {
+        notice(ctx, false, "A poll needs a question and at least two different options.");
+        return;
+    }
+    options.truncate(12);
+    let mut secret = vec![0u8; 32];
+    if getrandom::fill(&mut secret).is_err() {
+        notice(ctx, false, "The poll couldn't be sent.");
+        return;
+    }
+    let creation = wa::message::PollCreationMessage {
+        name: Some(poll.question.trim().to_string()),
+        options: options
+            .iter()
+            .map(|o| wa::message::poll_creation_message::Option { option_name: Some(o.clone()), ..Default::default() })
+            .collect(),
+        selectable_options_count: Some(if poll.multiple { 0 } else { 1 }),
+        end_time: poll.end_time,
+        hide_participant_name: poll.hide_voters.then_some(true),
+        ..Default::default()
+    };
+    let mut message = wa::Message::default();
+    if poll.multiple {
+        message.poll_creation_message = MessageField::some(creation);
+    } else {
+        message.poll_creation_message_v3 = MessageField::some(creation);
+    }
+    message.message_context_info = MessageField::some(wa::MessageContextInfo {
+        message_secret: Some(secret.clone()),
+        ..Default::default()
+    });
+    let sent = match client.send_message(jid.clone(), message.clone()).await {
+        Ok(sent) => sent,
         Err(e) => {
             warn!("poll to {chat_id} failed: {e}");
             notice(ctx, false, "The poll couldn't be sent.");
             return;
         }
     };
-    // The same poll, for storing and showing (the library doesn't hand back what it sent).
-    let mut message = wa::Message::default();
-    message.poll_creation_message = MessageField::some(wa::message::PollCreationMessage {
-        name: Some(question.trim().to_string()),
-        options: options
-            .iter()
-            .map(|o| wa::message::poll_creation_message::Option { option_name: Some(o.clone()), ..Default::default() })
-            .collect(),
-        selectable_options_count: Some(selectable),
-        ..Default::default()
-    });
     let own = client.persistence_manager().get_device_snapshot();
     let me = if jid.server == Server::Lid { own.lid.as_ref().or(own.pn.as_ref()) } else { own.pn.as_ref().or(own.lid.as_ref()) };
     let creator = me.map(|j| j.to_non_ad_string()).unwrap_or_default();
