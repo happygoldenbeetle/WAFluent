@@ -19,7 +19,7 @@
               Stroke="{ThemeResource SentTickBrush}" StrokeThickness="1.1" Visibility="Collapsed"
               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
         <!-- Not sent: right-click the message to try again. -->
-        <FontIcon x:Name="FailedIcon" Glyph="&#xE783;" FontSize="11" HorizontalAlignment="Left" Visibility="Collapsed"
+        <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" x:Name="FailedIcon" Glyph="&#xE783;" FontSize="11" HorizontalAlignment="Left" Visibility="Collapsed"
                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
     </Grid>
 </UserControl>

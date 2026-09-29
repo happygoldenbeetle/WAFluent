@@ -62,6 +62,16 @@ public sealed partial class MainWindow
     }
 
 #if DEBUG
+    /// <summary>WAFLUENT_SELFTEST=menu: opens the menu of the last text message on screen.</summary>
+    private void SelfTestMenu()
+    {
+        var bubble = Descendants(Messages).OfType<FrameworkElement>().LastOrDefault(f => f.Tag is Message { Kind: MessageKind.Text });
+        if (bubble?.Tag is not Message m) return;
+        var menu = BuildMessageMenu(m, bubble, null);
+        menu.ShouldConstrainToRootBounds = true;
+        menu.ShowAt(bubble);
+    }
+
     /// <summary>
     /// Debug self-check (WAFLUENT_SELFTEST=links): hit-tests the middle of every link on screen
     /// and a point beside it, writing the results to %TEMP%\wafluent-selftest.txt.
@@ -197,7 +207,7 @@ public sealed partial class MainWindow
 
     private static MenuFlyoutSubItem SpeedMenu()
     {
-        var sub = new MenuFlyoutSubItem { Text = "Playback speed", Icon = new FontIcon { Glyph = Glyphs.Speed } };
+        var sub = new MenuFlyoutSubItem { Text = "Playback speed", Icon = new FontIcon { FontFamily = Ui.SymbolFont, Glyph = Glyphs.Speed } };
         foreach (var rate in new[] { 1.0, 1.5, 2.0 })
         {
             var option = new RadioMenuFlyoutItem { Text = $"{rate:0.#}×", GroupName = "voice-rate", IsChecked = AudioPlayback.Rate == rate };
@@ -209,7 +219,7 @@ public sealed partial class MainWindow
 
     private static MenuFlyoutItem Item(string text, string? glyph, Action action, bool enabled = true)
     {
-        var item = new MenuFlyoutItem { Text = text, Icon = glyph is null ? null : new FontIcon { Glyph = glyph }, IsEnabled = enabled };
+        var item = new MenuFlyoutItem { Text = text, Icon = glyph is null ? null : new FontIcon { FontFamily = Ui.SymbolFont, Glyph = glyph }, IsEnabled = enabled };
         item.Click += (_, _) => action();
         return item;
     }

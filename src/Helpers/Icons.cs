@@ -17,7 +17,7 @@ public static class Icons
     public const string MinusCircleData =
         "F0 M12,2 A10,10 0 1 0 12.01,2 Z M12,3.8 A8.2,8.2 0 1 1 11.99,3.8 Z M7.5,11.1 H16.5 V12.9 H7.5 Z";
 
-    public static PathIcon MinusCircle(double size = 18) => Make(MinusCircleData, size);
+    public static IconElement MinusCircle(double size = 18) => new FontIcon { FontFamily = Ui.SymbolFont, Glyph = Sf.MinusCircle, FontSize = size };
 
     public static PathIcon Bell(double size = 16) => Make(BellData, size);
     public static PathIcon BellOff(double size = 16) => Make(BellOffData, size);

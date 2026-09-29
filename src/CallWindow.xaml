@@ -20,7 +20,7 @@
                 <TextBlock Text="WhatsApp" Style="{StaticResource CaptionTextBlockStyle}" VerticalAlignment="Center" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <FontIcon Glyph="&#xE72E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE72E;" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <TextBlock Text="End-to-end encrypted" Style="{StaticResource CaptionTextBlockStyle}"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
             </StackPanel>
@@ -47,19 +47,19 @@
         <!-- Controls -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,18,0,20">
             <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Add participant" AutomationProperties.Name="Add participant">
-                <FontIcon Glyph="&#xE8FA;" FontSize="16" />
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE8FA;" FontSize="16" />
             </Button>
             <ToggleButton x:Name="CameraToggle" Style="{StaticResource CallToggleStyle}"
                           ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera">
-                <FontIcon Glyph="&#xE714;" FontSize="16" />
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE714;" FontSize="16" />
             </ToggleButton>
             <ToggleButton x:Name="MuteToggle" Style="{StaticResource CallToggleStyle}"
                           ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute"
                           Checked="Mute_Changed" Unchecked="Mute_Changed">
-                <FontIcon x:Name="MuteIcon" Glyph="&#xE720;" FontSize="16" />
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" x:Name="MuteIcon" Glyph="&#xE720;" FontSize="16" />
             </ToggleButton>
             <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="More" AutomationProperties.Name="More options">
-                <FontIcon Glyph="&#xE712;" FontSize="16" />
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE712;" FontSize="16" />
             </Button>
             <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"
                     ToolTipService.ToolTip="End call" AutomationProperties.Name="End call" Click="EndCall_Click">
@@ -72,7 +72,7 @@
                     <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
                 </Button.Resources>
                 <!-- A phone receiver turned face-down reads as "hang up". -->
-                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5">
+                <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5">
                     <FontIcon.RenderTransform>
                         <RotateTransform Angle="135" />
                     </FontIcon.RenderTransform>

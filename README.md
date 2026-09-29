@@ -48,6 +48,7 @@ The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX insta
 
 Emoji names, categories and shortcodes: [emojibase](https://github.com/milesj/emojibase) (MIT), trimmed by `tools/make-emoji-data.py`.
 Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
+Icons: [Framework7 Icons](https://github.com/framework7io/framework7-icons) (MIT), SF Symbols-style, rebuilt as `Assets/Fonts/WAFluentSymbols.ttf` by `tools/symbols/build.py`.
 
 ## Layout
 
