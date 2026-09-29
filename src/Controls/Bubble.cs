@@ -60,7 +60,7 @@ public sealed partial class Bubble : ContentControl
         // every bubble keeps it so a run lines up.
         chrome.Margin = IsOutgoing ? new Thickness(0, 0, room, 0) : new Thickness(room, 0, 0, 0);
         chrome.BorderThickness = round ? new Thickness(0) : new Thickness(0, 0, 0, 1);
-        chrome.CornerRadius = round ? new CornerRadius(18)
+        chrome.CornerRadius = round ? new CornerRadius(Helpers.Ui.BubbleRadius)
                             : !Tail ? new CornerRadius(8)
                             : IsOutgoing ? new CornerRadius(8, 0, 8, 8) : new CornerRadius(0, 8, 8, 8);   // the tail's corner is square
 

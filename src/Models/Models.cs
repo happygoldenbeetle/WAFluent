@@ -69,6 +69,26 @@ public sealed class Message : Observable
     /// <summary>Gets the tail: the first bubble of a run (classic) or the last (iMessage style).</summary>
     public bool HasTail { get => _hasTail; set => Set(ref _hasTail, value); }
 
+    // ───── Corners that follow the bubble (iMessage style) ─────
+
+    /// <summary>A picture (4 px from the bubble's edge): its top touches unless a reply sits above, its bottom unless a caption follows.</summary>
+    public Microsoft.UI.Xaml.CornerRadius PictureCorners => Helpers.Ui.InsetCorners(!HasReply, !HasText, 4);
+    public Microsoft.UI.Xaml.CornerRadius VideoCorners => IsVideoNote ? new(MediaWidth / 2) : Helpers.Ui.InsetCorners(!HasReply && !ShowSender, !HasText, 4);
+    public Microsoft.UI.Xaml.CornerRadius MapCorners => Helpers.Ui.InsetCorners(!HasReply && !ShowSender, !HasPlaceText, 4);
+    /// <summary>A document card sits 6 px in; nothing follows it in the iMessage style.</summary>
+    public Microsoft.UI.Xaml.CornerRadius FileCardCorners => Helpers.Ui.InsetCorners(!HasReply, true, 6);
+    /// <summary>A document's first-page preview: the card's top corners, square at the bottom.</summary>
+    public Microsoft.UI.Xaml.CornerRadius FileThumbCorners => new(FileCardCorners.TopLeft, FileCardCorners.TopRight, 0, 0);
+    /// <summary>A link preview sits 4 px in, above the text.</summary>
+    public Microsoft.UI.Xaml.CornerRadius LinkCardCorners => Helpers.Ui.InsetCorners(!HasReply && !ShowSender, false, 4);
+
+    private int _jumbo = -1;
+
+    /// <summary>Only emoji (up to ten): shown big, without a bubble.</summary>
+    public bool IsJumbo => Kind == MessageKind.Text && !HasReply && !IsDeleted && !HasLink && JumboCount > 0;
+    private int JumboCount => _jumbo >= 0 ? _jumbo : _jumbo = Helpers.EmojiText.JumboCount(Text);
+    public double JumboSize => Helpers.EmojiText.Size(JumboCount);
+
     /// <summary>Your latest message: "Delivered" / "Read" under it (iMessage style).</summary>
     public bool ShowReceipt { get => _showReceipt; set => Set(ref _showReceipt, value); }
 

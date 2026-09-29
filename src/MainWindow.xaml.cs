@@ -71,6 +71,12 @@ public sealed partial class MainWindow : Window
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
+        // Open a chat and start typing: the composer takes focus (after the chat has drawn).
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ViewModel.SelectedChat) && ViewModel.SelectedChat is not null)
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ComposerBox.Focus(FocusState.Programmatic));
+        };
         // Online while the window is in front, like WhatsApp Desktop.
         Activated += (_, e) => ViewModel.SetPresence(e.WindowActivationState != WindowActivationState.Deactivated);
 #if DEBUG

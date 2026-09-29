@@ -132,7 +132,7 @@
                                          reads evenly around the words. (TextLineBounds="Tight" trims every line and makes
                                          wrapped lines overlap.) -->
                                     <!-- Link preview: the sender's card (picture, title, description, site). Click opens the link. -->
-                                    <Border Grid.Row="2" Margin="-6,-6,-6,10" CornerRadius="6" Background="{ThemeResource FileCardBrush}"
+                                    <Border Grid.Row="2" Margin="-6,-6,-6,10" CornerRadius="{x:Bind LinkCardCorners}" Background="{ThemeResource FileCardBrush}"
                                             Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" MaxWidth="420" HorizontalAlignment="Stretch">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -196,7 +196,7 @@
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click opens the picture in the viewer. -->
-                                    <Grid Height="{x:Bind MediaHeight}" CornerRadius="6" Background="{ThemeResource FileCardBrush}"
+                                    <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind PictureCorners}" Background="{ThemeResource FileCardBrush}"
                                           Tag="{x:Bind}" Tapped="Media_Tapped">
                                         <!-- The sender's tiny preview (blurry by nature) until the picture arrives. -->
                                         <Border>
@@ -210,7 +210,7 @@
                                             <FontIcon Glyph="&#xEB9F;" FontSize="28" Foreground="{ThemeResource MetaTextBrush}" />
                                             <TextBlock Text="Photo unavailable" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
                                         </StackPanel>
-                                        <Border CornerRadius="6">
+                                        <Border CornerRadius="{x:Bind PictureCorners}">
                                             <Border.Background>
                                                 <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="UniformToFill" />
                                             </Border.Background>
@@ -324,6 +324,43 @@
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Sticker>
 
+                <helpers:MessageTemplateSelector.Jumbo>
+                    <DataTemplate x:DataType="models:Message">
+                        <!-- Emoji-only messages: big, without a bubble. -->
+                        <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
+                              Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
+                            <!-- Select mode: a circle in the left gutter, ticked when picked. -->
+                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                                <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                                <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                            </Grid>
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Spacing="2">
+                            <controls:Redact HorizontalAlignment="Left" Visibility="{x:Bind ShowSender}">
+                                <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource ChatAccentTextBrush}" />
+                            </controls:Redact>
+                            <TextBlock Text="{x:Bind Text}" FontFamily="{StaticResource EmojiFontFamily}" FontSize="{x:Bind JumboSize}"
+                                       HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" TextWrapping="Wrap" MaxWidth="420"
+                                       IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
+                            <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
+                                    Background="{ThemeResource IncomingBubbleBrush}" Visibility="{x:Bind helpers:Ui.ClassicMeta}">
+                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                    <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
+                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                </StackPanel>
+                            </Border>
+                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                            </Border>
+                            <TextBlock Text="{x:Bind ReceiptLabel, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       HorizontalAlignment="Right" Margin="0,3,10,0" Visibility="{x:Bind ShowReceipt, Mode=OneWay}" />
+                        </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Jumbo>
+
                 <helpers:MessageTemplateSelector.File>
                     <DataTemplate x:DataType="models:Message">
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
@@ -341,10 +378,10 @@
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
-                                    <Border Background="{ThemeResource FileCardBrush}" CornerRadius="6" Padding="10,12,10,10">
+                                    <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10">
                                         <StackPanel Spacing="10">
                                             <!-- First page (PDFs), when the sender's app made a preview. -->
-                                            <Border Height="140" Margin="-10,-12,-10,0" CornerRadius="6,6,0,0" Visibility="{x:Bind HasThumb}">
+                                            <Border Height="140" Margin="-10,-12,-10,0" CornerRadius="{x:Bind FileThumbCorners}" Visibility="{x:Bind HasThumb}">
                                                 <Border.Background>
                                                     <ImageBrush ImageSource="{x:Bind helpers:Ui.Thumb(Thumb)}" Stretch="UniformToFill" AlignmentY="Top" />
                                                 </Border.Background>
@@ -414,7 +451,7 @@
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click: download (first time), then play in the video viewer. -->
-                                    <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind helpers:Ui.MediaCorner(IsVideoNote, MediaWidth)}"
+                                    <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind VideoCorners}"
                                           Background="#FF202020" Tag="{x:Bind}" Tapped="Video_Tapped">
                                         <Border>
                                             <Border.Background>
@@ -498,9 +535,9 @@
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- A sharp street map (Controls/MapView.cs); click opens the place in Google Maps. -->
-                                    <Grid Height="150" CornerRadius="6" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped">
+                                    <Grid Height="150" CornerRadius="{x:Bind MapCorners}" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped">
                                         <FontIcon Glyph="&#xE707;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}" />
-                                        <controls:MapView Latitude="{x:Bind Latitude}" Longitude="{x:Bind Longitude}" Thumb="{x:Bind Thumb}" CornerRadius="6" />
+                                        <controls:MapView Latitude="{x:Bind Latitude}" Longitude="{x:Bind Longitude}" Thumb="{x:Bind Thumb}" CornerRadius="{x:Bind MapCorners}" />
                                         <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Padding="8,2,8,3" CornerRadius="9"
                                                 Background="{ThemeResource DangerBrush}" Visibility="{x:Bind IsLiveLocation}">
                                             <TextBlock Text="LIVE" FontSize="11" FontWeight="SemiBold" Foreground="White" />

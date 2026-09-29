@@ -16,6 +16,23 @@ public static class Ui
     /// </summary>
     public static bool IMessage { get; set; } = true;
 
+    /// <summary>Corner radius of an iMessage-style bubble (round, not a pill).</summary>
+    public const double BubbleRadius = 12;
+
+    /// <summary>
+    /// Corners for a picture, map, card or link preview inside a bubble: sides that touch the
+    /// bubble's top or bottom edge follow its curve (its radius minus the gap to the edge),
+    /// the others keep the usual small rounding.
+    /// </summary>
+    public static CornerRadius InsetCorners(bool touchesTop, bool touchesBottom, double inset)
+    {
+        const double small = 6;
+        if (!IMessage) return new CornerRadius(small);
+        var curve = Math.Max(small, BubbleRadius - inset);
+        double top = touchesTop ? curve : small, bottom = touchesBottom ? curve : small;
+        return new CornerRadius(top, top, bottom, bottom);
+    }
+
     /// <summary>Times and ticks inside bubbles: classic only.</summary>
     public static Visibility ClassicMeta => IMessage ? Visibility.Collapsed : Visibility.Visible;
 

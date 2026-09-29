@@ -85,7 +85,10 @@ public static class SampleData
                 new Message { Id = NewId(), Kind = MessageKind.System, Text = "📞 Missed voice call" },
                 new Message { Id = NewId(), Text = "https://github.com/happygoldenbeetle/WAFluent", Time = "15:27", IsOutgoing = true, Delivery = Delivery.Delivered,
                               LinkUrl = "https://github.com/happygoldenbeetle/WAFluent", LinkTitle = "WAFluent", LinkDescription = "A native WinUI 3 WhatsApp client.", Thumb = Preview(Picture) },
-                new Message { Id = NewId(), Kind = MessageKind.File, FileName = "Itinerary.pdf", FileDetails = "PDF", Pages = 3, Time = "15:28", Thumb = Preview(Picture2) }),
+                new Message { Id = NewId(), Kind = MessageKind.File, FileName = "Itinerary.pdf", FileDetails = "PDF", Pages = 3, Time = "15:28", Thumb = Preview(Picture2) },
+                In("😂", "15:29"),
+                Out("❤️🔥👍🏽", "15:29"),
+                In("🇵🇰🎉 ok see you", "15:30")),
 
         new Chat { Name = "Baking Club", IsGroup = true, Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),

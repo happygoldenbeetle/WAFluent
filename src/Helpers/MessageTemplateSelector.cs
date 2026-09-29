@@ -17,6 +17,7 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
     public DataTemplate? Contact { get; set; }
     public DataTemplate? Poll { get; set; }
     public DataTemplate? System { get; set; }
+    public DataTemplate? Jumbo { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item is Message m
         ? m.Kind switch
@@ -26,6 +27,7 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
             MessageKind.Sticker => Sticker,
             MessageKind.File => File,
             MessageKind.DateDivider => DateDivider,
+            MessageKind.Text when m.IsJumbo => Jumbo,
             MessageKind.Video => Video,
             MessageKind.Location => Location,
             MessageKind.Contact => Contact,

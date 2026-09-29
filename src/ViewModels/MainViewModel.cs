@@ -35,7 +35,11 @@ public sealed partial class MainViewModel : Observable
         if (core is null)
         {
             _state = ConnectionState.Sample;
-            foreach (var chat in SampleData.Create()) Track(chat);
+            foreach (var chat in SampleData.Create())
+            {
+                Track(chat);
+                UpdateRuns(chat);   // tails and receipts, as a loaded live chat gets
+            }
             SyncVisible();
             SelectedChat = _allChats.First(c => c.Name == "Alice Whitman");
             return;
