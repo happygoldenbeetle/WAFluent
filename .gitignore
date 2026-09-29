@@ -7,3 +7,6 @@ core/target/
 
 # iOS emoji font (Apple artwork, 35 MB): extracted locally, never committed.
 src/Assets/Fonts/AppleColorEmoji.ttf
+
+# The app's GIPHY API key (one line), built into the app; never committed.
+src/giphy.key

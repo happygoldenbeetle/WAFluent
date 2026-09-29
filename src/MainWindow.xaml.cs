@@ -106,7 +106,7 @@ public sealed partial class MainWindow : Window
                 var items = pictures.Select((p, i) => new StickerDto("sample", $"s{i}", 512, 512, p, null)).ToList();
                 _stickerPanel?.SetItems(items[..2], items[2..], []);
             };
-        // WAFLUENT_SELFTEST=gifs: the GIF side, searching with WAFLUENT_GIPHY (none: the no-key hint).
+        // WAFLUENT_SELFTEST=gifs: the GIF side, searching with WAFLUENT_GIPHY or the built-in key.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "gifs")
             Messages.Loaded += async (_, _) =>
             {
@@ -114,7 +114,7 @@ public sealed partial class MainWindow : Window
                 Stickers_Click(StickerButton, new RoutedEventArgs());
                 var pictures = Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg").Take(3).ToList();
                 var items = pictures.Select((p, i) => new StickerDto("sample", $"g{i}", 512, 512, null, null)).ToList();
-                _stickerPanel!.GiphyKey = Environment.GetEnvironmentVariable("WAFLUENT_GIPHY") ?? "";
+                _stickerPanel!.GiphyKey = Environment.GetEnvironmentVariable("WAFLUENT_GIPHY") ?? Services.Giphy.BuiltInKey;
                 _stickerPanel.SetItems([], [], items);
                 _stickerPanel.ShowTab(gifs: true);
             };

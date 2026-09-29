@@ -7,8 +7,10 @@ namespace WhatsAppNative.Services;
 
 /// <summary>
 /// GIF search for the sticker panel, through GIPHY (Tenor's public API closed in June 2026).
-/// Needs the user's own free key (Settings › GIF search). A picked GIF is fetched as MP4,
-/// the way WhatsApp sends GIFs, with a small JPEG preview for the chat bubble.
+/// The app's key is built in from src\giphy.key (not in git); ui.json's GiphyKey overrides
+/// it. A picked GIF is fetched as MP4, the way WhatsApp sends GIFs, with a small JPEG
+/// preview for the chat bubble. Results are cached briefly: every copy of the app shares
+/// the key's request allowance.
 /// </summary>
 public static class Giphy
 {
@@ -16,14 +18,28 @@ public static class Giphy
     public sealed record Gif(string Id, string Title, string Preview, string Mp4, string Still, int Width, int Height);
 
     /// <summary>The key was refused (wrong, or revoked).</summary>
-    public sealed class KeyRefusedException() : Exception("GIPHY didn't accept the key.");
+    public sealed class KeyRefusedException() : Exception("GIF search isn't available right now.");
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(20) };
+    /// <summary>The key built into this copy of the app (empty when built without src\giphy.key).</summary>
+    public static readonly string BuiltInKey = ReadBuiltInKey();
+
+    private static readonly Dictionary<string, (DateTime At, IReadOnlyList<Gif> Gifs)> Cache = [];
+    private static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(15);
+
+    private static string ReadBuiltInKey()
+    {
+        using var stream = typeof(Giphy).Assembly.GetManifestResourceStream("giphy.key");
+        return stream is null ? "" : new StreamReader(stream).ReadToEnd().Trim();
+    }
+
     private static readonly string Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent", "gifs");
 
     /// <summary>Trending GIFs (empty query) or the ones matching <paramref name="query"/>.</summary>
     public static async Task<IReadOnlyList<Gif>> SearchAsync(string key, string query, CancellationToken cancel)
     {
+        var cacheKey = query.Trim().ToLowerInvariant();
+        if (Cache.TryGetValue(cacheKey, out var hit) && DateTime.UtcNow - hit.At < CacheFor) return hit.Gifs;
         var url = string.IsNullOrWhiteSpace(query)
             ? $"https://api.giphy.com/v1/gifs/trending?api_key={Uri.EscapeDataString(key)}&limit=30&rating=pg-13"
             : $"https://api.giphy.com/v1/gifs/search?api_key={Uri.EscapeDataString(key)}&q={Uri.EscapeDataString(query.Trim())}&limit=30&rating=pg-13";
@@ -45,6 +61,7 @@ public static class Giphy
                 preview, mp4, still,
                 Int(images, "original", "width"), Int(images, "original", "height")));
         }
+        Cache[cacheKey] = (DateTime.UtcNow, gifs);
         return gifs;
     }
 

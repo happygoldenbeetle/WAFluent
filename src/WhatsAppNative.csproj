@@ -22,6 +22,11 @@
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The app's GIPHY key (Services/Giphy.cs): a one-line file kept out of git, built in when present. -->
+  <ItemGroup Condition="Exists('giphy.key')">
+    <EmbeddedResource Include="giphy.key" LogicalName="giphy.key" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="H.NotifyIcon.WinUI" Version="2.4.1" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />

@@ -29,7 +29,7 @@ public sealed class UiSettings
     /// <summary>WhatsApp's classic bubbles (off: the rounder iMessage-style ones, in WhatsApp's colours).</summary>
     public bool ClassicBubbles { get; set; }
 
-    /// <summary>The user's GIPHY API key, for GIF search in the sticker panel (empty: none).</summary>
+    /// <summary>A GIPHY API key to use instead of the built-in one (no UI; empty: built-in).</summary>
     public string GiphyKey { get; set; } = "";
 
     /// <summary>Blur profile photos, names and numbers (Controls/Redact).</summary>

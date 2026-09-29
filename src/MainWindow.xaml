@@ -952,13 +952,6 @@
                                            Text="WhatsApp's classic bubble corners, with the tail on the first bubble of a run. Off: rounder bubbles with a curled tail on the last one." />
                             </StackPanel>
                             <StackPanel Spacing="4">
-                                <TextBox x:Name="GiphyKeyBox" Header="GIF search" PlaceholderText="GIPHY API key" HorizontalAlignment="Left" Width="340"
-                                         TextChanged="GiphyKey_Changed" />
-                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="Searching GIFs in the sticker panel uses GIPHY, which needs your own free key: create an API app on GIPHY's developer site and paste its key here. Without one, the panel shows your recent GIFs." />
-                                <HyperlinkButton Content="Get a GIPHY key" NavigateUri="https://developers.giphy.com/dashboard/" Padding="0" />
-                            </StackPanel>
-                            <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On"
                                               Toggled="SystemAccent_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"

@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -12,7 +12,7 @@ namespace WhatsAppNative.Controls;
 /// recent GIFs, in grids, a GIF | Stickers switch at the bottom (emoji have their own
 /// keyboard). Favourites are the ones starred on your phone (synced); recents are every
 /// sticker and GIF sent or received in your chats, newest first. Click one to send it.
-/// With a GIPHY key (Settings › GIF search) the GIF side also searches, trending first.
+/// With a GIPHY key (Settings â€º GIF search) the GIF side also searches, trending first.
 /// </summary>
 public sealed partial class StickerPanel : Grid
 {
@@ -24,7 +24,7 @@ public sealed partial class StickerPanel : Grid
     /// <summary>A GIF from search was picked (the window downloads and sends it).</summary>
     public event Action<Giphy.Gif>? GifPicked;
 
-    /// <summary>The user's GIPHY key; empty: no search.</summary>
+    /// <summary>The GIPHY key; empty (a build without one): no search.</summary>
     public string GiphyKey { get; set; } = "";
 
     /// <summary>Asks for a sticker's file (it arrives through <see cref="MediaArrived"/>).</summary>
@@ -49,6 +49,7 @@ public sealed partial class StickerPanel : Grid
         Margin = new Thickness(12, 12, 12, 2),
         Visibility = Visibility.Collapsed,
     };
+    private readonly ScrollViewer _scroller = new();
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(400) };
     private CancellationTokenSource? _searching;
     private string? _loadedQuery, _loadedKey;
@@ -65,9 +66,9 @@ public sealed partial class StickerPanel : Grid
 
         _empty.Foreground = Themed.Brush("TextFillColorSecondaryBrush");
         Children.Add(_search);
-        var scroller = new ScrollViewer { Content = new Grid { Children = { _sections, _empty } } };
-        SetRow(scroller, 1);
-        Children.Add(scroller);
+        _scroller.Content = new Grid { Children = { _sections, _empty } };
+        SetRow(_scroller, 1);
+        Children.Add(_scroller);
         _search.TextChanged += (_, _) => { _debounce.Stop(); _debounce.Start(); };
         _debounce.Tick += (_, _) => { _debounce.Stop(); if (_showGifs) Show(gifs: true); };
 
@@ -124,6 +125,7 @@ public sealed partial class StickerPanel : Grid
 
     private void Show(bool gifs)
     {
+        var scrollTop = gifs != _showGifs || _search.Text.Trim() != _loadedQuery;
         _showGifs = gifs;
         Highlight(_gifTab, gifs);
         Highlight(_stickerTab, !gifs);
@@ -144,7 +146,7 @@ public sealed partial class StickerPanel : Grid
             else
             {
                 empty = _gifs.Count == 0;
-                if (!empty) Hint("Add a GIPHY key in Settings › GIF search to search GIFs.");
+
             }
         }
         else
@@ -154,12 +156,19 @@ public sealed partial class StickerPanel : Grid
             empty = _favorites.Count + _stickers.Count == 0;
         }
         _empty.Text = gifs
-            ? "GIFs you send or receive show up here. Add a GIPHY key in Settings › GIF search to search GIFs."
+            ? "GIFs you send or receive show up here."
             : "Stickers you star on your phone, send or receive show up here.";
         _empty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        if (scrollTop) _scroller.ChangeView(null, 0, null, disableAnimation: true);
     }
 
-    // ───── GIF search ─────
+    /// <summary>Starts loading trending GIFs before the GIF side is opened.</summary>
+    public void Prefetch()
+    {
+        if (GiphyKey.Length > 0 && _search.Text.Trim().Length == 0 && (_loadedQuery != "" || _loadedKey != GiphyKey)) _ = SearchAsync("");
+    }
+
+    // â”€â”€â”€â”€â”€ GIF search â”€â”€â”€â”€â”€
 
     private async Task SearchAsync(string query)
     {
@@ -177,7 +186,7 @@ public sealed partial class StickerPanel : Grid
         }
         catch (Giphy.KeyRefusedException e)
         {
-            _searchError = e.Message + " Check it in Settings › GIF search.";
+            _searchError = e.Message;
         }
         catch (Exception) when (!cancel.IsCancellationRequested)
         {
