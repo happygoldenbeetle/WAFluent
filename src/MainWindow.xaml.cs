@@ -67,6 +67,27 @@ public sealed partial class MainWindow : Window
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
             Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
+        // WAFLUENT_SELFTEST=poll: votes for the second option of the first poll after 6 s.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(6000);
+                var log = Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt");
+                if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Poll) is { } poll)
+                {
+                    ViewModel.VotePoll(poll.PollOptions[1]);
+                    var after = ViewModel.SelectedChat.Messages.First(m => m.Id == poll.Id);
+                    var index = ViewModel.SelectedChat.Messages.IndexOf(after);
+                    var before = Messages.TryGetElement(index) as FrameworkElement;
+                    var line = $"voted; replaced: {!ReferenceEquals(after, poll)}; selected now: {string.Join(",", after.PollOptions.Where(o => o.Selected).Select(o => o.Name))}; " +
+                               $"element right after: {before?.GetHashCode()} context is new: {ReferenceEquals(before?.DataContext, after)} is old: {ReferenceEquals(before?.DataContext, poll)}";
+                    await Task.Delay(500);
+                    var later = Messages.TryGetElement(index) as FrameworkElement;
+                    line += $"; 500 ms later: {later?.GetHashCode()} context is new: {ReferenceEquals(later?.DataContext, after)}, tag is new: {ReferenceEquals(later?.Tag, after)}";
+                    File.WriteAllText(log, line);
+                }
+                else File.WriteAllText(log, $"no poll; chat {ViewModel.SelectedChat?.Name}");
+            };
 #endif
         Closed += (_, _) =>
         {

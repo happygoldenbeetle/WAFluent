@@ -84,6 +84,14 @@ public sealed partial class ChatLayout : VirtualizingLayout
             if ((y + height >= window.Y && y <= window.Y + window.Height) || i == anchor)
             {
                 var element = context.GetOrCreateElementAt(i);
+                // A message replaced in place (a vote, an edit, a finished download) still has
+                // the old message's element: the layout, not the repeater, has to swap it.
+                // (Message rows carry their message in Tag; the repeater leaves DataContext unset.)
+                if (element is FrameworkElement { Tag: Models.Message shown } && !ReferenceEquals(shown, context.GetItemAt(i)))
+                {
+                    context.RecycleElement(element);
+                    element = context.GetOrCreateElementAt(i);
+                }
                 element.Measure(new Size(width, double.PositiveInfinity));
                 height = element.DesiredSize.Height;
                 Remember(i, height);
@@ -92,12 +100,27 @@ public sealed partial class ChatLayout : VirtualizingLayout
             y += height + (i < count - 1 ? Spacing : 0);
         }
 
-        // Rows that scrolled out of the window go back to the pool.
+        // Rows that scrolled out of the window (or whose message was removed) go back to the pool.
         var keep = new HashSet<UIElement>(arranged.Select(a => a.Item1));
         foreach (var (element, _, _) in _arranged)
-            if (!keep.Contains(element) && StillRealized(element))
+        {
+            if (keep.Contains(element)) continue;
+            try
+            {
                 context.RecycleElement(element);
+            }
+            catch (Exception)
+            {
+                // Already released by the repeater.
+            }
+        }
         _arranged = arranged;
+
+        // A message replaced in place (a vote, a download finishing) gets a fresh element
+        // here; if the list's size didn't change, nothing else would arrange it and it
+        // would stay unplaced (the old look) until the next scroll.
+        if (arranged.Count > 0 && VisualTreeHelper.GetParent(arranged[0].Item1) is ItemsRepeater repeater)
+            repeater.InvalidateArrange();
 
         return new Size(width, Math.Max(0, y));
     }
@@ -124,7 +147,4 @@ public sealed partial class ChatLayout : VirtualizingLayout
         _measuredCount--;
     }
 
-    /// <summary>An element whose item was removed has already been cleared by the repeater.</summary>
-    private static bool StillRealized(UIElement element) =>
-        VisualTreeHelper.GetParent(element) is ItemsRepeater repeater && repeater.GetElementIndex(element) >= 0;
 }

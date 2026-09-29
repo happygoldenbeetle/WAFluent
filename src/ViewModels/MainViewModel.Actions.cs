@@ -39,22 +39,27 @@ public sealed partial class MainViewModel
     /// <summary>A short confirmation or error for the toast (ok, text).</summary>
     public event Action<bool, string>? Toast;
 
+    /// <summary>A message changed (vote, edit, download details): its bubble is swapped in place.</summary>
+    private void ApplyUpdate(Chat chat, MessageDto dto)
+    {
+        var i = IndexOf(chat, dto.Id);
+        if (i < 0) return;
+        var old = chat.Messages[i];
+        var fresh = Format.ToMessage(dto, chat.IsGroup);
+        fresh.MediaPath ??= old.MediaPath;
+        fresh.Selecting = old.Selecting;
+        chat.Messages[i] = fresh;
+        // A message whose download details just arrived from the phone: fetch it now.
+        if (!old.HasMedia && fresh.HasMedia) RequestMedia(chat, [fresh]);
+    }
+
     private void Notify(bool ok, string text) => Toast?.Invoke(ok, text);
 
     private void HookActions(CoreClient core)
     {
         core.MessageUpdated += (chatId, dto) =>
         {
-            if (!_byId.TryGetValue(chatId, out var chat)) return;
-            var i = IndexOf(chat, dto.Id);
-            if (i < 0) return;
-            var old = chat.Messages[i];
-            var fresh = Format.ToMessage(dto, chat.IsGroup);
-            fresh.MediaPath ??= old.MediaPath;
-            fresh.Selecting = old.Selecting;
-            chat.Messages[i] = fresh;
-            // A message whose download details just arrived from the phone: fetch it now.
-            if (!old.HasMedia && fresh.HasMedia) RequestMedia(chat, [fresh]);
+            if (_byId.TryGetValue(chatId, out var chat)) ApplyUpdate(chat, dto);
         };
         core.MessageRemoved += (chatId, messageId) =>
         {

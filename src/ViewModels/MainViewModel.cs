@@ -124,9 +124,22 @@ public sealed partial class MainViewModel : Observable
             _core.VotePoll(_selectedChat.Id, poll.Id, next);
             return;
         }
-        // Sample mode: count it here.
-        var voters = poll.PollOptions.ToDictionary(o => o.Name, o => o.Voters.Where(v => v != "You").Concat(next.Contains(o.Name) ? ["You"] : []).ToList());
-        poll.PollOptions = Format.PollOptions(poll, poll.PollOptions.Select(o => o.Name).ToList(), voters, next.ToHashSet());
+        // Sample mode: answer the way the core does (an updated message swapped in place).
+        if (_allChats.FirstOrDefault(c => c.Messages.Contains(poll)) is not { } chat) return;
+        var votes = poll.PollOptions.Select(o => new
+        {
+            name = o.Name,
+            voters = o.Voters.Where(v => v != "You").Concat(next.Contains(o.Name) ? ["You"] : []).ToArray(),
+        });
+        var extra = System.Text.Json.JsonSerializer.SerializeToElement(new
+        {
+            options = poll.PollOptions.Select(o => o.Name).ToArray(),
+            multi = poll.PollMulti,
+            votes,
+            mine = next,
+        });
+        ApplyUpdate(chat, new MessageDto(poll.Id, poll.IsOutgoing, "", poll.SenderName, poll.UnixTs, "poll", poll.Text, null, 3,
+                                         null, null, [.. poll.Reactions], poll.MyReaction, poll.Starred, poll.Edited, null, extra));
     }
 
     /// <summary>The 1:1 chat with this phone number (any format: "+92 300 1234567", "923001234567"...).</summary>
