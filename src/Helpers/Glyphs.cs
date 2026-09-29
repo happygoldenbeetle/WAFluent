@@ -7,6 +7,7 @@ public static class Glyphs
 
     public static readonly string Phone = G(0xE717);
     public static readonly string Video = G(0xE714);
+    public static readonly string Mail = G(0xE715);
     public static readonly string Photo = G(0xEB9F);
     public static readonly string Status = G(0xEA3A);
     public static readonly string Star = G(0xE734);

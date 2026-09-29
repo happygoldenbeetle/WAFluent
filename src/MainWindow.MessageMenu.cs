@@ -20,6 +20,24 @@ public sealed partial class MainWindow
         if (sender is not FrameworkElement { Tag: Message message } bubble) return;
         e.Handled = true;
 
+        // Right-click on an email address or link: its own menu, not the message's.
+        if (e.OriginalSource is TextBlock text && e.TryGetPosition(text, out var at) && Controls.LinkText.HitTest(text, at) is { } link)
+        {
+            var linkMenu = new MenuFlyout();
+            if (link.IsEmail)
+            {
+                linkMenu.Items.Add(Item("Send email", Glyphs.Mail, () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(link.Uri))));
+                linkMenu.Items.Add(Item("Copy email", Glyphs.Copy, () => MediaActions.CopyText(link.Text)));
+            }
+            else
+            {
+                linkMenu.Items.Add(Item("Open link", Glyphs.OpenExternal, () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(link.Uri))));
+                linkMenu.Items.Add(Item("Copy link", Glyphs.Copy, () => MediaActions.CopyText(link.Text)));
+            }
+            linkMenu.ShowAt(text, new FlyoutShowOptions { Position = at });
+            return;
+        }
+
         var selection = (e.OriginalSource as TextBlock)?.SelectedText;
         var menu = BuildMessageMenu(message, bubble, string.IsNullOrEmpty(selection) ? null : selection);
         // Inside the window, so the reaction row's positions line up with the bubble for the flight.
@@ -106,7 +124,7 @@ public sealed partial class MainWindow
                 break;
 
             case MessageKind.Poll:
-                menu.Items.Add(Item("Copy", Glyphs.Copy, () => MediaActions.CopyText(m.Text + "\n" + string.Join("\n", m.PollOptions.Select(o => "• " + o)))));
+                menu.Items.Add(Item("Copy", Glyphs.Copy, () => MediaActions.CopyText(m.Text + "\n" + string.Join("\n", m.PollOptions.Select(o => "• " + o.Name)))));
                 break;
         }
 

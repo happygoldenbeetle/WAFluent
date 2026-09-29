@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Event {
+    /// The chat asked for with `openNumber` (already sent as `chat`): show it.
+    Opened { chat_id: String },
     /// Connection lifecycle. `state`: starting | qr | connecting | syncing | connected | loggedOut | error
     Status {
         state: &'static str,
@@ -211,6 +213,11 @@ pub enum Command {
     /// messages before `before_id` (default: the newest) from the phone. Each message that
     /// gains its details comes back as `messageUpdated`.
     BackfillMedia { chat_id: String, before_id: Option<String> },
+    /// Vote in a poll: the option names you now choose (none = take your vote back).
+    VotePoll { chat_id: String, message_id: String, options: Vec<String> },
+    /// Open (or start) the 1:1 chat with a phone number, e.g. from a shared contact card.
+    /// Answers `opened`, or a `notice` when the number isn't on WhatsApp.
+    OpenNumber { phone: String },
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
     SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },

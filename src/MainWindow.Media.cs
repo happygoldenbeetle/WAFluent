@@ -141,14 +141,55 @@ public sealed partial class MainWindow
         if (sender is not FrameworkElement { Tag: Message m }) return;
         var card = m.Contacts.FirstOrDefault(c => c.Phones.Count > 0);
         if (card is null) return;
-        var chat = card.Phones.Select(ViewModel.FindChatByPhone).FirstOrDefault(c => c is not null);
-        if (chat is null)
+        // An existing chat opens; a number you've never messaged starts a new chat.
+        var existing = card.Phones.Select(ViewModel.FindChatByPhone).FirstOrDefault(c => c is not null);
+        ViewModel.OpenNumber(existing is not null ? card.Phones.First(p => ViewModel.FindChatByPhone(p) == existing) : card.Phone);
+    }
+
+    // ───────────── Polls ─────────────
+
+    private void PollOption_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (ViewModel.IsSelecting || sender is not FrameworkElement { Tag: PollOption option }) return;
+        e.Handled = true;
+        ViewModel.VotePoll(option);
+    }
+
+    /// <summary>"View votes": every option with who picked it.</summary>
+    private void PollVotes_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Message m } button) return;
+        var list = new StackPanel { Spacing = 14, Width = 300 };
+        list.Children.Add(new TextBlock { Text = m.Text, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15, TextWrapping = TextWrapping.Wrap });
+        foreach (var option in m.PollOptions)
         {
-            ShowToast(false, $"You don't have a chat with {card.Name} yet.");
-            return;
+            var block = new StackPanel { Spacing = 4 };
+            var header = new Grid();
+            header.Children.Add(new TextBlock { Text = option.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 60, 0) });
+            header.Children.Add(new TextBlock
+            {
+                Text = option.Count == 1 ? "1 vote" : $"{option.Count} votes",
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Foreground = Themed.Brush("MetaTextBrush"),
+                FontSize = 12,
+            });
+            block.Children.Add(header);
+            foreach (var voter in option.Voters)
+            {
+                var name = new Controls.Redact { HorizontalAlignment = HorizontalAlignment.Left };
+                name.Children.Add(new TextBlock { Text = voter, FontSize = 13 });
+                block.Children.Add(name);
+            }
+            if (option.Count == 0)
+                block.Children.Add(new TextBlock { Text = "No votes", FontSize = 13, Foreground = Themed.Brush("MetaTextBrush") });
+            list.Children.Add(block);
         }
-        ViewModel.SelectedChat = chat;
-        ChatList.SelectedItem = chat;
+        var flyout = new Flyout
+        {
+            Content = new ScrollViewer { Content = list, MaxHeight = 420, Padding = new Thickness(0, 0, 12, 0) },
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Right,
+        };
+        flyout.ShowAt(button);
     }
 
     /// <summary>"Copy number" (one contact) or "View all" (a menu of everyone's numbers).</summary>

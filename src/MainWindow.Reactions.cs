@@ -118,6 +118,8 @@ public sealed partial class MainWindow
         if (ViewModel.IsSelecting || Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
         if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
         if (IsInside<Button>(e.OriginalSource as DependencyObject, row)) return;   // play button, file buttons...
+        for (var d = e.OriginalSource as DependencyObject; d is not null && d != row; d = VisualTreeHelper.GetParent(d))
+            if (d is FrameworkElement { Tag: PollOption }) return;   // quick taps on a poll option are votes
         e.Handled = true;
         ClearSelection(row);   // the double-click also selected a word
 

@@ -331,6 +331,35 @@ pub fn control(message: &wa::Message) -> Option<Control> {
     None
 }
 
+/// The secret a poll's votes are encrypted with; the poll message carries it.
+pub fn message_secret(message: &wa::Message) -> Option<Vec<u8>> {
+    let secret = |m: &wa::Message| m.message_context_info.as_option().and_then(|c| c.message_secret.clone());
+    secret(message)
+        .or_else(|| message.device_sent_message.as_option().and_then(|d| d.message.as_option()).and_then(secret))
+        .or_else(|| secret(base(message)))
+        .filter(|s| !s.is_empty())
+}
+
+/// An encrypted poll vote: which poll, the ciphertext, when it was cast (ms).
+pub struct PollVote {
+    pub poll_id: String,
+    pub payload: Vec<u8>,
+    pub iv: Vec<u8>,
+    pub ts: i64,
+}
+
+pub fn poll_vote(message: &wa::Message) -> Option<PollVote> {
+    let update = base(message).poll_update_message.as_option()?;
+    let poll_id = update.poll_creation_message_key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
+    let vote = update.vote.as_option()?;
+    Some(PollVote {
+        poll_id,
+        payload: vote.enc_payload.clone()?,
+        iv: vote.enc_iv.clone()?,
+        ts: update.sender_timestamp_ms.unwrap_or(0),
+    })
+}
+
 /// A reaction: (id of the message reacted to, emoji). An empty emoji removes it.
 pub fn reaction(message: &wa::Message) -> Option<(String, String)> {
     let r = base(message).reaction_message.as_option()?;

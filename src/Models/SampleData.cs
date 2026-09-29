@@ -21,6 +21,15 @@ public static class SampleData
     private static Message Out(string text, string time, Delivery d = Delivery.Read) =>
         new() { Id = NewId(), Text = text, Time = time, IsOutgoing = true, Delivery = d };
 
+    private static Message Poll(string question, string time, params (string Name, string[] Voters)[] options)
+    {
+        var poll = new Message { Id = NewId(), Kind = MessageKind.Poll, Time = time, Text = question };
+        poll.PollOptions = Format.PollOptions(poll, options.Select(o => o.Name).ToList(),
+                                              options.ToDictionary(o => o.Name, o => o.Voters.ToList()),
+                                              new HashSet<string> { options[0].Name });
+        return poll;
+    }
+
     private static Message Day(string label) => new() { Kind = MessageKind.DateDivider, Text = label };
 
     private static Chat With(this Chat chat, params Message[] messages)
@@ -68,7 +77,11 @@ public static class SampleData
                 new Message { Id = NewId(), Kind = MessageKind.Location, Time = "15:24", Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 150,
                               Latitude = 31.5204, Longitude = 74.3587, PlaceName = "Lahore Fort", PlaceAddress = "Fort Rd, Walled City of Lahore" },
                 new Message { Id = NewId(), Kind = MessageKind.Contact, Time = "15:25", Text = "Sara Khan", Contacts = [new ContactCard("Sara Khan", ["+92 300 1234567"])] },
-                new Message { Id = NewId(), Kind = MessageKind.Poll, Time = "15:26", Text = "Where should we eat on Sunday?", PollOptions = ["Monal", "Cafe Aylanto", "Home — I'll cook"] },
+                Poll("Where should we eat on Sunday?", "15:26", ("Monal", ["Alice Whitman", "You"]), ("Cafe Aylanto", ["Sam"]), ("Home — I'll cook", [])),
+                In("Mail me the tickets at alice.whitman@example.com or check www.example.com/tickets", "15:26"),
+                new Message { Id = NewId(), Kind = MessageKind.Location, Time = "15:26", Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 150,
+                              Latitude = 31.5820, Longitude = 74.3294 },
+                new Message { Id = NewId(), Kind = MessageKind.File, FileName = "Boarding pass.png", FileDetails = "PNG", Time = "15:27", IsOutgoing = true, Delivery = Delivery.Read },
                 new Message { Id = NewId(), Kind = MessageKind.System, Text = "📞 Missed voice call" },
                 new Message { Id = NewId(), Text = "https://github.com/happygoldenbeetle/WAFluent", Time = "15:27", IsOutgoing = true, Delivery = Delivery.Delivered,
                               LinkUrl = "https://github.com/happygoldenbeetle/WAFluent", LinkTitle = "WAFluent", LinkDescription = "A native WinUI 3 WhatsApp client.", Thumb = Preview(Picture) },

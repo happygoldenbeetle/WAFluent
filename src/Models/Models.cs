@@ -9,6 +9,20 @@ public enum Delivery { None, Sent, Delivered, Read, Pending, Failed }
 
 public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System }
 
+/// <summary>One poll option: who picked it, and whether you did.</summary>
+public sealed class PollOption
+{
+    public required Message Owner { get; init; }
+    public string Name { get; init; } = "";
+    public IReadOnlyList<string> Voters { get; init; } = [];
+    public bool Selected { get; init; }
+    /// <summary>Share of everyone who voted (the bar's length).</summary>
+    public double Fraction { get; init; }
+    public int Count => Voters.Count;
+    public string CountLabel => Count > 0 ? Count.ToString() : "";
+    public bool Multi => Owner.PollMulti;
+}
+
 /// <summary>A shared contact card: the name and the numbers from its vCard.</summary>
 public sealed record ContactCard(string Name, IReadOnlyList<string> Phones)
 {
@@ -125,6 +139,8 @@ public sealed class Message : Observable
     public string PlaceAddress { get; set; } = "";
     public bool IsLiveLocation { get; set; }
     public bool HasPlaceAddress => PlaceAddress.Length > 0;
+    /// <summary>A named place: name and address go under the map (a plain pin is just the map).</summary>
+    public bool HasPlaceText => PlaceName.Length > 0 || PlaceAddress.Length > 0;
     public string PlaceTitle => PlaceName.Length > 0 ? PlaceName : IsLiveLocation ? "Live location" : Text.Length > 0 ? Text : "Location";
 
     /// <summary>Shared contacts.</summary>
@@ -139,10 +155,12 @@ public sealed class Message : Observable
     public string ContactSubtitle => Contacts.Count == 1 ? Contacts[0].Phone : "";
     public bool HasContactPhone => Contacts.Any(c => c.Phones.Count > 0);
 
-    /// <summary>Polls: the options (votes are end-to-end encrypted to the voters' phones).</summary>
-    public IReadOnlyList<string> PollOptions { get; set; } = [];
+    /// <summary>Polls: options with their votes (yours and everyone's, synced with the phone).</summary>
+    public IReadOnlyList<PollOption> PollOptions { get; set; } = [];
     public bool PollMulti { get; set; }
     public string PollHint => PollMulti ? "Select one or more" : "Select one";
+    public int PollVoters => PollOptions.SelectMany(o => o.Voters).Distinct().Count();
+    public bool HasVotes => PollVoters > 0;
 
     /// <summary>Link preview card on a text message.</summary>
     public string LinkUrl { get; set; } = "";

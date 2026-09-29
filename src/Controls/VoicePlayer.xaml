@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="WhatsAppNative.Controls.VoicePlayer"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -7,32 +7,39 @@
     IsTabStop="False">
 
     <!--
-      [â–¶] [â€¢Â·Â·waveformÂ·Â·Â·]  (pictureðŸŽ¤)     idle: the sender's picture with a mic badge
-          0:19        2:59 pm âœ“âœ“
-      [âšâš] [Â·Â·Â·Â·â€¢Â·Â·Â·Â·Â·Â·]    [1.5Ã—]          playing: the speed pill in its place
+      [▶] [•··waveform···]  (picture🎤)     idle: the sender's picture with a mic badge
+      0:19                     2:59 ✓✓      duration under the play icon, time under the picture
+      [❚❚] [····•······]    [1.5×]          playing: the speed pill in the picture's place
+
+      Spacing is tuned by eye: the meta line is light text, so the gap under it is a touch
+      smaller than the gap above the (solid) picture, which reads as equal.
     -->
-    <Grid Width="320">
+    <Grid Width="320" Margin="0,6,0,6" RowSpacing="5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
         <!-- Theme-aware bar colours, read from these hidden shapes (ThemeResource updates them). -->
         <Rectangle x:Name="PlayedSwatch" Visibility="Collapsed" Fill="{ThemeResource VoicePlayedBrush}" />
         <Rectangle x:Name="UnplayedSwatch" Visibility="Collapsed" Fill="{ThemeResource MetaTextBrush}" />
 
-        <Grid Margin="0,10,0,20" ColumnSpacing="12" VerticalAlignment="Center">
+        <Grid ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <!-- Filled play / pause, like WhatsApp. -->
+            <!-- Filled play / pause with softened corners, like WhatsApp. -->
             <Grid Width="36" Height="36" VerticalAlignment="Center">
                 <Button x:Name="PlayButton" Width="36" Height="36" Padding="0" CornerRadius="18" BorderThickness="0"
                         Background="Transparent" Click="Play_Click" AutomationProperties.Name="Play voice message">
-                    <Grid>
-                        <PathIcon x:Name="PlayIcon" Data="M0,0 L14,8 L0,16 Z" Margin="3,0,0,0"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <PathIcon x:Name="PauseIcon" Data="M0,0 H4.5 V16 H0 Z M9.5,0 H14 V16 H9.5 Z" Visibility="Collapsed"
-                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <FontIcon x:Name="WarningIcon" Glyph="&#xE7BA;" FontSize="18" Visibility="Collapsed" />
+                    <Grid Width="14" Height="16">
+                        <PathIcon x:Name="PlayIcon" Data="M0,1.6 Q0,0 1.39,0.79 L12.61,7.21 Q14,8 12.61,8.79 L1.39,15.21 Q0,16 0,14.4 Z" Margin="1,0,-1,0" />
+                        <PathIcon x:Name="PauseIcon" Visibility="Collapsed"
+                                  Data="M0,1.5 Q0,0 1.5,0 H3 Q4.5,0 4.5,1.5 V14.5 Q4.5,16 3,16 H1.5 Q0,16 0,14.5 Z M9.5,1.5 Q9.5,0 11,0 H12.5 Q14,0 14,1.5 V14.5 Q14,16 12.5,16 H11 Q9.5,16 9.5,14.5 Z" />
+                        <FontIcon x:Name="WarningIcon" Glyph="&#xE7BA;" FontSize="18" Visibility="Collapsed" Margin="-2" />
                     </Grid>
                 </Button>
                 <ProgressRing x:Name="LoadingRing" Width="30" Height="30" IsHitTestVisible="False" />
@@ -56,8 +63,9 @@
                     <Border x:Name="Headphones" CornerRadius="26" Background="{ThemeResource VoiceHeadphonesBrush}" Visibility="Collapsed">
                         <FontIcon Glyph="&#xE7F6;" FontSize="22" Foreground="White" />
                     </Border>
-                    <FontIcon x:Name="MicBadge" Glyph="&#xE720;" FontSize="17" FontWeight="Bold" Foreground="{ThemeResource VoiceKnobBrush}"
-                              HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="1,0,0,-2" />
+                    <!-- Filled mic. -->
+                    <PathIcon x:Name="MicBadge" Foreground="{ThemeResource VoiceKnobBrush}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0,0,0,-1"
+                              Data="M6,0 A2.5,2.5 0 0 1 8.5,2.5 V7.5 A2.5,2.5 0 0 1 3.5,7.5 V2.5 A2.5,2.5 0 0 1 6,0 Z M0.6,6.3 H1.9 A4.1,4.1 0 0 0 10.1,6.3 H11.4 A5.4,5.4 0 0 1 6.65,11.66 V14 H8.6 V15.4 H3.4 V14 H5.35 V11.66 A5.4,5.4 0 0 1 0.6,6.3 Z" />
                 </Grid>
                 <Button x:Name="RateButton" Width="46" Height="26" Padding="0" CornerRadius="13" BorderThickness="0"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -71,12 +79,13 @@
             </Grid>
         </Grid>
 
-        <!-- Bottom band: elapsed/total under the waveform, time + ticks at its right end. -->
-        <Grid VerticalAlignment="Bottom" Margin="48,0,64,0">
-            <TextBlock x:Name="DurationText" Style="{StaticResource MetaTextStyle}" />
-            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3">
-                <TextBlock x:Name="TimeText" Style="{StaticResource MetaTextStyle}" VerticalAlignment="Center" />
-                <controls:DeliveryTicks x:Name="Ticks" />
+        <!-- Duration starts under the play icon's left edge; time and ticks end under the picture's right edge. -->
+        <Grid Grid.Row="1">
+            <TextBlock x:Name="DurationText" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" Margin="11,0,0,0"
+                       HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
+                <TextBlock x:Name="TimeText" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
+                <controls:DeliveryTicks x:Name="Ticks" VerticalAlignment="Bottom" Margin="0,0,0,-2" />
             </StackPanel>
         </Grid>
     </Grid>

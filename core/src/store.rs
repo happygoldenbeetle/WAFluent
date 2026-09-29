@@ -123,6 +123,25 @@ CREATE TABLE IF NOT EXISTS quotes(
     PRIMARY KEY(chat_id, message_id)
 );
 
+-- Polls: the secret their votes are encrypted with, and who created them (me = you).
+CREATE TABLE IF NOT EXISTS polls(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    secret     BLOB NOT NULL,
+    creator    TEXT NOT NULL,
+    PRIMARY KEY(chat_id, message_id)
+);
+
+-- Each voter current choice (JSON array of option names; me = you). Newer votes replace older.
+CREATE TABLE IF NOT EXISTS poll_votes(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    voter      TEXT NOT NULL,
+    options    TEXT NOT NULL,
+    ts         INTEGER NOT NULL,
+    PRIMARY KEY(chat_id, message_id, voter)
+);
+
 -- Per-kind details (JSON: map pin, contact numbers, poll options, link card...) and the
 -- sender's JPEG preview.
 CREATE TABLE IF NOT EXISTS extras(
@@ -198,7 +217,7 @@ impl Store {
         if from == into || !self.chat_exists(into) {
             return;
         }
-        for table in ["media", "quotes", "reactions", "extras"] {
+        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes"] {
             let _ = self.db.execute(&format!("UPDATE OR IGNORE {table} SET chat_id = ?2 WHERE chat_id = ?1"), [from, into]);
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [from]);
         }
@@ -447,7 +466,7 @@ impl Store {
 
     /// "Delete for me": gone from this device.
     pub fn delete_message(&self, chat_id: &str, message_id: &str) -> bool {
-        for table in ["media", "quotes", "reactions", "extras"] {
+        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1 AND message_id = ?2"), [chat_id, message_id]);
         }
         self.db.execute("DELETE FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, message_id]).unwrap_or(0) > 0
@@ -455,7 +474,7 @@ impl Store {
 
     /// Empties a chat but keeps it in the list.
     pub fn clear_messages(&self, chat_id: &str) {
-        for table in ["media", "quotes", "reactions", "extras"] {
+        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [chat_id]);
         }
         let _ = self.db.execute("DELETE FROM messages WHERE chat_id = ?1", [chat_id]);
@@ -641,7 +660,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras; DELETE FROM polls; DELETE FROM poll_votes;",
         );
     }
 
@@ -916,16 +935,94 @@ impl Store {
             > 0
     }
 
-    /// (preview as base64, details) for the UI.
+    /// (preview as base64, details) for the UI. Polls get their current results too.
     fn extra(&self, chat_id: &str, message_id: &str) -> (Option<String>, Option<serde_json::Value>) {
-        self.db
+        let (thumb, mut extra) = self
+            .db
             .query_row(
                 "SELECT thumb, data FROM extras WHERE chat_id = ?1 AND message_id = ?2",
                 [chat_id, message_id],
                 |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?, r.get::<_, String>(1)?)),
             )
-            .map(|(thumb, data)| (thumb.filter(|t| !t.is_empty()).map(|t| base64(&t)), serde_json::from_str(&data).ok()))
-            .unwrap_or((None, None))
+            .map(|(thumb, data)| (thumb.filter(|t| !t.is_empty()).map(|t| base64(&t)), serde_json::from_str::<serde_json::Value>(&data).ok()))
+            .unwrap_or((None, None));
+        if let Some(obj) = extra.as_mut().and_then(|e| e.as_object_mut()).filter(|o| o.contains_key("options")) {
+            let (votes, mine) = self.poll_results(chat_id, message_id);
+            obj.insert("votes".into(), votes);
+            obj.insert("mine".into(), mine);
+        }
+        (thumb, extra)
+    }
+
+    // ───────────── Polls ─────────────
+
+    pub fn set_poll(&self, chat_id: &str, message_id: &str, secret: &[u8], creator: &str) {
+        let _ = self.db.execute(
+            "INSERT OR IGNORE INTO polls(chat_id, message_id, secret, creator) VALUES(?1, ?2, ?3, ?4)",
+            params![chat_id, message_id, secret, creator],
+        );
+    }
+
+    /// (secret, creator, option names) of a poll.
+    pub fn poll(&self, chat_id: &str, message_id: &str) -> Option<(Vec<u8>, String, Vec<String>)> {
+        let (secret, creator): (Vec<u8>, String) = self
+            .db
+            .query_row(
+                "SELECT secret, creator FROM polls WHERE chat_id = ?1 AND message_id = ?2",
+                [chat_id, message_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .ok()
+            .flatten()?;
+        Some((secret, creator, self.poll_options(chat_id, message_id)))
+    }
+
+    pub fn poll_options(&self, chat_id: &str, message_id: &str) -> Vec<String> {
+        self.db
+            .query_row("SELECT data FROM extras WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id], |r| r.get::<_, String>(0))
+            .ok()
+            .and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok())
+            .and_then(|v| v.get("options").and_then(|o| o.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+            .unwrap_or_default()
+    }
+
+    /// A voter's choice; ignored when an equal-or-newer one is stored. True when it changed.
+    pub fn set_vote(&self, chat_id: &str, message_id: &str, voter: &str, options: &[String], ts: i64) -> bool {
+        self.db
+            .execute(
+                "INSERT INTO poll_votes(chat_id, message_id, voter, options, ts) VALUES(?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(chat_id, message_id, voter) DO UPDATE SET options = excluded.options, ts = excluded.ts
+                 WHERE excluded.ts >= poll_votes.ts AND excluded.options != poll_votes.options",
+                params![chat_id, message_id, voter, serde_json::to_string(options).unwrap_or_default(), ts],
+            )
+            .unwrap_or(0)
+            > 0
+    }
+
+    /// Per option: how many voted for it and who; plus your own choice.
+    fn poll_results(&self, chat_id: &str, message_id: &str) -> (serde_json::Value, serde_json::Value) {
+        let rows: Vec<(String, String)> = self
+            .db
+            .prepare("SELECT voter, options FROM poll_votes WHERE chat_id = ?1 AND message_id = ?2 ORDER BY ts")
+            .and_then(|mut stmt| stmt.query_map([chat_id, message_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect())
+            .unwrap_or_default();
+        let mut votes: Vec<(String, Vec<String>)> = self.poll_options(chat_id, message_id).into_iter().map(|o| (o, Vec::new())).collect();
+        let mut mine = Vec::new();
+        for (voter, options) in rows {
+            let chosen: Vec<String> = serde_json::from_str(&options).unwrap_or_default();
+            let name = if voter == "me" || self.is_me(&voter) { "You".to_string() } else { self.person_name(&voter, "") };
+            if voter == "me" || self.is_me(&voter) {
+                mine = chosen.clone();
+            }
+            for option in chosen {
+                if let Some((_, who)) = votes.iter_mut().find(|(o, _)| *o == option) {
+                    who.push(name.clone());
+                }
+            }
+        }
+        let votes = votes.into_iter().map(|(name, voters)| serde_json::json!({ "name": name, "voters": voters })).collect();
+        (serde_json::Value::Array(votes), serde_json::json!(mine))
     }
 
     // ───────────── Media ─────────────

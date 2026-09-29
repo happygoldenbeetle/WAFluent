@@ -63,6 +63,7 @@ public sealed partial class MainWindow : Window
             if (m.IsOutgoing || MessagesScroller.ScrollableHeight - MessagesScroller.VerticalOffset < 160) ScrollToBottom();
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
+        ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
         Closed += (_, _) =>
         {
             _call?.Close();

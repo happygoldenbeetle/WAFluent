@@ -69,6 +69,12 @@ public sealed partial class MainViewModel
             Raise(nameof(HasStarred));
         };
         core.Notice += Notify;
+        core.Opened += chatId =>
+        {
+            if (!_byId.TryGetValue(chatId, out var chat)) return;
+            SelectedChat = chat;
+            ChatOpened?.Invoke(chat);
+        };
     }
 
     private static int IndexOf(Chat chat, string messageId)

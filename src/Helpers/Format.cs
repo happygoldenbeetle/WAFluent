@@ -115,8 +115,17 @@ public static class Format
                     .ToList();
                 break;
             case MessageKind.Poll when x.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array:
-                m.PollOptions = options.EnumerateArray().Select(o => o.GetString() ?? "").ToList();
                 m.PollMulti = Bool(x, "multi");
+                var voters = new Dictionary<string, List<string>>();
+                if (x.TryGetProperty("votes", out var votes) && votes.ValueKind == JsonValueKind.Array)
+                    foreach (var v in votes.EnumerateArray())
+                        voters[Str(v, "name")] = v.TryGetProperty("voters", out var who) && who.ValueKind == JsonValueKind.Array
+                            ? who.EnumerateArray().Select(w => w.GetString() ?? "").ToList()
+                            : [];
+                var mine = x.TryGetProperty("mine", out var my) && my.ValueKind == JsonValueKind.Array
+                    ? my.EnumerateArray().Select(o => o.GetString() ?? "").ToHashSet()
+                    : [];
+                m.PollOptions = PollOptions(m, options.EnumerateArray().Select(o => o.GetString() ?? "").ToList(), voters, mine);
                 break;
             case MessageKind.Text when x.TryGetProperty("link", out var link) && link.ValueKind == JsonValueKind.Object:
                 m.LinkUrl = Str(link, "url");
@@ -130,6 +139,25 @@ public static class Format
                 m.Pages = (int)Num(x, "pages");
                 break;
         }
+    }
+
+    /// <summary>Options with their voters; bars are each option's share of everyone who voted.</summary>
+    public static List<PollOption> PollOptions(Message owner, IReadOnlyList<string> names,
+                                               IReadOnlyDictionary<string, List<string>> voters, IReadOnlySet<string> mine)
+    {
+        var total = voters.Values.SelectMany(v => v).Distinct().Count();
+        return names.Select(name =>
+        {
+            var who = voters.TryGetValue(name, out var list) ? list : [];
+            return new PollOption
+            {
+                Owner = owner,
+                Name = name,
+                Voters = who,
+                Selected = mine.Contains(name),
+                Fraction = total > 0 ? (double)who.Count / total : 0,
+            };
+        }).ToList();
     }
 
     private static Message Build(MessageDto dto, bool isGroup)

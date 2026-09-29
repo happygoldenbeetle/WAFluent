@@ -92,6 +92,36 @@ public sealed partial class MainViewModel : Observable
         _core.DownloadMedia(_selectedChat.Id, message.Id);
     }
 
+    /// <summary>A chat was opened for you (a number from a contact card): the window selects it in the list.</summary>
+    public event Action<Chat>? ChatOpened;
+
+    /// <summary>Starts (or opens) the chat with a number you've never messaged; the core checks it's on WhatsApp.</summary>
+    public void OpenNumber(string phone)
+    {
+        if (FindChatByPhone(phone) is { } chat)
+        {
+            SelectedChat = chat;
+            ChatOpened?.Invoke(chat);
+            return;
+        }
+        if (_core is null) Toast?.Invoke(false, "New chats need your phone linked.");
+        else _core.OpenNumber(phone);
+    }
+
+    /// <summary>
+    /// Tap an option: one-choice polls switch to it (or take the vote back if it was yours),
+    /// several-choice polls toggle it. Sent at once, like WhatsApp; the core echoes the result.
+    /// </summary>
+    public void VotePoll(PollOption option)
+    {
+        var poll = option.Owner;
+        var mine = poll.PollOptions.Where(o => o.Selected).Select(o => o.Name).ToList();
+        List<string> next = poll.PollMulti
+            ? option.Selected ? mine.Where(n => n != option.Name).ToList() : [.. mine, option.Name]
+            : option.Selected ? [] : [option.Name];
+        if (_core is not null && _selectedChat is not null) _core.VotePoll(_selectedChat.Id, poll.Id, next);
+    }
+
     /// <summary>The 1:1 chat with this phone number (any format: "+92 300 1234567", "923001234567"...).</summary>
     public Chat? FindChatByPhone(string phone)
     {

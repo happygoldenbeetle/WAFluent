@@ -54,6 +54,8 @@ pub(crate) struct Ctx {
     backfill: Arc<Mutex<HashSet<(String, String)>>>,
     /// Spaces those requests out so a long chat doesn't flood the phone.
     backfill_gate: Arc<tokio::sync::Mutex<()>>,
+    /// When a media refill was last asked for, per chat: its answer isn't "nothing older".
+    backfill_sent: Arc<Mutex<HashMap<String, std::time::Instant>>>,
 }
 
 impl Ctx {
@@ -136,6 +138,7 @@ async fn run(dir: PathBuf) {
         media: media_tx,
         backfill: Arc::default(),
         backfill_gate: Arc::default(),
+        backfill_sent: Arc::default(),
     };
     ctx.status("starting", None);
 
@@ -175,7 +178,13 @@ async fn run(dir: PathBuf) {
             let ctx = ctx.clone();
             move |m| {
                 let ctx = ctx.clone();
-                async move { on_message(&ctx, &m.message, &m.info) }
+                async move {
+                    if let Some(vote) = extract::poll_vote(&m.message) {
+                        poll_vote(&ctx, &m.client, &m.info, vote).await;
+                    } else {
+                        on_message(&ctx, &m.message, &m.info);
+                    }
+                }
             }
         })
         .on_event({
@@ -242,6 +251,11 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
             load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
         }
+        Command::VotePoll { chat_id, message_id, options } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { vote_poll(&ctx, &client, chat_id, message_id, options).await });
+        }
+        Command::OpenNumber { phone } => open_number(ctx, client, &phone).await,
         Command::DownloadMedia { chat_id, message_id, force } => {
             let _ = ctx.media.send(media::Request { chat_id, message_id, force });
         }
@@ -262,6 +276,7 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move {
                 let _turn = ctx.backfill_gate.lock().await;
+                ctx.backfill_sent.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), std::time::Instant::now());
                 if let Err(e) = client.fetch_message_history(&jid, &id, from_me, ts * 1000, 50).await {
                     warn!("media backfill request failed for {chat_id}: {e}");
                     ctx.backfill.lock().unwrap_or_else(|p| p.into_inner()).remove(&key);
@@ -395,6 +410,7 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
             file_name: String::new(),
             status: 1,
         };
+        db.ensure_chat(&chat_id, chat_id.ends_with("@g.us"));
         db.insert_message(&chat_id, &stored);
         if let Some(quote) = &quote {
             db.insert_quote(&chat_id, &stored.id, quote);
@@ -637,6 +653,9 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let progress = lazy.progress();
             let on_demand = lazy.sync_type() == wa::history_sync::HistorySyncType::ON_DEMAND as i32;
             let session = lazy.peer_data_request_session_id().map(str::to_string);
+            if on_demand {
+                info!("on-demand history answer, session {session:?}");
+            }
             let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
             match result {
                 Ok(Ok(Ingested { chats, upgraded })) => {
@@ -823,6 +842,11 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
             db.insert_media(&chat_id, &stored.id, media);
         }
         db.insert_extra(&chat_id, &stored.id, &thumb, extra.as_ref());
+        if stored.kind == "poll" {
+            if let Some(secret) = extract::message_secret(message) {
+                db.set_poll(&chat_id, &stored.id, &secret, &source.sender.to_non_ad_string());
+            }
+        }
         if let Some(quote) = &quote {
             db.insert_quote(&chat_id, &stored.id, quote);
         }
@@ -897,7 +921,13 @@ fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>, se
     };
     for (chat_id, p, answers) in waiting {
         let messages = ctx.db().messages_before(&chat_id, p.ts, &p.id, 200);
-        let complete = messages.is_empty() && (answers || chats_in_chunk.get(&chat_id) == Some(&0));
+        let refilling = ctx.backfill_sent.lock().unwrap_or_else(|p| p.into_inner()).get(&chat_id).is_some_and(|t| t.elapsed() < Duration::from_secs(20));
+        let complete = messages.is_empty() && (answers || chats_in_chunk.get(&chat_id) == Some(&0) || !refilling);
+        info!(
+            "older messages for {chat_id}: {} found, request {:?}, answers it: {answers}, refill in flight: {refilling} -> complete: {complete}",
+            messages.len(),
+            p.request
+        );
         if messages.is_empty() && !complete {
             continue;
         }
@@ -996,6 +1026,25 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
         let id = key.id.clone().unwrap_or_default();
         let new_media = content.media.as_ref().is_some_and(|media| s.insert_media(&chat_id, &id, media));
         let new_extra = s.insert_extra(&chat_id, &id, &content.thumb, content.extra.as_ref());
+        let mut new_votes = false;
+        if content.kind == "poll" {
+            if let Some(secret) = msg.and_then(extract::message_secret) {
+                let creator = if from_me { "me".to_string() } else { sender.clone() };
+                s.set_poll(&chat_id, &id, &secret, &creator);
+            }
+            // History hands over the votes already decrypted.
+            let options = s.poll_options(&chat_id, &id);
+            for update in &wmi.poll_updates {
+                let (Some(vkey), Some(vote)) = (update.poll_update_message_key.as_option(), update.vote.as_option()) else { continue };
+                let voter = match (vkey.from_me.unwrap_or(false), is_group) {
+                    (true, _) => "me".to_string(),
+                    (false, true) => vkey.participant.clone().unwrap_or_default(),
+                    (false, false) => chat_id.clone(),
+                };
+                let chosen = option_names(&options, &vote.selected_options);
+                new_votes |= s.set_vote(&chat_id, &id, &voter, &chosen, update.sender_timestamp_ms.unwrap_or(0));
+            }
+        }
         if let Some(quote) = msg.and_then(extract::quote) {
             s.insert_quote(&chat_id, &id, &quote);
         }
@@ -1013,7 +1062,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
                 status: if from_me { delivery(wmi) } else { 0 },
             },
         );
-        if (new_media || new_extra) && !inserted {
+        if (new_media || new_extra || new_votes) && !inserted {
             upgraded.push((chat_id.clone(), id));
         }
     }
@@ -1057,4 +1106,107 @@ fn delivery(wmi: &wa::WebMessageInfo) -> u8 {
         Some(Status::DELIVERY_ACK) => 2,
         _ => 1,
     }
+}
+
+// ───────────── Polls ─────────────
+
+/// Option hashes (what a vote carries) back to option names.
+fn option_names(options: &[String], hashes: &[Vec<u8>]) -> Vec<String> {
+    options
+        .iter()
+        .filter(|o| hashes.iter().any(|h| h.as_slice() == whatsapp_rust::wacore::poll::compute_option_hash(o).as_slice()))
+        .cloned()
+        .collect()
+}
+
+/// "me" (a poll you made on your phone, from history) in the chat's address family.
+fn poll_creator(client: &Client, chat_id: &str, creator: &str) -> Option<Jid> {
+    if creator == "me" {
+        let own = if chat_id.ends_with("@lid") { client.lid().or_else(|| client.pn()) } else { client.pn() };
+        return own.map(|j| j.to_non_ad());
+    }
+    creator.parse().ok()
+}
+
+/// A vote arrived (someone's, or yours from the phone): decrypt it with the poll's secret.
+async fn poll_vote(ctx: &Ctx, client: &Arc<Client>, info: &MessageInfo, vote: extract::PollVote) {
+    let chat_id = ctx.db().canonical(&info.source.chat.to_non_ad_string());
+    let Some((secret, creator, options)) = ctx.db().poll(&chat_id, &vote.poll_id) else {
+        warn!("vote for unknown poll {chat_id}/{}", vote.poll_id);
+        return;
+    };
+    let Some(creator) = poll_creator(client, &chat_id, &creator) else { return };
+    let voter = info.source.sender.to_non_ad();
+    let ciphertext = whatsapp_rust::features::PollVoteCiphertext { enc_payload: &vote.payload, enc_iv: &vote.iv };
+    match client.polls().decrypt_vote(ciphertext, &secret, &vote.poll_id, &creator, &voter).await {
+        Ok(hashes) => {
+            let who = if info.source.is_from_me { "me".to_string() } else { voter.to_string() };
+            let ts = if vote.ts > 0 { vote.ts } else { info.timestamp.timestamp_millis() };
+            if ctx.db().set_vote(&chat_id, &vote.poll_id, &who, &option_names(&options, &hashes), ts) {
+                send_message_update(ctx, &chat_id, &vote.poll_id);
+            }
+        }
+        Err(e) => warn!("couldn't decrypt a vote on {chat_id}/{}: {e}", vote.poll_id),
+    }
+}
+
+/// Your vote: shown right away, then sent (encrypted with the poll's secret).
+async fn vote_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, poll_id: String, options: Vec<String>) {
+    let Some((secret, creator, _)) = ctx.db().poll(&chat_id, &poll_id) else {
+        ctx.send(Out::Notice { ok: false, text: "This poll can't be voted on from this PC (it arrived before WAFluent kept poll keys).".into() });
+        return;
+    };
+    let (Some(creator), Ok(jid)) = (poll_creator(client, &chat_id, &creator), chat_id.parse::<Jid>()) else { return };
+    let previous = ctx.db().set_vote(&chat_id, &poll_id, "me", &options, whatsapp_rust::wacore::time::now_millis());
+    if previous {
+        send_message_update(ctx, &chat_id, &poll_id);
+    }
+    if let Err(e) = client.polls().vote(jid, &poll_id, &creator, &secret, &options).await {
+        warn!("vote on {chat_id}/{poll_id} failed: {e}");
+        ctx.send(Out::Notice { ok: false, text: "Couldn't send your vote.".into() });
+    }
+}
+
+// ───────────── New chats ─────────────
+
+/// Opens the chat with a phone number, creating it if you've never messaged them.
+async fn open_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) {
+    let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
+    if digits.len() < 6 {
+        ctx.send(Out::Notice { ok: false, text: format!("{phone} isn't a phone number.") });
+        return;
+    }
+    let pn = format!("{digits}@s.whatsapp.net");
+    let existing = ctx.db().canonical(&pn);
+    if ctx.db().chat(&existing).is_some() {
+        ctx.send(Out::Opened { chat_id: existing });
+        return;
+    }
+    let Ok(jid) = pn.parse::<Jid>() else { return };
+    let found = match client.contacts().is_on_whatsapp(std::slice::from_ref(&jid)).await {
+        Ok(results) => results.into_iter().find(|r| r.is_registered),
+        Err(e) => {
+            warn!("is_on_whatsapp {digits} failed: {e}");
+            ctx.send(Out::Notice { ok: false, text: "Couldn't check that number. Try again in a moment.".into() });
+            return;
+        }
+    };
+    let Some(found) = found else {
+        ctx.send(Out::Notice { ok: false, text: format!("{phone} isn't on WhatsApp.") });
+        return;
+    };
+    let chat_id = {
+        let db = ctx.db();
+        // Known by their LID already (a group, say)? Use that chat.
+        let lid_chat = found.lid.as_ref().map(|l| db.canonical(&l.to_non_ad_string())).filter(|id| db.chat(id).is_some());
+        let chat_id = lid_chat.unwrap_or(pn.clone());
+        if let Some(lid) = &found.lid {
+            db.add_alias(&lid.to_non_ad_string(), &chat_id);
+        }
+        db.ensure_chat(&chat_id, false);
+        chat_id
+    };
+    let _ = ctx.avatars.send(avatars::Request { chat_id: chat_id.clone(), force: false });
+    send_chat(ctx, &chat_id);
+    ctx.send(Out::Opened { chat_id });
 }

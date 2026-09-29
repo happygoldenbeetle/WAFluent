@@ -154,9 +154,7 @@
                                         </Grid>
                                     </Border>
                                     <TextBlock Grid.Row="3" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                               Margin="0,-5.3,0,-3.5" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}">
-                                        <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
-                                    </TextBlock>
+                                               Margin="0,-5.3,0,-3.5" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}" controls:LinkText.Message="{x:Bind}" />
                                     <!-- Time on the same baseline as the last line of text. -->
                                     <StackPanel Grid.Row="3" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                 Orientation="Horizontal" Spacing="3">
@@ -227,9 +225,7 @@
                                     <!-- Caption: 10 px from the picture and the bubble edges (4 bubble + 6 here). -->
                                     <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
                                         <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                                   Margin="0,-5.3,0,-3.5">
-                                            <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
-                                        </TextBlock>
+                                                   Margin="0,-5.3,0,-3.5" controls:LinkText.Message="{x:Bind}" />
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                     Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
@@ -351,7 +347,8 @@
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <Grid>
-                                                    <TextBlock Text="{x:Bind helpers:Ui.FileIcon(FileName)}" FontSize="28" VerticalAlignment="Center" />
+                                                    <!-- The icon Windows shows for this type: its default app's (Helpers/FileIcons.cs). -->
+                                                    <Image Source="{x:Bind helpers:FileIcons.For(FileName)}" Width="40" Height="40" VerticalAlignment="Center" />
                                                     <ProgressRing Width="30" Height="30" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
                                                 </Grid>
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -448,9 +445,7 @@
                                     <!-- Caption: 10 px from the picture and the bubble edges (4 bubble + 6 here). -->
                                     <Grid Padding="6,10,6,6" Visibility="{x:Bind HasText}">
                                         <TextBlock TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
-                                                   Margin="0,-5.3,0,-3.5">
-                                            <Run Text="{x:Bind Text}" /><Run Text="{x:Bind TimeSpacer}" FontSize="11" Foreground="Transparent" />
-                                        </TextBlock>
+                                                   Margin="0,-5.3,0,-3.5" controls:LinkText.Message="{x:Bind}" />
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
@@ -490,20 +485,38 @@
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
-                                    <!-- The map snapshot the sender's phone made; click opens the place in maps. -->
+                                    <!-- A sharp street map (Controls/MapView.cs); click opens the place in Google Maps. -->
                                     <Grid Height="150" CornerRadius="6" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped">
                                         <FontIcon Glyph="&#xE707;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}" />
-                                        <Border>
-                                            <Border.Background>
-                                                <ImageBrush ImageSource="{x:Bind helpers:Ui.Thumb(Thumb)}" Stretch="UniformToFill" />
-                                            </Border.Background>
-                                        </Border>
+                                        <controls:MapView Latitude="{x:Bind Latitude}" Longitude="{x:Bind Longitude}" Thumb="{x:Bind Thumb}" CornerRadius="6" />
                                         <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Padding="8,2,8,3" CornerRadius="9"
                                                 Background="{ThemeResource DangerBrush}" Visibility="{x:Bind IsLiveLocation}">
                                             <TextBlock Text="LIVE" FontSize="11" FontWeight="SemiBold" Foreground="White" />
                                         </Border>
+                                        <!-- Where a click takes you. -->
+                                        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6" Padding="5,2,8,3" CornerRadius="9" Background="#F2FFFFFF">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <Grid Width="10" Height="14" VerticalAlignment="Center">
+                                                    <Path Data="M5,0 A5,5 0 0 1 10,5 C10,8.4 5,14 5,14 C5,14 0,8.4 0,5 A5,5 0 0 1 5,0 Z" Fill="#EA4335" />
+                                                    <Ellipse Width="3.6" Height="3.6" Fill="#A50E0E" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,3.2,0,0" />
+                                                </Grid>
+                                                <TextBlock Text="Google Maps" FontSize="11" FontWeight="SemiBold" Foreground="#3C4043" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Border>
+                                        <!-- The map tiles' licence asks for this credit. -->
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,4,4,0" Padding="4,0,4,1" CornerRadius="4" Background="#CCFFFFFF">
+                                            <TextBlock Text="© OpenStreetMap" FontSize="9" Foreground="#99000000" />
+                                        </Border>
+                                        <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
+                                                CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasPlaceText)}">
+                                            <StackPanel Orientation="Horizontal" Spacing="3">
+                                                <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
+                                                <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            </StackPanel>
+                                        </Border>
                                     </Grid>
-                                    <Grid Padding="6,10,6,6">
+                                    <!-- A named place (a shop, a landmark): its name and address under the map. -->
+                                    <Grid Padding="6,10,6,6" Visibility="{x:Bind HasPlaceText}">
                                         <StackPanel Spacing="2" Margin="0,0,0,16">
                                             <TextBlock Text="{x:Bind PlaceTitle}" FontWeight="SemiBold" TextWrapping="Wrap" />
                                             <TextBlock Text="{x:Bind PlaceAddress}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" TextWrapping="Wrap"
@@ -597,7 +610,7 @@
 
                 <helpers:MessageTemplateSelector.Poll>
                     <DataTemplate x:DataType="models:Message">
-                        <!-- Polls: question and options. Votes are encrypted to the voters' phones, so none are shown. -->
+                        <!-- Polls: tap an option to vote; counts and bars from everyone's votes (synced with the phone). -->
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
@@ -624,25 +637,40 @@
                                     </StackPanel>
                                     <ItemsControl ItemsSource="{x:Bind PollOptions}" IsTabStop="False">
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="x:String">
-                                                <Grid ColumnSpacing="10" RowSpacing="6" Margin="0,4">
+                                            <DataTemplate x:DataType="models:PollOption">
+                                                <Grid ColumnSpacing="10" RowSpacing="7" Padding="0,5" Background="Transparent" Tag="{x:Bind}" Tapped="PollOption_Tapped">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" />
                                                         <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
-                                                    <Ellipse Width="18" Height="18" Stroke="{ThemeResource MetaTextBrush}" StrokeThickness="1.5" VerticalAlignment="Top" Margin="0,1,0,0" />
-                                                    <TextBlock Grid.Column="1" Text="{x:Bind}" TextWrapping="Wrap" />
-                                                    <Rectangle Grid.Column="1" Grid.Row="1" Height="5" RadiusX="2.5" RadiusY="2.5" Fill="{ThemeResource FileCardDividerBrush}" />
+                                                    <!-- Circle for one choice, rounded square for several; filled green with a tick when it's yours. -->
+                                                    <Grid Width="20" Height="20" VerticalAlignment="Top">
+                                                        <Border CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" BorderThickness="1.6"
+                                                                BorderBrush="{ThemeResource MetaTextBrush}" Visibility="{x:Bind helpers:Ui.Collapsed(Selected)}" />
+                                                        <Border CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" Background="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind Selected}">
+                                                            <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" />
+                                                        </Border>
+                                                    </Grid>
+                                                    <TextBlock Grid.Column="1" Text="{x:Bind Name}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="2" Text="{x:Bind CountLabel}" FontSize="13" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Center" />
+                                                    <Grid Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" Height="6">
+                                                        <Rectangle RadiusX="3" RadiusY="3" Fill="{ThemeResource FileCardDividerBrush}" />
+                                                        <Rectangle RadiusX="3" RadiusY="3" Fill="{ThemeResource ChatAccentBrush}" RenderTransformOrigin="0,0.5">
+                                                            <Rectangle.RenderTransform>
+                                                                <ScaleTransform ScaleX="{x:Bind Fraction}" />
+                                                            </Rectangle.RenderTransform>
+                                                        </Rectangle>
+                                                    </Grid>
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <Grid>
-                                        <TextBlock Text="Votes are shown on your phone" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom" />
                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom" Orientation="Horizontal" Spacing="3">
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
@@ -651,6 +679,9 @@
                                                                     Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                         </StackPanel>
                                     </Grid>
+                                    <Rectangle Height="1" Margin="-10,0" Fill="{ThemeResource FileCardDividerBrush}" />
+                                    <Button Content="View votes" Style="{StaticResource BubbleActionButtonStyle}" HorizontalAlignment="Stretch" Margin="0,-4,0,-4"
+                                            Tag="{x:Bind}" Click="PollVotes_Click" IsEnabled="{x:Bind HasVotes}" />
                                 </StackPanel>
                             </controls:Bubble>
                             <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">

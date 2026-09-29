@@ -60,6 +60,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string>? MessageRemoved;                     // chat, message id (deleted for me)
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
+    public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<bool, string>? Notice;                               // ok, text for a toast   // chat, message ids, 2 delivered / 3 read
 
     public static string DataDirectory { get; } =
@@ -105,6 +106,13 @@ public sealed class CoreClient : IDisposable
         Send(new { cmd = "loadOlder", chatId, beforeTs, beforeId, limit });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
+
+    /// <summary>Your choice in a poll (none = take your vote back).</summary>
+    public void VotePoll(string chatId, string messageId, IReadOnlyList<string> options) =>
+        Send(new { cmd = "votePoll", chatId, messageId, options });
+
+    /// <summary>Opens (or starts) the chat with a phone number; answered by <see cref="Opened"/>.</summary>
+    public void OpenNumber(string phone) => Send(new { cmd = "openNumber", phone });
 
     /// <summary>`force`: also retry one the phone said it no longer has.</summary>
     public void DownloadMedia(string chatId, string messageId, bool force = false) =>
@@ -259,6 +267,10 @@ public sealed class CoreClient : IDisposable
             case "starred":
                 var items = root.GetProperty("items").Deserialize<List<StarredDto>>(Json) ?? [];
                 Post(() => StarredReceived?.Invoke(items));
+                break;
+            case "opened":
+                var openedChat = root.GetProperty("chatId").GetString() ?? "";
+                Post(() => Opened?.Invoke(openedChat));
                 break;
             case "notice":
                 var ok = root.GetProperty("ok").GetBoolean();
