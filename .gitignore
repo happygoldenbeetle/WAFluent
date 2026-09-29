@@ -10,3 +10,5 @@ src/Assets/Fonts/AppleColorEmoji.ttf
 
 # The app's GIPHY API key (one line), built into the app; never committed.
 src/giphy.key
+
+__pycache__/
