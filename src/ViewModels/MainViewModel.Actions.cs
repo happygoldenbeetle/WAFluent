@@ -90,8 +90,14 @@ public sealed partial class MainViewModel
         _core.SendTyping(chat.Id, "paused");
     }
 
-    /// <summary>The window came to the front or went away: WhatsApp shows you online accordingly.</summary>
-    public void SetPresence(bool available) => _core?.SetPresence(available);
+    private bool _available = true;
+
+    /// <summary>The window came to the front or went away: WhatsApp shows you online accordingly (resent on reconnect).</summary>
+    public void SetPresence(bool available)
+    {
+        _available = available;
+        if (_state == ConnectionState.Connected) _core?.SetPresence(available);
+    }
 
     /// <summary>A message changed (vote, edit, download details): its bubble is swapped in place.</summary>
     private void ApplyUpdate(Chat chat, MessageDto dto)

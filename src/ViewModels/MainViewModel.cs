@@ -278,6 +278,8 @@ public sealed partial class MainViewModel : Observable
         };
         _statusDetail = detail;
         if (_state != ConnectionState.Qr) QrImage = null;
+        // (Re)connected: WhatsApp forgot whether you're online; tell it again.
+        if (_state == ConnectionState.Connected) _core?.SetPresence(_available);
         RaiseConnection();
     }
 
