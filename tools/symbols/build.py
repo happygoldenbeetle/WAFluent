@@ -12,16 +12,21 @@ XAML icons can't use. This copy:
     checkmarks, dropdown arrows... all draw SF-style. App.xaml makes this font the symbol
     font with Segoe Fluent Icons as fallback, so anything not remapped still draws;
   * uses Segoe Fluent Icons' metrics (2048 units, ascent 2048, descent 0), scaling
-    Framework7's 512-unit glyphs onto it so they look as big as Segoe's at the same FontSize.
+    Framework7's 512-unit glyphs onto it so they look as big as Segoe's at the same FontSize;
+  * softens every corner (round()): outer corners and line ends get a ROUND_OUT radius, inner
+    corners ROUND_IN, both well under half the ~135-unit stroke so no detail disappears.
 
-Run: python tools/symbols/build.py   (needs fontTools)
+Run: python tools/symbols/build.py   (needs fontTools and shapely)
 """
 import json
 import os
 import re
 
+from fontTools.pens.basePen import BasePen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry.polygon import orient
 from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.tables._c_m_a_p import cmap_format_4, cmap_format_12
 
@@ -33,6 +38,8 @@ CLASS = os.path.join(ROOT, 'src', 'Helpers', 'Sf.cs')
 CODEPOINTS = os.path.join(HERE, 'codepoints.json')
 SEGOE = ['C:/Windows/Fonts/SegoeIcons.ttf', 'C:/Windows/Fonts/segmdl2.ttf']
 FAMILY = 'WAFluent Symbols'
+ROUND_OUT = 64   # font units (2048 per em); strokes are ~135-165, so under half
+ROUND_IN = 64
 
 # Segoe Fluent Icons code point -> Framework7 icon.
 REMAP = {
@@ -123,6 +130,90 @@ REMAP = {
 }
 
 
+class FlattenPen(BasePen):
+    """Collects contours as point lists, curves cut into short straight segments."""
+
+    STEPS = 12
+
+    def __init__(self):
+        super().__init__(None)
+        self.contours, self._current = [], []
+
+    def _moveTo(self, p):
+        self._current = [p]
+
+    def _lineTo(self, p):
+        self._current.append(p)
+
+    def _curveToOne(self, p1, p2, p3):
+        (x0, y0) = self._current[-1]
+        for i in range(1, self.STEPS + 1):
+            t = i / self.STEPS
+            u = 1 - t
+            self._current.append((u**3 * x0 + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t**3 * p3[0],
+                                  u**3 * y0 + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t**3 * p3[1]))
+
+    def _qCurveToOne(self, p1, p2):
+        (x0, y0) = self._current[-1]
+        for i in range(1, self.STEPS + 1):
+            t = i / self.STEPS
+            u = 1 - t
+            self._current.append((u * u * x0 + 2 * u * t * p1[0] + t * t * p2[0],
+                                  u * u * y0 + 2 * u * t * p1[1] + t * t * p2[1]))
+
+    def _closePath(self):
+        if len(self._current) >= 3:
+            self.contours.append(self._current)
+        self._current = []
+
+    _endPath = _closePath
+
+
+def signed_area(points):
+    return sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1])) / 2
+
+
+def round_glyph(contours):
+    """The filled shape (non-zero winding, sized biggest first) with softened corners."""
+    if not contours:
+        return None
+    rings = sorted(contours, key=lambda c: abs(signed_area(c)), reverse=True)
+    fill_sign = signed_area(rings[0]) > 0
+    shape = Polygon()
+    for ring in rings:
+        piece = Polygon(ring).buffer(0)
+        shape = shape.union(piece) if (signed_area(ring) > 0) == fill_sign else shape.difference(piece)
+    # Icons with details thinner than the radius (hairlines, small dots) would lose them:
+    # those get a smaller radius, or none.
+    for scale in (1, 0.6, 0.35, 0):
+        r_out, r_in = ROUND_OUT * scale, ROUND_IN * scale
+        if r_out == 0:
+            return shape
+        opened = shape.buffer(-r_out, quad_segs=6).buffer(r_out, quad_segs=6)
+        rounded = opened.buffer(r_in, quad_segs=6).buffer(-r_in, quad_segs=6).simplify(1.5)
+        if shape.symmetric_difference(rounded).area < 0.04 * shape.area and \
+                len(getattr(rounded, 'geoms', [rounded])) >= len(getattr(shape, 'geoms', [shape])):
+            return rounded
+    return shape
+
+
+def draw_polygons(shape, pen):
+    polygons = shape.geoms if isinstance(shape, MultiPolygon) else [shape]
+    for polygon in polygons:
+        if polygon.is_empty:
+            continue
+        polygon = orient(polygon, sign=-1.0)   # TrueType: outer clockwise, holes counter-clockwise
+        for ring in [polygon.exterior, *polygon.interiors]:
+            points = [(round(x), round(y)) for x, y in ring.coords[:-1]]
+            points = [p for i, p in enumerate(points) if p != points[i - 1]]
+            if len(points) < 3:
+                continue
+            pen.moveTo(points[0])
+            for p in points[1:]:
+                pen.lineTo(p)
+            pen.closePath()
+
+
 def assign(names):
     """Name -> code point: kept from codepoints.json; new names get the next free ones."""
     saved = {}
@@ -169,8 +260,12 @@ def main():
     keep = ['.notdef'] + [icons[n] for n in names]
     new_glyphs = {}
     for g in keep:
+        flat = FlattenPen()
+        glyph_set[g].draw(TransformPen(flat, (scale, 0, 0, scale, (2048 - 512 * scale) / 2, shift)))
         pen = TTGlyphPen(None)
-        glyph_set[g].draw(TransformPen(pen, (scale, 0, 0, scale, (2048 - 512 * scale) / 2, shift)))
+        shape = round_glyph(flat.contours)
+        if shape is not None and not shape.is_empty:
+            draw_polygons(shape, pen)
         new_glyphs[g] = pen.glyph()
     font.setGlyphOrder(keep)
     glyf.glyphs = new_glyphs
