@@ -38,7 +38,7 @@ public sealed partial class MainViewModel : Observable
             foreach (var chat in SampleData.Create())
             {
                 Track(chat);
-                UpdateRuns(chat);   // tails and receipts, as a loaded live chat gets
+                UpdateRuns(chat);   // tails, as a loaded live chat gets
             }
             SyncVisible();
             SelectedChat = _allChats.First(c => c.Name == "Alice Whitman");
@@ -558,8 +558,7 @@ public sealed partial class MainViewModel : Observable
 
     /// <summary>
     /// Runs of bubbles from the same person (broken by someone else, a notice or a new day).
-    /// Classic: the first bubble of a run gets the tail; iMessage style: the last one, and
-    /// your latest message shows "Delivered" / "Read".
+    /// Classic: the first bubble of a run gets the tail; round style: the last one.
     /// </summary>
     public static void UpdateRuns(Chat chat)
     {
@@ -567,7 +566,6 @@ public sealed partial class MainViewModel : Observable
         static bool SameRun(Message a, Message b) =>
             a.Kind is not (MessageKind.DateDivider or MessageKind.System) && b.Kind is not (MessageKind.DateDivider or MessageKind.System)
             && a.IsOutgoing == b.IsOutgoing && a.SenderName == b.SenderName;
-        Message? lastOutgoing = null;
         for (var i = 0; i < list.Count; i++)
         {
             var m = list[i];
@@ -575,9 +573,7 @@ public sealed partial class MainViewModel : Observable
             m.HasTail = Helpers.Ui.IMessage
                 ? i + 1 >= list.Count || !SameRun(m, list[i + 1])
                 : i == 0 || !SameRun(list[i - 1], m);
-            if (m.IsOutgoing) lastOutgoing = m;
         }
-        foreach (var m in list) m.ShowReceipt = Helpers.Ui.IMessage && m == lastOutgoing;
     }
 
     // ───────────── Sending and replying ─────────────

@@ -68,12 +68,14 @@ public sealed partial class MainWindow : Window
         {
             // Follow new messages only when you're already at the bottom, not while reading older ones.
             if (m.IsOutgoing || MessagesScroller.ScrollableHeight - MessagesScroller.VerticalOffset < 160) ScrollToBottom();
+            else if (!m.IsOutgoing) { _missedWhileUp++; UpdateJumpDown(); }   // count it on the jump button
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
         // Open a chat and start typing: the composer takes focus (after the chat has drawn).
         ViewModel.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(ViewModel.SelectedChat)) _missedWhileUp = 0;
             if (e.PropertyName == nameof(ViewModel.SelectedChat) && ViewModel.SelectedChat is not null)
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ComposerBox.Focus(FocusState.Programmatic));
         };
@@ -296,6 +298,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Near the top of the conversation: fetch older messages.</summary>
     private void MessagesScroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
+        UpdateJumpDown();
         if (DateTime.Now < _ignoreScrollUntil) return;   // our own jump to the bottom
         if (MessagesScroller.ScrollableHeight > 0 && MessagesScroller.VerticalOffset < 400)
             ViewModel.LoadOlder(ViewModel.SelectedChat);

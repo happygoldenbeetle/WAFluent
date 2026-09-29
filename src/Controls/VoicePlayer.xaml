@@ -14,7 +14,7 @@
       Spacing is tuned by eye: the meta line is light text, so the gap under it is a touch
       smaller than the gap above the (solid) picture, which reads as equal.
     -->
-    <Grid Width="320" Margin="0,6,0,6" RowSpacing="5">
+    <Grid Width="320" Margin="0,10,0,6" RowSpacing="5">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

@@ -46,8 +46,7 @@ public sealed partial class VoicePlayer : UserControl
         Message.PropertyChanged += OnMessagePropertyChanged;
         TimeText.Text = Message.Time;
         Ticks.Delivery = Message.Delivery;
-        Ticks.Visibility = Message.IsOutgoing && !Ui.IMessage ? Visibility.Visible : Visibility.Collapsed;
-        TimeText.Visibility = Ui.IMessage ? Visibility.Collapsed : Visibility.Visible;
+        Ticks.Visibility = Message.IsOutgoing ? Visibility.Visible : Visibility.Collapsed;
         var (path, name) = PictureFor?.Invoke(Message) ?? (null, "");
         Picture.DisplayName = name;
         Picture.Source = path;

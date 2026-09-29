@@ -1,4 +1,5 @@
 using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -13,8 +14,56 @@ namespace WhatsAppNative;
 /// </summary>
 public sealed partial class MainWindow
 {
+    // ───────────── Jump to the latest message ─────────────
+
+    private int _missedWhileUp;
+
+    /// <summary>The button shows once you're a screen or so above the latest message.</summary>
+    private void UpdateJumpDown()
+    {
+        var away = MessagesScroller.ScrollableHeight - MessagesScroller.VerticalOffset > 320;
+        if (!away) _missedWhileUp = 0;
+        JumpDown.Visibility = away ? Visibility.Visible : Visibility.Collapsed;
+        JumpDownBadge.Value = _missedWhileUp;
+        JumpDownBadge.Visibility = _missedWhileUp > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void JumpDown_Click(object sender, RoutedEventArgs e)
+    {
+        _missedWhileUp = 0;
+        MessagesScroller.ChangeView(null, MessagesScroller.ScrollableHeight, null, disableAnimation: false);
+    }
+
+    /// <summary>It fades and grows in / out instead of popping.</summary>
+    private void SetupJumpDownMotion()
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(JumpDown);
+        var compositor = visual.Compositor;
+        visual.CenterPoint = new Vector3(20, 20, 0);
+        CompositionAnimationGroup Fade(float from, float to)
+        {
+            var group = compositor.CreateAnimationGroup();
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.Target = "Scale";
+            scale.InsertKeyFrame(0, new Vector3(from, from, 1));
+            scale.InsertKeyFrame(1, new Vector3(to, to, 1));
+            scale.Duration = TimeSpan.FromMilliseconds(160);
+            group.Add(scale);
+            var opacity = compositor.CreateScalarKeyFrameAnimation();
+            opacity.Target = "Opacity";
+            opacity.InsertKeyFrame(0, from < to ? 0 : 1);
+            opacity.InsertKeyFrame(1, from < to ? 1 : 0);
+            opacity.Duration = TimeSpan.FromMilliseconds(160);
+            group.Add(opacity);
+            return group;
+        }
+        ElementCompositionPreview.SetImplicitShowAnimation(JumpDown, Fade(0.7f, 1));
+        ElementCompositionPreview.SetImplicitHideAnimation(JumpDown, Fade(1, 0.7f));
+    }
+
     private void SetupBubbleMotion()
     {
+        SetupJumpDownMotion();
         ClassicBubblesSwitch.IsOn = _ui.ClassicBubbles;
         Messages.ElementPrepared += Messages_ElementPrepared;
         SetupTypingBubbleMotion();
