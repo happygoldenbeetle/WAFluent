@@ -954,6 +954,38 @@ impl Store {
         (thumb, extra)
     }
 
+    // ───────────── Sticker panel ─────────────
+
+    /// Stickers (`kind` "sticker") or GIFs ("gif") from every chat, newest first, each file once.
+    pub fn recent_media(&self, kind: &str, limit: usize) -> Vec<crate::protocol::StickerDto> {
+        let rows: Vec<(String, String, u32, u32, String, Vec<u8>)> = self
+            .db
+            .prepare(
+                "SELECT m.chat_id, m.id, x.width, x.height, x.path, x.file_sha256
+                 FROM messages m JOIN media x ON x.chat_id = m.chat_id AND x.message_id = m.id
+                 WHERE m.kind = ?1 AND x.direct_path != ''
+                 ORDER BY m.ts DESC LIMIT 600",
+            )
+            .and_then(|mut stmt| stmt.query_map([kind], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?.collect())
+            .unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        rows.into_iter()
+            .filter(|row| seen.insert(row.5.clone()))
+            .take(limit)
+            .map(|(chat_id, message_id, width, height, path, _)| {
+                let thumb = if kind == "gif" { self.extra(&chat_id, &message_id).0 } else { None };
+                crate::protocol::StickerDto {
+                    path: (!path.is_empty() && std::path::Path::new(&path).exists()).then_some(path),
+                    thumb,
+                    chat_id,
+                    message_id,
+                    width,
+                    height,
+                }
+            })
+            .collect()
+    }
+
     // ───────────── Polls ─────────────
 
     pub fn set_poll(&self, chat_id: &str, message_id: &str, secret: &[u8], creator: &str) {

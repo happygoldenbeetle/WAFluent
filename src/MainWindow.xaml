@@ -1170,10 +1170,15 @@
                                 <FontIcon Glyph="&#xE711;" FontSize="14" />
                             </Button>
                         </Grid>
-                        <Button Grid.Row="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
-                                Click="Emoji_Click">
-                            <FontIcon Glyph="&#xE76E;" FontSize="17" />
-                        </Button>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji"
+                                    Click="Emoji_Click">
+                                <FontIcon Glyph="&#xE76E;" FontSize="17" />
+                            </Button>
+                            <!-- Stickers and GIFs (Controls/StickerPanel.cs). -->
+                            <Button x:Name="StickerButton" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Stickers and GIFs"
+                                    AutomationProperties.Name="Stickers and GIFs" Click="Stickers_Click" />
+                        </StackPanel>
                         <Button Grid.Row="1" Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Attach" AutomationProperties.Name="Attach">
                             <FontIcon Glyph="&#xE723;" FontSize="17" />
                         </Button>

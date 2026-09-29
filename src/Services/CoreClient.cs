@@ -21,6 +21,9 @@ public sealed record MessageDto(
     string? FileName, int Status, MediaDto? Media, ReplyDto? Reply, string[]? Reactions, string? MyReaction, bool Starred, bool Edited,
     string? Thumb = null, System.Text.Json.JsonElement? Extra = null);
 
+/// <summary>A sticker or GIF for the sticker panel: the message it came in.</summary>
+public sealed record StickerDto(string ChatId, string MessageId, int Width, int Height, string? Path, string? Thumb);
+
 /// <summary>The message a reply quotes.</summary>
 public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview);
 
@@ -61,6 +64,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
+    public event Action<IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>>? Stickers;   // recent stickers, GIFs
     public event Action<string, string, string>? Typing;                     // chat, who (groups), typing | recording | paused
     public event Action<string, bool, long?>? Presence;                      // chat, online, last seen (Unix s)
     public event Action<bool, string>? Notice;                               // ok, text for a toast   // chat, message ids, 2 delivered / 3 read
@@ -108,6 +112,12 @@ public sealed class CoreClient : IDisposable
         Send(new { cmd = "loadOlder", chatId, beforeTs, beforeId, limit });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
+
+    /// <summary>Recent stickers and GIFs for the panel; answered by <see cref="Stickers"/>.</summary>
+    public void LoadStickers() => Send(new { cmd = "loadStickers" });
+
+    /// <summary>Sends a sticker or GIF from the panel (not as forwarded).</summary>
+    public void SendStored(string chatId, string messageId, string to) => Send(new { cmd = "sendStored", chatId, messageId, to });
 
     /// <summary>Your choice in a poll (none = take your vote back).</summary>
     public void VotePoll(string chatId, string messageId, IReadOnlyList<string> options) =>
@@ -290,6 +300,11 @@ public sealed class CoreClient : IDisposable
                 var online = root.GetProperty("online").GetBoolean();
                 long? lastSeen = root.TryGetProperty("lastSeen", out var ls) && ls.ValueKind == System.Text.Json.JsonValueKind.Number ? ls.GetInt64() : null;
                 Post(() => Presence?.Invoke(presenceChat, online, lastSeen));
+                break;
+            case "stickers":
+                var stickers = root.GetProperty("stickers").Deserialize<List<StickerDto>>(Json) ?? [];
+                var gifs = root.GetProperty("gifs").Deserialize<List<StickerDto>>(Json) ?? [];
+                Post(() => Stickers?.Invoke(stickers, gifs));
                 break;
             case "opened":
                 var openedChat = root.GetProperty("chatId").GetString() ?? "";

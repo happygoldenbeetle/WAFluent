@@ -256,6 +256,17 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             tokio::spawn(async move { vote_poll(&ctx, &client, chat_id, message_id, options).await });
         }
         Command::OpenNumber { phone } => open_number(ctx, client, &phone).await,
+        Command::LoadStickers => {
+            let (stickers, gifs) = {
+                let db = ctx.db();
+                (db.recent_media("sticker", 120), db.recent_media("gif", 60))
+            };
+            ctx.send(Out::Stickers { stickers, gifs });
+        }
+        Command::SendStored { chat_id, message_id, to } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, vec![to], false).await });
+        }
         Command::SetPresence { available } => {
             let client = Arc::clone(client);
             tokio::spawn(async move {
@@ -340,7 +351,7 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::ExportChat { chat_id, path, utc_offset_minutes } => actions::export_chat(ctx, &chat_id, &path, utc_offset_minutes),
         Command::Forward { chat_id, message_id, to } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, to).await });
+            tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, to, true).await });
         }
         Command::PinMessage { chat_id, message_id, pin } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));

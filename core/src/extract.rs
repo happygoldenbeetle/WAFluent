@@ -399,8 +399,14 @@ pub fn quote(message: &wa::Message) -> Option<Quote> {
 }
 
 /// A forwarded copy: text as-is, attachments re-sent from their CDN reference (no re-upload).
-pub fn forwarded(kind: &str, text: &str, file_name: &str, media: Option<&Media>) -> Option<wa::Message> {
-    let context = MessageField::some(wa::ContextInfo { is_forwarded: Some(true), forwarding_score: Some(1), ..Default::default() });
+/// A stored message rebuilt for sending again from its CDN reference (no upload): marked
+/// "Forwarded" when `as_forward`, or plain (a sticker or GIF picked from the panel).
+pub fn forwarded(kind: &str, text: &str, file_name: &str, media: Option<&Media>, as_forward: bool) -> Option<wa::Message> {
+    let context = if as_forward {
+        MessageField::some(wa::ContextInfo { is_forwarded: Some(true), forwarding_score: Some(1), ..Default::default() })
+    } else {
+        MessageField::none()
+    };
     let caption = (!text.is_empty()).then(|| text.to_string());
     let mut m = wa::Message::default();
     let some = |b: &Vec<u8>| (!b.is_empty()).then(|| b.clone());

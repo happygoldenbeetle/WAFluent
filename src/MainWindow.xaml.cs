@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         SetupTheme();
         SetupTray();
         SetupBubbleMotion();
+        SetupStickers();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         SystemAccentSwitch.IsOn = _ui.UseSystemAccent;
         Helpers.AppColors.Changed += RefreshTheme;
@@ -94,6 +95,16 @@ public sealed partial class MainWindow : Window
                 chat.TypingText = "typing…";
                 await Task.Delay(3000);
                 ViewModel.SimulateIncoming(chat, "On my way! 🚗");
+            };
+        // WAFLUENT_SELFTEST=stickers: opens the sticker panel with placeholder items after 3 s.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "stickers")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                Stickers_Click(StickerButton, new RoutedEventArgs());
+                var pictures = Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg").Take(6).ToList();
+                var items = pictures.Select((p, i) => new StickerDto("sample", $"s{i}", 512, 512, p, null)).ToList();
+                _stickerPanel?.SetItems(items, []);
             };
         var pollTestDone = false;
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")

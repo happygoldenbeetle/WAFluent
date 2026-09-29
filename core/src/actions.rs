@@ -147,10 +147,12 @@ pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, firs
 // ───────────── Message menu ─────────────
 
 /// Sends a copy to each chat; attachments reuse the original upload.
-pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, to: Vec<String>) {
+/// Sends a stored message to other chats from its CDN reference. `as_forward`: marked
+/// "Forwarded"; otherwise sent as new (stickers and GIFs from the panel).
+pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, to: Vec<String>, as_forward: bool) {
     let Some((_, m)) = lookup(ctx, &chat_id, &message_id) else { return };
     let media = ctx.db().media(&chat_id, &message_id);
-    let Some(message) = extract::forwarded(&m.kind, &m.text, &m.file_name, media.as_ref().map(|(x, _)| x)) else {
+    let Some(message) = extract::forwarded(&m.kind, &m.text, &m.file_name, media.as_ref().map(|(x, _)| x), as_forward) else {
         notice(ctx, false, "This message can't be forwarded yet.");
         return;
     };

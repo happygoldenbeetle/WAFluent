@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Event {
+    /// The sticker panel's contents: recent stickers and GIFs.
+    Stickers { stickers: Vec<StickerDto>, gifs: Vec<StickerDto> },
     /// Someone in the chat is typing ("typing"), recording a voice note ("recording") or
     /// stopped ("paused"). `who` names them in groups.
     Typing { chat_id: String, who: String, state: &'static str },
@@ -223,6 +225,10 @@ pub enum Command {
     /// Open (or start) the 1:1 chat with a phone number, e.g. from a shared contact card.
     /// Answers `opened`, or a `notice` when the number isn't on WhatsApp.
     OpenNumber { phone: String },
+    /// Your recent stickers and GIFs (from every chat, newest first, each once); answered by `stickers`.
+    LoadStickers,
+    /// Send a sticker or GIF you've seen before (its stored message) to a chat, not as forwarded.
+    SendStored { chat_id: String, message_id: String, to: String },
     /// You're here (window focused) or away: WhatsApp shows you online, and only sends
     /// typing and online updates to clients that are available.
     SetPresence { available: bool },
@@ -265,4 +271,20 @@ pub enum Command {
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,
+}
+
+/// A sticker or GIF for the panel: the message it came in (to download and resend it).
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StickerDto {
+    pub chat_id: String,
+    pub message_id: String,
+    pub width: u32,
+    pub height: u32,
+    /// Downloaded file, when it is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The sender's small preview (GIFs), base64.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumb: Option<String>,
 }

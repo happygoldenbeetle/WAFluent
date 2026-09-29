@@ -16,6 +16,48 @@ namespace WhatsAppNative;
 /// </summary>
 public sealed partial class MainWindow
 {
+    // ───────────── Stickers and GIFs ─────────────
+
+    private Flyout? _stickerFlyout;
+    private Controls.StickerPanel? _stickerPanel;
+
+    private void SetupStickers()
+    {
+        StickerButton.Content = Controls.StickerPanel.StickerGlyph();
+        if (_core is null) return;
+        _core.Stickers += (stickers, gifs) => _stickerPanel?.SetItems(stickers, gifs);
+        _core.MediaReceived += (chatId, messageId, path) => _stickerPanel?.MediaArrived(chatId, messageId, path);
+    }
+
+    private void Stickers_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stickerFlyout is null)
+        {
+            _stickerPanel = new Controls.StickerPanel();
+            _stickerPanel.DownloadWanted += item => _core?.DownloadMedia(item.ChatId, item.MessageId);
+            _stickerPanel.Picked += item =>
+            {
+                _stickerFlyout?.Hide();
+                if (ViewModel.SelectedChat is { Id.Length: > 0 } chat) _core?.SendStored(item.ChatId, item.MessageId, chat.Id);
+                ComposerBox.Focus(FocusState.Programmatic);
+            };
+            var presenter = new Style(typeof(FlyoutPresenter));
+            presenter.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
+            presenter.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 1000.0));
+            presenter.Setters.Add(new Setter(FrameworkElement.MaxHeightProperty, 1000.0));
+            presenter.Setters.Add(new Setter(Control.CornerRadiusProperty, new CornerRadius(8)));
+            _stickerFlyout = new Flyout
+            {
+                Content = _stickerPanel,
+                FlyoutPresenterStyle = presenter,
+                ShouldConstrainToRootBounds = true,
+                Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft,
+            };
+        }
+        _core?.LoadStickers();   // fresh recents each time
+        _stickerFlyout.ShowAt(StickerButton);
+    }
+
     // ───────────── Downloads on demand ─────────────
 
     /// <summary>
