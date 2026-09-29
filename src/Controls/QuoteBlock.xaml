@@ -37,7 +37,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <FontIcon FontFamily="{StaticResource SymbolThemeFontFamily}" x:Name="KindIcon" FontSize="12" VerticalAlignment="Top" Margin="0,1,0,0"
+                    <FontIcon x:Name="KindIcon" FontSize="12" VerticalAlignment="Top" Margin="0,1,0,0"
                               Foreground="{ThemeResource MetaTextBrush}" />
                     <TextBlock x:Name="PreviewText" Grid.Column="1" FontSize="12.5" MaxLines="2" TextWrapping="Wrap"
                                TextTrimming="CharacterEllipsis" Foreground="{ThemeResource MetaTextBrush}" />

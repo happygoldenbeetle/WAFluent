@@ -35,7 +35,6 @@ public sealed partial class MainWindow : Window
 #endif
 
         InitializeComponent();
-        UpdateRailIcons("Chats");
         SetupSwipe();
         EmojiData.Warm();
         SetupChatListPane();
@@ -84,8 +83,6 @@ public sealed partial class MainWindow : Window
         // Online while the window is in front, like WhatsApp Desktop.
         Activated += (_, e) => ViewModel.SetPresence(e.WindowActivationState != WindowActivationState.Deactivated);
 #if DEBUG
-        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
-            Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
             Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
         // WAFLUENT_SELFTEST=poll: votes for the second option of the first poll after 6 s.
@@ -190,30 +187,10 @@ public sealed partial class MainWindow : Window
 
     // ───────────── Rail + chat list ─────────────
 
-    /// <summary>Rail icons, outline and (selected) filled, like SF Symbols' tab bars.</summary>
-    private static readonly Dictionary<string, (string Outline, string Fill)> RailIcons = new()
-    {
-        ["Chats"] = (Sf.ChatBubble2, Sf.ChatBubble2Fill),
-        ["Calls"] = (Sf.Phone, Sf.PhoneFill),
-        ["Status"] = (Sf.SmallcircleCircle, Sf.SmallcircleCircleFill),
-        ["Starred"] = (Sf.Star, Sf.StarFill),
-        ["Archived"] = (Sf.Archivebox, Sf.ArchiveboxFill),
-        ["Settings"] = (Sf.GearAlt, Sf.GearAltFill),
-    };
-
-    private void UpdateRailIcons(string selected)
-    {
-        if (Nav is null) return;
-        foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>())
-            if (item.Tag is string tag && RailIcons.TryGetValue(tag, out var icons) && item.Icon is FontIcon icon)
-                icon.Glyph = tag == selected ? icons.Fill : icons.Outline;
-    }
-
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        var section = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "Chats";
-        UpdateRailIcons(section);
         if (ListTitle is null) return;   // initial IsSelected fires during InitializeComponent
+        var section = (args.SelectedItem as NavigationViewItem)?.Tag as string ?? "Chats";
         var isList = section is "Chats" or "Archived";   // both are the chat list, filtered
         var isStarred = section == "Starred";
         var isSettings = section == "Settings";

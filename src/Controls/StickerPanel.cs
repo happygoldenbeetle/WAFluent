@@ -349,6 +349,16 @@ public sealed partial class StickerPanel : Grid
     private static void Highlight(Button tab, bool on) =>
         tab.Background = on ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
 
-    /// <summary>A sticker (SF-style, Helpers/Sf.cs).</summary>
-    public static UIElement StickerGlyph(double size = 17) => new FontIcon { FontFamily = Ui.SymbolFont, Glyph = Sf.Sticker, FontSize = size };
+    /// <summary>A sticker: a rounded square with its corner peeled.</summary>
+    public static UIElement StickerGlyph(double size = 16) => new Microsoft.UI.Xaml.Shapes.Path
+    {
+        Data = (Geometry)Microsoft.UI.Xaml.Markup.XamlBindingHelper.ConvertValue(typeof(Geometry),
+            "M4.5,0.7 H12.5 A3.8,3.8 0 0 1 16.3,4.5 V10.2 L10.2,16.3 H4.5 A3.8,3.8 0 0 1 0.7,12.5 V4.5 A3.8,3.8 0 0 1 4.5,0.7 Z M10.2,16.3 V13 A2.8,2.8 0 0 1 13,10.2 H16.3"),
+        Stroke = Themed.Brush("TextFillColorPrimaryBrush"),
+        StrokeThickness = 1.3,
+        StrokeLineJoin = PenLineJoin.Round,
+        Width = size + 1,
+        Height = size + 1,
+        Stretch = Stretch.Uniform,
+    };
 }

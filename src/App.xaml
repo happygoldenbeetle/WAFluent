@@ -26,13 +26,6 @@
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI Variable Text, Segoe UI, ms-appx:///Assets/Fonts/AppleColorEmoji.ttf#Apple MFFM Color Emoji</FontFamily>
             <!-- Emoji on their own (keyboard, reactions): the emoji font first, so e.g. ☺️ never falls to a plain text glyph. -->
             <FontFamily x:Key="EmojiFontFamily">ms-appx:///Assets/Fonts/AppleColorEmoji.ttf#Apple MFFM Color Emoji, Segoe UI Emoji</FontFamily>
-            <!-- Icons: SF Symbols-style (Framework7 Icons, MIT; tools/symbols/build.py) for every icon,
-                 including the system's menu chevrons, checkmarks and dropdown arrows. Code points the
-                 font doesn't cover fall back to Segoe Fluent Icons. New icons: Helpers/Sf.cs. -->
-            <FontFamily x:Key="SymbolThemeFontFamily">ms-appx:///Assets/Fonts/WAFluentSymbols.ttf#WAFluent Symbols, Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
-            <Style TargetType="FontIcon">
-                <Setter Property="FontFamily" Value="{StaticResource SymbolThemeFontFamily}" />
-            </Style>
             <Style TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="{StaticResource AppFontFamily}" />
             </Style>

@@ -45,7 +45,7 @@ public sealed partial class MainWindow
         choices.Children.Add(custom
             ? Choice(new TextBlock { Text = message.MyReaction, FontSize = 22, FontFamily = Controls.EmojiPicker.EmojiFont }, true,
                      choice => PickReaction(menu, message, row, choice, message.MyReaction), $"Remove {message.MyReaction} reaction")
-            : Choice(new FontIcon { FontFamily = Helpers.Ui.SymbolFont, Glyph = "\uE710", FontSize = 16 }, false, choice =>
+            : Choice(new FontIcon { Glyph = "\uE710", FontSize = 16 }, false, choice =>
               {
                   // Only once the menu is gone: closing it hands focus back to where it came from.
                   menu.Closed += (_, _) => OpenEmojiPicker(row, emoji => React(message, row, emoji, from: null), closeOnPick: true);

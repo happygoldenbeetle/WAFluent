@@ -9,13 +9,6 @@ namespace WhatsAppNative.Helpers;
 public static class Ui
 {
     /// <summary>
-    /// The app's icon font (App.xaml's SymbolThemeFontFamily: SF-style WAFluent Symbols, Segoe
-    /// Fluent Icons as fallback). Set on every FontIcon: implicit styles don't reach templates.
-    /// </summary>
-    public static FontFamily SymbolFont => _symbolFont ??= (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"];
-    private static FontFamily? _symbolFont;
-
-    /// <summary>
     /// Round bubbles (the default; Settings › Classic bubbles turns them off): WhatsApp's colours,
     /// times and ticks, with rounder corners and the curled tail on the last bubble of a run.
     /// Set before a conversation is drawn; the window redraws it when it changes.

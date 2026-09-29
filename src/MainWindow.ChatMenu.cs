@@ -108,7 +108,7 @@ public sealed partial class MainWindow
         {
             return Item("Unmute notifications", Glyphs.Ringer, () => ViewModel.ChatAction(chat, "unmute"));
         }
-        var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = new FontIcon { FontFamily = Ui.SymbolFont, Glyph = Glyphs.RingerSilent } };
+        var mute = new MenuFlyoutSubItem { Text = "Mute notifications", Icon = new FontIcon { Glyph = Glyphs.RingerSilent } };
         mute.Items.Add(Item("8 hours", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromHours(8))));
         mute.Items.Add(Item("1 week", null, () => ViewModel.ChatAction(chat, "mute", TimeSpan.FromDays(7))));
         mute.Items.Add(Item("Always", null, () => ViewModel.ChatAction(chat, "mute")));
@@ -183,11 +183,11 @@ public sealed partial class MainWindow
         var groups = ViewModel.Filter == ChatFilter.Groups;
         var more = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         if (groups) more.Children.Add(new TextBlock { Text = "Groups", VerticalAlignment = VerticalAlignment.Center });
-        more.Children.Add(new FontIcon { FontFamily = Ui.SymbolFont, Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
+        more.Children.Add(new FontIcon { Glyph = "\uE70D", FontSize = 10, VerticalAlignment = VerticalAlignment.Center });
         FilterChips.Children.Add(Chip(more, groups, chip =>
         {
             var menu = new MenuFlyout();
-            var option = new ToggleMenuFlyoutItem { Text = "Groups", IsChecked = groups, Icon = new FontIcon { FontFamily = Ui.SymbolFont, Glyph = "\uE716" } };
+            var option = new ToggleMenuFlyoutItem { Text = "Groups", IsChecked = groups, Icon = new FontIcon { Glyph = "\uE716" } };
             option.Click += (_, _) => SetFilter(groups ? ChatFilter.All : ChatFilter.Groups);
             menu.Items.Add(option);
             menu.ShowAt(chip, new FlyoutShowOptions { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft });

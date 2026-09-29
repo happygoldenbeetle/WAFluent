@@ -360,7 +360,7 @@ public sealed partial class MainWindow
             var item = new MenuFlyoutItem
             {
                 Text = card.Phones.Count > 0 ? $"{card.Name}  ·  {card.Phone}" : card.Name,
-                Icon = new FontIcon { FontFamily = Ui.SymbolFont, Glyph = Glyphs.Contact },
+                Icon = new FontIcon { Glyph = Glyphs.Contact },
                 IsEnabled = card.Phones.Count > 0,
             };
             item.Click += (_, _) =>

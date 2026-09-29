@@ -121,7 +121,7 @@ public sealed partial class MainWindow
     private MenuFlyout TrayMenu()
     {
         var menu = new MenuFlyout();
-        var open = new MenuFlyoutItem { Text = "Open WAFluent", Icon = new FontIcon { FontFamily = Helpers.Ui.SymbolFont, Glyph = "" } };
+        var open = new MenuFlyoutItem { Text = "Open WAFluent", Icon = new FontIcon { Glyph = "" } };
         open.Click += (_, _) => ShowFromTray();
         menu.Items.Add(open);
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -131,7 +131,7 @@ public sealed partial class MainWindow
         DeveloperModeSwitch.Toggled += (_, _) => _trayDeveloperMode.IsChecked = DeveloperModeSwitch.IsOn;
         menu.Items.Add(_trayDeveloperMode);
 
-        var theme = new MenuFlyoutSubItem { Text = "Theme", Icon = new FontIcon { FontFamily = Helpers.Ui.SymbolFont, Glyph = "" } };
+        var theme = new MenuFlyoutSubItem { Text = "Theme", Icon = new FontIcon { Glyph = "" } };
         _trayThemeItems.Clear();
         foreach (var (key, text) in new[] { ("System", "System"), ("Light", "Light"), ("Dark", "Dark") })
         {
@@ -142,7 +142,7 @@ public sealed partial class MainWindow
         }
         menu.Items.Add(theme);
 
-        var settings = new MenuFlyoutItem { Text = "Settings", Icon = new FontIcon { FontFamily = Helpers.Ui.SymbolFont, Glyph = "" } };
+        var settings = new MenuFlyoutItem { Text = "Settings", Icon = new FontIcon { Glyph = "" } };
         settings.Click += (_, _) =>
         {
             ShowFromTray();
@@ -151,7 +151,7 @@ public sealed partial class MainWindow
         menu.Items.Add(settings);
 
         menu.Items.Add(new MenuFlyoutSeparator());
-        var quit = new MenuFlyoutItem { Text = "Quit WAFluent", Icon = new FontIcon { FontFamily = Helpers.Ui.SymbolFont, Glyph = "" } };
+        var quit = new MenuFlyoutItem { Text = "Quit WAFluent", Icon = new FontIcon { Glyph = "" } };
         quit.Click += (_, _) =>
         {
             _quitting = true;

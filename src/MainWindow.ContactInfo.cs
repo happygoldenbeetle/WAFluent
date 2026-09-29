@@ -171,7 +171,7 @@ public sealed partial class MainWindow
             Width = 66,
             Height = 50,
             CornerRadius = new CornerRadius(25),
-            Content = new FontIcon { FontFamily = Ui.SymbolFont, Glyph = glyph, FontSize = 18 },
+            Content = new FontIcon { Glyph = glyph, FontSize = 18 },
             BorderThickness = new Thickness(0),
             Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush"),
         };
@@ -193,7 +193,7 @@ public sealed partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var mark = icon ?? new FontIcon { FontFamily = Ui.SymbolFont, Glyph = glyph ?? "", FontSize = 18 };
+        var mark = icon ?? new FontIcon { Glyph = glyph ?? "", FontSize = 18 };
         mark.VerticalAlignment = VerticalAlignment.Center;
         if (color is not null) mark.Foreground = color;
         else mark.Foreground = Helpers.Themed.Brush("TextFillColorSecondaryBrush");
