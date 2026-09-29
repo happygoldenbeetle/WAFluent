@@ -57,6 +57,12 @@ public sealed partial class MainWindow : Window
         ChatList.Loaded += (_, _) => ChatList.SelectedItem = ViewModel.SelectedChat;
         Messages.Loaded += (_, _) => ScrollToBottom();
         ViewModel.ConversationChanged += ScrollToBottom;
+        ViewModel.MessageArrived += m =>
+        {
+            // Follow new messages only when you're already at the bottom, not while reading older ones.
+            if (m.IsOutgoing || MessagesScroller.ScrollableHeight - MessagesScroller.VerticalOffset < 160) ScrollToBottom();
+        };
+        Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
         Closed += (_, _) =>
         {
             _call?.Close();
@@ -242,11 +248,18 @@ public sealed partial class MainWindow : Window
     private void ScrollToBottom()
     {
         _ignoreScrollUntil = DateTime.Now.AddMilliseconds(800);
-        // Wait for the repeater to measure the new items, then jump to the end.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        // Wait for the repeater to measure the new items, then jump to the end. Rows measured on
+        // the way down can make the list taller than guessed, so check again until it's settled.
+        void Jump(int triesLeft)
         {
-            MessagesScroller.UpdateLayout();
-            MessagesScroller.ChangeView(null, MessagesScroller.ScrollableHeight, null, disableAnimation: true);
-        });
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                MessagesScroller.UpdateLayout();
+                MessagesScroller.ChangeView(null, MessagesScroller.ScrollableHeight, null, disableAnimation: true);
+                MessagesScroller.UpdateLayout();
+                if (triesLeft > 0 && MessagesScroller.ScrollableHeight - MessagesScroller.VerticalOffset > 1) Jump(triesLeft - 1);
+            });
+        }
+        Jump(3);
     }
 }

@@ -7,7 +7,13 @@ namespace WhatsAppNative.Models;
 /// <summary>Sent → Delivered → Read in that order; Pending/Failed are local states before "Sent".</summary>
 public enum Delivery { None, Sent, Delivered, Read, Pending, Failed }
 
-public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker }
+public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System }
+
+/// <summary>A shared contact card: the name and the numbers from its vCard.</summary>
+public sealed record ContactCard(string Name, IReadOnlyList<string> Phones)
+{
+    public string Phone => Phones.Count > 0 ? Phones[0] : "";
+}
 
 public abstract class Observable : INotifyPropertyChanged
 {
@@ -87,7 +93,73 @@ public sealed class Message : Observable
     }
 
     public bool HasMediaFile => _mediaPath is not null;
-    public bool IsMediaLoading => HasMedia && _mediaPath is null && !_mediaFailed;
+    public bool IsMediaLoading => HasMedia && _mediaPath is null && !_mediaFailed && (AutoDownloads || _downloadRequested);
+
+    private bool _downloadRequested;
+    /// <summary>Videos and documents download when clicked, not by themselves.</summary>
+    public bool DownloadRequested
+    {
+        get => _downloadRequested;
+        set { if (Set(ref _downloadRequested, value)) Raise(nameof(IsMediaLoading)); }
+    }
+    public bool AutoDownloads => Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice;
+
+    // ───── Previews and per-kind details ─────
+
+    /// <summary>The sender's small JPEG preview, base64: shown while the file downloads, or for good (maps, links).</summary>
+    public string? Thumb { get; set; }
+    public bool HasThumb => !string.IsNullOrEmpty(Thumb);
+
+    /// <summary>Voice note (with the sender's picture) rather than an audio file (headphones).</summary>
+    public bool IsVoiceNote { get; set; } = true;
+
+    /// <summary>Videos: a looping GIF, or a round video message.</summary>
+    public bool IsGif { get; set; }
+    public bool IsVideoNote { get; set; }
+    public string DurationLabel => Seconds > 0 ? Helpers.Format.Duration(TimeSpan.FromSeconds(Seconds)) : "";
+
+    /// <summary>Locations (the map snapshot is <see cref="Thumb"/>).</summary>
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public string PlaceName { get; set; } = "";
+    public string PlaceAddress { get; set; } = "";
+    public bool IsLiveLocation { get; set; }
+    public bool HasPlaceAddress => PlaceAddress.Length > 0;
+    public string PlaceTitle => PlaceName.Length > 0 ? PlaceName : IsLiveLocation ? "Live location" : Text.Length > 0 ? Text : "Location";
+
+    /// <summary>Shared contacts.</summary>
+    public IReadOnlyList<ContactCard> Contacts { get; set; } = [];
+    public string ContactTitle => Contacts.Count switch
+    {
+        0 => Text,
+        1 => Contacts[0].Name,
+        2 => $"{Contacts[0].Name} and 1 other contact",
+        var n => $"{Contacts[0].Name} and {n - 1} other contacts",
+    };
+    public string ContactSubtitle => Contacts.Count == 1 ? Contacts[0].Phone : "";
+    public bool HasContactPhone => Contacts.Any(c => c.Phones.Count > 0);
+
+    /// <summary>Polls: the options (votes are end-to-end encrypted to the voters' phones).</summary>
+    public IReadOnlyList<string> PollOptions { get; set; } = [];
+    public bool PollMulti { get; set; }
+    public string PollHint => PollMulti ? "Select one or more" : "Select one";
+
+    /// <summary>Link preview card on a text message.</summary>
+    public string LinkUrl { get; set; } = "";
+    public string LinkTitle { get; set; } = "";
+    public string LinkDescription { get; set; } = "";
+    public bool HasLink => LinkUrl.Length > 0;
+    public bool HasLinkDescription => LinkDescription.Length > 0;
+    public string LinkHost => Uri.TryCreate(LinkUrl.Contains("://") ? LinkUrl : "https://" + LinkUrl, UriKind.Absolute, out var u) ? u.Host : LinkUrl;
+
+    /// <summary>Documents: page count (PDFs), when the sender's app said.</summary>
+    public int Pages { get; set; }
+    public string FileInfo => Pages switch
+    {
+        <= 0 => FileDetails,
+        1 => $"{FileDetails} · 1 page",
+        var n => $"{FileDetails} · {n} pages",
+    };
 
     /// <summary>On-screen size for images/stickers, keeping the original proportions.</summary>
     public double MediaWidth { get; init; } = 300;
@@ -196,6 +268,9 @@ public sealed class Chat : Observable
 
     /// <summary>Nothing older exists on this device or the phone.</summary>
     public bool HistoryComplete { get; set; }
+
+    /// <summary>After an unanswered request for older messages, wait before asking the phone again.</summary>
+    public DateTime RetryOlderAfter { get; set; }
 
     private bool _loadingOlder;
     /// <summary>Waiting for older messages (spinner at the top of the conversation).</summary>

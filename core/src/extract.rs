@@ -1,5 +1,6 @@
 //! Turns a WhatsApp protobuf message into what the chat UI shows.
 
+use serde_json::{Value, json};
 use whatsapp_rust::prelude::*;
 
 pub struct Content {
@@ -8,6 +9,10 @@ pub struct Content {
     pub file_name: String,
     /// Everything needed to download the attachment later (the message itself isn't kept).
     pub media: Option<Media>,
+    /// Small JPEG preview the sender embedded: pictures, videos, map snapshots, link cards.
+    pub thumb: Vec<u8>,
+    /// What a kind needs beyond text: the map pin, contact numbers, poll options, link card...
+    pub extra: Option<Value>,
 }
 
 /// CDN reference + display hints for an attachment.
@@ -30,7 +35,17 @@ pub struct Media {
 
 impl Content {
     fn new(kind: &'static str, text: impl Into<String>) -> Self {
-        Self { kind, text: text.into(), file_name: String::new(), media: None }
+        Self { kind, text: text.into(), file_name: String::new(), media: None, thumb: Vec::new(), extra: None }
+    }
+
+    fn with_thumb(mut self, thumb: &Option<Vec<u8>>) -> Self {
+        self.thumb = bytes(thumb);
+        self
+    }
+
+    fn with_extra(mut self, extra: Value) -> Self {
+        self.extra = Some(extra);
+        self
     }
 
     fn with_media(mut self, media: Media) -> Self {
@@ -78,16 +93,37 @@ pub fn base(message: &wa::Message) -> &wa::Message {
 pub fn content(message: &wa::Message) -> Option<Content> {
     let m = base(message);
 
+    // View once: linked devices never get the file; WhatsApp says to open it on the phone.
+    if message.is_view_once() {
+        let what = if m.video_message.is_set() {
+            "video"
+        } else if m.audio_message.is_set() {
+            "voice message"
+        } else {
+            "photo"
+        };
+        return Some(Content::new("viewonce", what));
+    }
+
     if let Some(text) = m.conversation.as_deref().filter(|t| !t.is_empty()) {
         return Some(Content::new("text", text));
     }
     if let Some(ext) = m.extended_text_message.as_option() {
         if let Some(text) = ext.text.as_deref() {
-            return Some(Content::new("text", text));
+            let mut content = Content::new("text", text);
+            // Link preview card, when the sender's app made one.
+            let url = ext.matched_text.clone().unwrap_or_default();
+            let title = ext.title.clone().unwrap_or_default();
+            if !url.is_empty() && (!title.is_empty() || ext.jpeg_thumbnail.is_some()) {
+                content = content.with_thumb(&ext.jpeg_thumbnail).with_extra(json!({
+                    "link": { "url": url, "title": title, "description": ext.description.clone().unwrap_or_default() }
+                }));
+            }
+            return Some(content);
         }
     }
     if let Some(img) = m.image_message.as_option() {
-        return Some(Content::new("image", img.caption.clone().unwrap_or_default()).with_media(Media {
+        return Some(Content::new("image", img.caption.clone().unwrap_or_default()).with_thumb(&img.jpeg_thumbnail).with_media(Media {
             media_type: "image",
             direct_path: img.direct_path.clone().unwrap_or_default(),
             media_key: bytes(&img.media_key),
@@ -102,7 +138,11 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     }
     if let Some(vid) = m.video_message.as_option().or_else(|| m.ptv_message.as_option()) {
         let kind = if vid.gif_playback == Some(true) { "gif" } else { "video" };
-        return Some(Content::new(kind, vid.caption.clone().unwrap_or_default()).with_media(Media {
+        let mut content = Content::new(kind, vid.caption.clone().unwrap_or_default()).with_thumb(&vid.jpeg_thumbnail);
+        if m.ptv_message.is_set() {
+            content = content.with_extra(json!({ "note": true }));   // round video message
+        }
+        return Some(content.with_media(Media {
             media_type: "video",
             direct_path: vid.direct_path.clone().unwrap_or_default(),
             media_key: bytes(&vid.media_key),
@@ -133,7 +173,9 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     }
     if let Some(doc) = m.document_message.as_option() {
         let file_name = doc.file_name.clone().or_else(|| doc.title.clone()).unwrap_or_default();
-        let mut content = Content::new("document", doc.caption.clone().unwrap_or_default()).with_media(Media {
+        let mut content = Content::new("document", doc.caption.clone().unwrap_or_default()).with_thumb(&doc.jpeg_thumbnail).with_extra(json!({
+            "pages": doc.page_count.unwrap_or(0),
+        })).with_media(Media {
             media_type: "document",
             direct_path: doc.direct_path.clone().unwrap_or_default(),
             media_key: bytes(&doc.media_key),
@@ -147,7 +189,7 @@ pub fn content(message: &wa::Message) -> Option<Content> {
         return Some(content);
     }
     if let Some(st) = m.sticker_message.as_option() {
-        return Some(Content::new("sticker", "").with_media(Media {
+        return Some(Content::new("sticker", "").with_extra(json!({ "animated": st.is_animated == Some(true) })).with_media(Media {
             media_type: "sticker",
             direct_path: st.direct_path.clone().unwrap_or_default(),
             media_key: bytes(&st.media_key),
@@ -162,10 +204,17 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     }
     if let Some(loc) = m.location_message.as_option() {
         let label = loc.name.clone().or_else(|| loc.address.clone()).unwrap_or_default();
-        return Some(Content::new("location", label));
+        return Some(Content::new("location", label).with_thumb(&loc.jpeg_thumbnail).with_extra(json!({
+            "lat": loc.degrees_latitude.unwrap_or(0.0),
+            "lng": loc.degrees_longitude.unwrap_or(0.0),
+            "name": loc.name.clone().unwrap_or_default(),
+            "address": loc.address.clone().unwrap_or_default(),
+            "url": loc.url.clone().unwrap_or_default(),
+        })));
     }
     if let Some(contact) = m.contact_message.as_option() {
-        return Some(Content::new("contact", contact.display_name.clone().unwrap_or_default()));
+        let name = contact.display_name.clone().unwrap_or_default();
+        return Some(Content::new("contact", name).with_extra(json!({ "contacts": [card(contact)] })));
     }
     if let Some(poll) = m
         .poll_creation_message
@@ -175,17 +224,27 @@ pub fn content(message: &wa::Message) -> Option<Content> {
         .or_else(|| m.poll_creation_message_v5.as_option())
         .or_else(|| m.poll_creation_message_v6.as_option())
     {
-        return Some(Content::new("poll", poll.name.clone().unwrap_or_default()));
+        let options: Vec<String> = poll.options.iter().filter_map(|o| o.option_name.clone()).collect();
+        let multi = poll.selectable_options_count.unwrap_or(0) != 1;
+        return Some(Content::new("poll", poll.name.clone().unwrap_or_default()).with_extra(json!({ "options": options, "multi": multi })));
     }
     if let Some(inner) = m.poll_creation_message_v4.as_option().and_then(|w| w.message.as_option()) {
         return content(inner);
     }
     if let Some(live) = m.live_location_message.as_option() {
-        return Some(Content::new("location", live.caption.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| "Live location".into())));
+        let label = live.caption.clone().filter(|c| !c.is_empty()).unwrap_or_else(|| "Live location".into());
+        return Some(Content::new("location", label).with_thumb(&live.jpeg_thumbnail).with_extra(json!({
+            "lat": live.degrees_latitude.unwrap_or(0.0),
+            "lng": live.degrees_longitude.unwrap_or(0.0),
+            "name": "Live location",
+            "address": live.caption.clone().unwrap_or_default(),
+            "live": true,
+        })));
     }
     if let Some(contacts) = m.contacts_array_message.as_option() {
         let label = contacts.display_name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| format!("{} contacts", contacts.contacts.len()));
-        return Some(Content::new("contact", label));
+        let cards: Vec<Value> = contacts.contacts.iter().map(card).collect();
+        return Some(Content::new("contact", label).with_extra(json!({ "contacts": cards })));
     }
     if let Some(invite) = m.group_invite_message.as_option() {
         let name = invite.group_name.clone().unwrap_or_default();
@@ -220,6 +279,23 @@ pub fn content(message: &wa::Message) -> Option<Content> {
     // Reactions, protocol messages (revoke/edit/app-state keys), sender-key
     // distribution and the like have no bubble of their own.
     None
+}
+
+/// A notice in the middle of the chat ("Missed voice call", "Ali added Sara").
+pub fn system(text: String) -> Content {
+    Content::new("system", text)
+}
+
+/// A shared contact: its name and the phone numbers in its vCard.
+fn card(contact: &wa::message::ContactMessage) -> Value {
+    let vcard = contact.vcard.as_deref().unwrap_or("");
+    let phones: Vec<String> = vcard
+        .lines()
+        .filter(|l| l.to_ascii_uppercase().contains("TEL"))
+        .filter_map(|l| l.rsplit_once(':').map(|(_, n)| n.trim().to_string()))
+        .filter(|n| !n.is_empty())
+        .collect();
+    json!({ "name": contact.display_name.clone().unwrap_or_default(), "phones": phones })
 }
 
 /// Protocol traffic that changes an existing message.

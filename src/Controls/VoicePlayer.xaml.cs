@@ -9,10 +9,17 @@ using WhatsAppNative.Services;
 
 namespace WhatsAppNative.Controls;
 
-/// <summary>Voice note bubble content: play/pause, waveform with progress, duration, speed.</summary>
+/// <summary>
+/// Voice note bubble content: filled play/pause, waveform with the playhead dot, duration, and
+/// on the right the sender's picture with a mic badge (headphones for audio files) that turns
+/// into the speed pill while the note is playing.
+/// </summary>
 public sealed partial class VoicePlayer : UserControl
 {
-    private const int BarCount = 42;   // fills the space between the play button and the speed pill
+    private const int BarCount = 40;   // fills the space between the play button and the picture
+
+    /// <summary>Picture and name for a message's sender (set by the window: you, the contact, a group member).</summary>
+    public static Func<Message, (string? Path, string Name)>? PictureFor { get; set; }
     private const double MaxBarHeight = 28, MinBarHeight = 3;
 
     private readonly List<Rectangle> _bars = new();
@@ -40,6 +47,11 @@ public sealed partial class VoicePlayer : UserControl
         TimeText.Text = Message.Time;
         Ticks.Delivery = Message.Delivery;
         Ticks.Visibility = Message.IsOutgoing ? Visibility.Visible : Visibility.Collapsed;
+        var (path, name) = PictureFor?.Invoke(Message) ?? (null, "");
+        Picture.DisplayName = name;
+        Picture.Source = path;
+        Headphones.Visibility = Message.IsVoiceNote ? Visibility.Collapsed : Visibility.Visible;
+        MicBadge.Visibility = Message.IsVoiceNote ? Visibility.Visible : Visibility.Collapsed;
         BuildBars(Message);
         Refresh();
     }
@@ -85,23 +97,23 @@ public sealed partial class VoicePlayer : UserControl
 
         LoadingRing.IsActive = m.IsMediaLoading;
         PlayButton.IsEnabled = m.HasMediaFile;
-        PlayIcon.Glyph = m.MediaFailed ? Glyphs.Warning : playing ? Glyphs.Pause : Glyphs.Play;
-        PlayIcon.Opacity = m.IsMediaLoading ? 0 : 1;
+        PlayIcon.Visibility = !m.MediaFailed && !m.IsMediaLoading && !playing ? Visibility.Visible : Visibility.Collapsed;
+        PauseIcon.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+        WarningIcon.Visibility = m.MediaFailed ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(PlayButton, m.MediaFailed ? "Couldn't download this voice message" : null);
 
         var duration = isCurrent ? AudioPlayback.Duration : TimeSpan.FromSeconds(m.Seconds);
         var position = isCurrent ? AudioPlayback.Position : TimeSpan.Zero;
         DurationText.Text = Format.Duration(isCurrent && position > TimeSpan.Zero ? position : duration);
 
-        // Shown only for the note that's playing, but always taking its space.
-        RateButton.Opacity = isCurrent ? 1 : 0;
-        RateButton.IsHitTestVisible = isCurrent;
-        RateButton.Content = $"{AudioPlayback.Rate:0.#}×";
+        // The note in the player shows its speed where the picture was.
+        RateButton.Visibility = isCurrent ? Visibility.Visible : Visibility.Collapsed;
+        PictureArea.Visibility = isCurrent ? Visibility.Collapsed : Visibility.Visible;
+        RateText.Text = $"{AudioPlayback.Rate:0.#}×";
 
-        // Playhead dot rides along the waveform.
+        // Playhead dot rides along the waveform (resting at the start when idle).
         var fraction = duration > TimeSpan.Zero ? Math.Clamp(position / duration, 0, 1) : 0;
-        Knob.Visibility = isCurrent ? Visibility.Visible : Visibility.Collapsed;
-        Canvas.SetLeft(Knob, fraction * Bars.ActualWidth - Knob.Width / 2);
+        Canvas.SetLeft(Knob, Math.Max(0, fraction * Bars.ActualWidth - Knob.Width / 2));
 
         var played = (int)Math.Round(BarCount * fraction);
         if (played == _playedBars) return;

@@ -31,6 +31,28 @@ public static class Ui
     public static ImageSource? Image(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 640 };
 
+    /// <summary>The sender's base64 JPEG preview (a few KB) as an image.</summary>
+    public static ImageSource? Thumb(string? base64)
+    {
+        if (string.IsNullOrEmpty(base64)) return null;
+        try
+        {
+            var image = new BitmapImage();
+            image.SetSource(new MemoryStream(Convert.FromBase64String(base64)).AsRandomAccessStream());
+            return image;
+        }
+        catch (Exception)
+        {
+            return null;   // not a picture the decoder knows
+        }
+    }
+
+    /// <summary>Round video messages are circles; other media has softly rounded corners.</summary>
+    public static CornerRadius MediaCorner(bool round, double size) => new(round ? size / 2 : 6);
+
+    /// <summary>Second button on a contact card.</summary>
+    public static string ContactAction(int count) => count > 1 ? "View all" : "Copy number";
+
     public static string FileIcon(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
     {
         ".zip" or ".rar" or ".7z" => "🗂️",

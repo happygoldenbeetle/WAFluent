@@ -9,6 +9,12 @@ public static class SampleData
 
     private static string NewId() => Guid.NewGuid().ToString("N");
 
+    /// <summary>A local picture as a base64 "preview" (the core sends small JPEGs the same way).</summary>
+    private static string? Preview(string? path) => path is null ? null : Convert.ToBase64String(File.ReadAllBytes(path));
+
+    private static readonly string? Picture = LocalImage(@"C:\Windows\Web\Screen\img102.jpg", @"C:\Windows\Web\Wallpaper\Windows\img0.jpg");
+    private static readonly string? Picture2 = LocalImage(@"C:\Windows\Web\Screen\img103.png", @"C:\Windows\Web\Screen\img101.jpg", @"C:\Windows\Web\Wallpaper\Windows\img19.jpg");
+
     private static Message In(string text, string time, string reaction = "") =>
         new() { Id = NewId(), Text = text, Time = time, Reactions = reaction.Length > 0 ? [reaction] : [] };
 
@@ -52,7 +58,21 @@ public static class SampleData
                     Id = NewId(), Text = "Wow! Have great time. Enjoy.", Time = "15:12", IsOutgoing = true, Delivery = Delivery.Read,
                     ReplyId = "sample-photo", ReplyName = "Alice Whitman", ReplyPreview = "So beautiful here!", ReplyGlyph = Glyphs.Photo,
                 },
-                In("Thanks! Could you send me the photos from Saturday when you get a moment? I'd like to put a few of them in the album before Mum's birthday on Sunday.", "15:20")),
+                In("Thanks! Could you send me the photos from Saturday when you get a moment? I'd like to put a few of them in the album before Mum's birthday on Sunday.", "15:20"),
+                new Message { Id = NewId(), Kind = MessageKind.Voice, Time = "15:21", Seconds = 19, HasMedia = true, MediaPath = Picture,
+                              Waveform = Enumerable.Range(0, 64).Select(i => 20 + (i * 37 % 70)).ToArray() },
+                new Message { Id = NewId(), Kind = MessageKind.Voice, Time = "15:22", Seconds = 14, IsOutgoing = true, Delivery = Delivery.Read, HasMedia = true, MediaPath = Picture },
+                new Message { Id = NewId(), Kind = MessageKind.Voice, Time = "15:22", Seconds = 204, IsVoiceNote = false, HasMedia = true, MediaPath = Picture },
+                new Message { Id = NewId(), Kind = MessageKind.Video, Time = "15:23", Seconds = 32, HasMedia = true, Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 200, Text = "The waterfall!" },
+                new Message { Id = NewId(), Kind = MessageKind.Video, Time = "15:23", IsGif = true, HasMedia = true, Thumb = Preview(Picture), MediaWidth = 220, MediaHeight = 160, IsOutgoing = true, Delivery = Delivery.Read },
+                new Message { Id = NewId(), Kind = MessageKind.Location, Time = "15:24", Thumb = Preview(Picture2), MediaWidth = 300, MediaHeight = 150,
+                              Latitude = 31.5204, Longitude = 74.3587, PlaceName = "Lahore Fort", PlaceAddress = "Fort Rd, Walled City of Lahore" },
+                new Message { Id = NewId(), Kind = MessageKind.Contact, Time = "15:25", Text = "Sara Khan", Contacts = [new ContactCard("Sara Khan", ["+92 300 1234567"])] },
+                new Message { Id = NewId(), Kind = MessageKind.Poll, Time = "15:26", Text = "Where should we eat on Sunday?", PollOptions = ["Monal", "Cafe Aylanto", "Home — I'll cook"] },
+                new Message { Id = NewId(), Kind = MessageKind.System, Text = "📞 Missed voice call" },
+                new Message { Id = NewId(), Text = "https://github.com/happygoldenbeetle/WAFluent", Time = "15:27", IsOutgoing = true, Delivery = Delivery.Delivered,
+                              LinkUrl = "https://github.com/happygoldenbeetle/WAFluent", LinkTitle = "WAFluent", LinkDescription = "A native WinUI 3 WhatsApp client.", Thumb = Preview(Picture) },
+                new Message { Id = NewId(), Kind = MessageKind.File, FileName = "Itinerary.pdf", FileDetails = "PDF", Pages = 3, Time = "15:28", Thumb = Preview(Picture2) }),
 
         new Chat { Name = "Baking Club", IsGroup = true, Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),

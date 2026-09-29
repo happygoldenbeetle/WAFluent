@@ -19,6 +19,10 @@ public sealed class StarredItem
         MessageKind.Voice => "🎤 Voice message",
         MessageKind.Sticker => "Sticker",
         MessageKind.File => "📄 " + Message.FileName,
+        MessageKind.Video => "🎥 " + Format.QuotePreview(Message),
+        MessageKind.Location => "📍 " + Format.QuotePreview(Message),
+        MessageKind.Contact => "👤 " + Message.ContactTitle,
+        MessageKind.Poll => "📊 " + Message.Text,
         _ => Message.Text,
     };
     public string When => Format.ListTime(Message.Timestamp);
@@ -197,7 +201,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Photos, stickers, voice notes and files among the loaded messages.</summary>
-    public int MediaCount(Chat chat) => chat.Messages.Count(m => m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice or MessageKind.File);
+    public int MediaCount(Chat chat) => chat.Messages.Count(m => m.Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice or MessageKind.File or MessageKind.Video);
 
     public void CloseChat() => SelectedChat = null;
 

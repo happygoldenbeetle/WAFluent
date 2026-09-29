@@ -122,6 +122,16 @@ CREATE TABLE IF NOT EXISTS quotes(
     file_name  TEXT NOT NULL DEFAULT '',
     PRIMARY KEY(chat_id, message_id)
 );
+
+-- Per-kind details (JSON: map pin, contact numbers, poll options, link card...) and the
+-- sender's JPEG preview.
+CREATE TABLE IF NOT EXISTS extras(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    thumb      BLOB,
+    data       TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(chat_id, message_id)
+);
 ";
 
 const CHAT_SELECT: &str = "
@@ -188,7 +198,7 @@ impl Store {
         if from == into || !self.chat_exists(into) {
             return;
         }
-        for table in ["media", "quotes", "reactions"] {
+        for table in ["media", "quotes", "reactions", "extras"] {
             let _ = self.db.execute(&format!("UPDATE OR IGNORE {table} SET chat_id = ?2 WHERE chat_id = ?1"), [from, into]);
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [from]);
         }
@@ -286,6 +296,11 @@ impl Store {
 
     pub fn set_me(&mut self, jids: Vec<String>) {
         self.me = jids;
+    }
+
+    pub fn is_me(&self, jid: &str) -> bool {
+        let user = jid.split(['@', ':']).next().unwrap_or("");
+        self.me.iter().any(|me| me.split(['@', ':']).next() == Some(user))
     }
 
     pub fn insert_quote(&self, chat_id: &str, message_id: &str, q: &Quote) {
@@ -410,6 +425,7 @@ impl Store {
     pub fn set_deleted(&self, chat_id: &str, message_id: &str) -> bool {
         let _ = self.db.execute("DELETE FROM media WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
         let _ = self.db.execute("DELETE FROM quotes WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
+        let _ = self.db.execute("DELETE FROM extras WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
         self.db
             .execute(
                 "UPDATE messages SET kind = 'deleted', text = '', file_name = '' WHERE chat_id = ?1 AND id = ?2",
@@ -431,7 +447,7 @@ impl Store {
 
     /// "Delete for me": gone from this device.
     pub fn delete_message(&self, chat_id: &str, message_id: &str) -> bool {
-        for table in ["media", "quotes", "reactions"] {
+        for table in ["media", "quotes", "reactions", "extras"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1 AND message_id = ?2"), [chat_id, message_id]);
         }
         self.db.execute("DELETE FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, message_id]).unwrap_or(0) > 0
@@ -439,7 +455,7 @@ impl Store {
 
     /// Empties a chat but keeps it in the list.
     pub fn clear_messages(&self, chat_id: &str) {
-        for table in ["media", "quotes", "reactions"] {
+        for table in ["media", "quotes", "reactions", "extras"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [chat_id]);
         }
         let _ = self.db.execute("DELETE FROM messages WHERE chat_id = ?1", [chat_id]);
@@ -625,7 +641,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras;",
         );
     }
 
@@ -857,7 +873,10 @@ impl Store {
             .db
             .query_row("SELECT starred, edited FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, &m.id], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap_or((false, false));
+        let (thumb, extra) = self.extra(chat_id, &m.id);
         MessageDto {
+            thumb,
+            extra,
             starred,
             edited,
             media,
@@ -874,6 +893,39 @@ impl Store {
             file_name: m.file_name,
             status: m.status,
         }
+    }
+
+    // ───────────── Extras ─────────────
+
+    /// True when this message had no preview/details stored yet.
+    pub fn insert_extra(&self, chat_id: &str, message_id: &str, thumb: &[u8], extra: Option<&serde_json::Value>) -> bool {
+        if thumb.is_empty() && extra.is_none() {
+            return false;
+        }
+        self.db
+            .execute(
+                "INSERT OR IGNORE INTO extras(chat_id, message_id, thumb, data) VALUES(?1, ?2, ?3, ?4)",
+                params![
+                    chat_id,
+                    message_id,
+                    (!thumb.is_empty()).then_some(thumb),
+                    extra.map(|e| e.to_string()).unwrap_or_default()
+                ],
+            )
+            .unwrap_or(0)
+            > 0
+    }
+
+    /// (preview as base64, details) for the UI.
+    fn extra(&self, chat_id: &str, message_id: &str) -> (Option<String>, Option<serde_json::Value>) {
+        self.db
+            .query_row(
+                "SELECT thumb, data FROM extras WHERE chat_id = ?1 AND message_id = ?2",
+                [chat_id, message_id],
+                |r| Ok((r.get::<_, Option<Vec<u8>>>(0)?, r.get::<_, String>(1)?)),
+            )
+            .map(|(thumb, data)| (thumb.filter(|t| !t.is_empty()).map(|t| base64(&t)), serde_json::from_str(&data).ok()))
+            .unwrap_or((None, None))
     }
 
     // ───────────── Media ─────────────
@@ -1119,8 +1171,28 @@ pub fn preview(kind: &str, text: &str, file_name: &str) -> String {
         "contact" => "Contact",
         "poll" => return format!("Poll: {text}"),
         "deleted" => return "This message was deleted".into(),
+        "system" => return text.to_string(),
+        "viewonce" => return format!("View once {text}"),
         "" => "",
         _ => "Message",
     };
     if text.is_empty() { label.to_string() } else { text.to_string() }
+}
+
+/// Standard base64 (the UI decodes previews with Convert.FromBase64String).
+fn base64(data: &[u8]) -> String {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(ABC[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

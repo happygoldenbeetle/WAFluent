@@ -25,6 +25,9 @@ public sealed partial class MainViewModel : Observable
     /// <summary>Raised when the open conversation got new messages (scroll to the end).</summary>
     public event Action? ConversationChanged;
 
+    /// <summary>A new message landed in the open chat (the window follows it only if you're at the bottom).</summary>
+    public event Action<Message>? MessageArrived;
+
     /// <summary>Sample data (no core) when <paramref name="core"/> is null.</summary>
     public MainViewModel(CoreClient? core)
     {
@@ -80,6 +83,25 @@ public sealed partial class MainViewModel : Observable
                 _core.DownloadMedia(chat.Id, m.Id);
     }
 
+    /// <summary>Downloads an attachment that doesn't download by itself (videos, documents), in the open chat.</summary>
+    public void Download(Message message)
+    {
+        if (_core is null || _selectedChat is null || !message.HasMedia || message.MediaPath is not null) return;
+        message.MediaFailed = false;
+        message.DownloadRequested = true;
+        _core.DownloadMedia(_selectedChat.Id, message.Id);
+    }
+
+    /// <summary>The 1:1 chat with this phone number (any format: "+92 300 1234567", "923001234567"...).</summary>
+    public Chat? FindChatByPhone(string phone)
+    {
+        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        if (digits.Length < 6) return null;
+        return _allChats.FirstOrDefault(c => !c.IsGroup &&
+            (c.Id.StartsWith(digits + "@", StringComparison.Ordinal)
+             || new string((c.PhoneCode + c.PhoneNational).Where(char.IsDigit).ToArray()) == digits));
+    }
+
     /// <summary>Tries a failed attachment download again (for the open chat).</summary>
     public void RetryDownload(Message message)
     {
@@ -129,10 +151,21 @@ public sealed partial class MainViewModel : Observable
         set { if (Set(ref _hideProfilePhoto, value)) Raise(nameof(ProfileIcon)); }
     }
 
+    private string? _selfAvatarPath;
+
+    /// <summary>Picture and name for a voice note's sender: you, the contact, or (groups) the member.</summary>
+    public (string? Path, string Name) VoicePicture(Message m)
+    {
+        if (m.IsOutgoing) return (_selfAvatarPath, "You");
+        if (_selectedChat is not { } chat) return (null, m.SenderName);
+        return chat.IsGroup ? (null, m.SenderName) : (chat.AvatarPath, chat.Name);
+    }
+
     private async void OnAvatar(string chatId, string? path)
     {
         if (chatId == "self")
         {
+            _selfAvatarPath = path;
             ProfileIcon = path is null ? new BitmapImage(ProfilePlaceholder)
                                        : await CircleImage.CreateAsync(path) ?? new BitmapImage(ProfilePlaceholder);
             return;
@@ -382,12 +415,17 @@ public sealed partial class MainViewModel : Observable
         var oldest = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider);
         if (oldest is null) return;
 
+        if (DateTime.Now < chat.RetryOlderAfter) return;   // the phone didn't answer a moment ago
         chat.LoadingOlder = true;
         _core.LoadOlder(chat.Id, oldest.UnixTs, oldest.Id);
 
-        await Task.Delay(TimeSpan.FromSeconds(25));
+        await Task.Delay(TimeSpan.FromSeconds(20));
         if (chat.LoadingOlder && chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider) == oldest)
-            chat.LoadingOlder = false;   // no answer; allow another try on the next scroll
+        {
+            // No answer (phone offline?): stop the spinner, and don't ask again on every scroll.
+            chat.LoadingOlder = false;
+            chat.RetryOlderAfter = DateTime.Now.AddMinutes(1);
+        }
     }
 
     private void OnOlderMessages(string chatId, IReadOnlyList<MessageDto> messages, bool complete)
@@ -436,7 +474,7 @@ public sealed partial class MainViewModel : Observable
         var message = Format.ToMessage(dto, chat.IsGroup);
         Append(chat, message);
         RequestMedia(chat, [message]);
-        if (chat == _selectedChat) ConversationChanged?.Invoke();
+        if (chat == _selectedChat) MessageArrived?.Invoke(message);
     }
 
     /// <summary>Adds a message, inserting a "Today"/"Yesterday"/date divider when the day changes.</summary>

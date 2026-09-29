@@ -36,14 +36,25 @@ public static class MediaActions
         {
             MessageKind.Voice => "Audio",
             MessageKind.Sticker => "Sticker",
+            MessageKind.Video => "Video",
+            MessageKind.File => "Document",
             _ => "Image",
         };
         var picker = new FileSavePicker
         {
-            SuggestedStartLocation = message.Kind == MessageKind.Voice ? PickerLocationId.MusicLibrary : PickerLocationId.PicturesLibrary,
-            SuggestedFileName = $"WhatsApp {kind} {message.Timestamp:yyyy-MM-dd 'at' HH.mm.ss}",
+            SuggestedStartLocation = message.Kind switch
+            {
+                MessageKind.Voice => PickerLocationId.MusicLibrary,
+                MessageKind.Video => PickerLocationId.VideosLibrary,
+                MessageKind.File => PickerLocationId.DocumentsLibrary,
+                _ => PickerLocationId.PicturesLibrary,
+            },
+            // Documents keep the name they were sent with.
+            SuggestedFileName = message.Kind == MessageKind.File && message.FileName.Length > 0
+                ? Path.GetFileNameWithoutExtension(message.FileName)
+                : $"WhatsApp {kind} {message.Timestamp:yyyy-MM-dd 'at' HH.mm.ss}",
         };
-        picker.FileTypeChoices.Add(kind, [ext]);
+        picker.FileTypeChoices.Add(kind, [ext.Length > 0 ? ext : ".bin"]);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
         var target = await picker.PickSaveFileAsync();
         if (target is null) return false;

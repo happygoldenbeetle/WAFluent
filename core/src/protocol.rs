@@ -129,7 +129,8 @@ pub struct MessageDto {
     pub sender_name: String,
     /// Unix seconds.
     pub ts: i64,
-    /// text | image | video | voice | audio | document | sticker | location | contact | poll | other
+    /// text | image | video | gif | voice | audio | document | sticker | location | contact | poll |
+    /// viewonce | system | deleted
     pub kind: String,
     pub text: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -151,6 +152,14 @@ pub struct MessageDto {
     pub starred: bool,
     /// The sender changed the text after sending.
     pub edited: bool,
+    /// The sender's small JPEG preview, base64 (pictures, videos, maps, link cards).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumb: Option<String>,
+    /// Per-kind details: location {lat, lng, name, address, url, live}, contact {contacts:
+    /// [{name, phones}]}, poll {options, multi}, text {link: {url, title, description}},
+    /// video {note}, sticker {animated}, document {pages}.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Debug, Clone)]

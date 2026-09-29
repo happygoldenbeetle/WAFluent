@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <UserControl
     x:Class="WhatsAppNative.Controls.VoicePlayer"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -7,28 +7,35 @@
     IsTabStop="False">
 
     <!--
-      [▶] [waveform ···•···] [1×]      ← centred: equal bands above and below
-          0:07              18:02 ✓✓   ← meta line lives in the bottom band
+      [â–¶] [â€¢Â·Â·waveformÂ·Â·Â·]  (pictureðŸŽ¤)     idle: the sender's picture with a mic badge
+          0:19        2:59 pm âœ“âœ“
+      [âšâš] [Â·Â·Â·Â·â€¢Â·Â·Â·Â·Â·Â·]    [1.5Ã—]          playing: the speed pill in its place
     -->
-    <Grid Width="300">
+    <Grid Width="320">
         <!-- Theme-aware bar colours, read from these hidden shapes (ThemeResource updates them). -->
-        <Rectangle x:Name="PlayedSwatch" Visibility="Collapsed" Fill="{ThemeResource ChatAccentBrush}" />
+        <Rectangle x:Name="PlayedSwatch" Visibility="Collapsed" Fill="{ThemeResource VoicePlayedBrush}" />
         <Rectangle x:Name="UnplayedSwatch" Visibility="Collapsed" Fill="{ThemeResource MetaTextBrush}" />
 
-        <Grid Margin="0,16" ColumnSpacing="10" VerticalAlignment="Center">
+        <Grid Margin="0,10,0,20" ColumnSpacing="12" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Grid Width="40" Height="40">
-                <Button x:Name="PlayButton" Width="40" Height="40" Padding="0" CornerRadius="20" BorderThickness="0"
-                        Background="Transparent" Click="Play_Click"
-                        AutomationProperties.Name="Play voice message">
-                    <FontIcon x:Name="PlayIcon" Glyph="&#xE768;" FontSize="18" />
+            <!-- Filled play / pause, like WhatsApp. -->
+            <Grid Width="36" Height="36" VerticalAlignment="Center">
+                <Button x:Name="PlayButton" Width="36" Height="36" Padding="0" CornerRadius="18" BorderThickness="0"
+                        Background="Transparent" Click="Play_Click" AutomationProperties.Name="Play voice message">
+                    <Grid>
+                        <PathIcon x:Name="PlayIcon" Data="M0,0 L14,8 L0,16 Z" Margin="3,0,0,0"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <PathIcon x:Name="PauseIcon" Data="M0,0 H4.5 V16 H0 Z M9.5,0 H14 V16 H9.5 Z" Visibility="Collapsed"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <FontIcon x:Name="WarningIcon" Glyph="&#xE7BA;" FontSize="18" Visibility="Collapsed" />
+                    </Grid>
                 </Button>
-                <ProgressRing x:Name="LoadingRing" Width="28" Height="28" IsHitTestVisible="False" />
+                <ProgressRing x:Name="LoadingRing" Width="30" Height="30" IsHitTestVisible="False" />
             </Grid>
 
             <!-- Waveform: tap to seek. Transparent background so the gaps are clickable too. -->
@@ -36,20 +43,36 @@
                 <StackPanel x:Name="Bars" Orientation="Horizontal" Spacing="1.5" VerticalAlignment="Center"
                             Background="Transparent" Tapped="Bars_Tapped" />
                 <Canvas IsHitTestVisible="False">
-                    <Ellipse x:Name="Knob" Width="12" Height="12" Canvas.Top="10" Visibility="Collapsed"
-                             Fill="{ThemeResource ChatAccentBrush}" />
+                    <Ellipse x:Name="Knob" Width="13" Height="13" Canvas.Top="9.5" Fill="{ThemeResource VoiceKnobBrush}" />
                 </Canvas>
             </Grid>
 
-            <!-- Keeps its space while hidden, so the waveform doesn't shift when playback starts. -->
-            <Button x:Name="RateButton" Grid.Column="2" Width="38" Height="22" Padding="0" CornerRadius="11"
-                    FontSize="11" FontWeight="SemiBold" BorderThickness="0" VerticalAlignment="Center"
-                    Background="{ThemeResource VoiceRateBrush}" Opacity="0" IsHitTestVisible="False"
-                    Click="Rate_Click" AutomationProperties.Name="Playback speed" />
+            <!-- Idle: who sent it (mic badge), or headphones for an audio file. Playing: the speed. -->
+            <Grid Grid.Column="2" Width="52" Height="52" VerticalAlignment="Center">
+                <Grid x:Name="PictureArea">
+                    <controls:Redact VeilRadius="26">
+                        <controls:Avatar x:Name="Picture" Size="52" />
+                    </controls:Redact>
+                    <Border x:Name="Headphones" CornerRadius="26" Background="{ThemeResource VoiceHeadphonesBrush}" Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE7F6;" FontSize="22" Foreground="White" />
+                    </Border>
+                    <FontIcon x:Name="MicBadge" Glyph="&#xE720;" FontSize="17" FontWeight="Bold" Foreground="{ThemeResource VoiceKnobBrush}"
+                              HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="1,0,0,-2" />
+                </Grid>
+                <Button x:Name="RateButton" Width="46" Height="26" Padding="0" CornerRadius="13" BorderThickness="0"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Background="{ThemeResource VoiceRateBrush}" Visibility="Collapsed"
+                        Click="Rate_Click" AutomationProperties.Name="Playback speed">
+                    <!-- Tight bounds: the box is exactly the glyphs, so centring is exact. -->
+                    <TextBlock x:Name="RateText" FontSize="12" FontWeight="SemiBold" TextLineBounds="Tight"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Button>
+            </Grid>
         </Grid>
 
-        <!-- Bottom band: elapsed/total under the waveform, time + ticks on the right. -->
-        <Grid VerticalAlignment="Bottom" Margin="50,0,0,0">
+        <!-- Bottom band: elapsed/total under the waveform, time + ticks at its right end. -->
+        <Grid VerticalAlignment="Bottom" Margin="48,0,64,0">
             <TextBlock x:Name="DurationText" Style="{StaticResource MetaTextStyle}" />
             <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3">
                 <TextBlock x:Name="TimeText" Style="{StaticResource MetaTextStyle}" VerticalAlignment="Center" />

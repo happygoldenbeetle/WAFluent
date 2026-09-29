@@ -18,6 +18,9 @@
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F5F5F5F5" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#E6FFFFFF" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#1A000000" />
+            <SolidColorBrush x:Key="VoicePlayedBrush" Color="#3B4A54" />
+            <SolidColorBrush x:Key="VoiceKnobBrush" Color="#34B7F1" />
+            <SolidColorBrush x:Key="VoiceHeadphonesBrush" Color="#F29100" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#FAFAFA" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14000000" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#D9FDD3" />
@@ -54,6 +57,9 @@
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="#F20F0F0F" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="#CC202020" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="VoicePlayedBrush" Color="#E9EDEF" />
+            <SolidColorBrush x:Key="VoiceKnobBrush" Color="#53BDEB" />
+            <SolidColorBrush x:Key="VoiceHeadphonesBrush" Color="#F29100" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="#144D37" />
@@ -90,6 +96,9 @@
             <SolidColorBrush x:Key="LightboxBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="LightboxBarBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VoiceRateBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="VoicePlayedBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VoiceKnobBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VoiceHeadphonesBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="ChatHeaderBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="PaneDividerBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="OutgoingBubbleBrush" Color="{ThemeResource SystemColorWindowColor}" />

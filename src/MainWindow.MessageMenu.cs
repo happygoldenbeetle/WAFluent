@@ -78,8 +78,35 @@ public sealed partial class MainWindow
                 break;
 
             case MessageKind.File:
+                menu.Items.Add(Item("Open", Glyphs.OpenExternal, () => WhenDownloaded(m, MediaActions.OpenExternally)));
+                menu.Items.Add(Item("Save as…", Glyphs.Save, () => WhenDownloaded(m, path => _ = MediaActions.SaveAsAsync(this, path, m))));
+                menu.Items.Add(Item("Show in folder", Glyphs.Folder, () => MediaActions.ShowInFolder(m.MediaPath!), hasFile));
+                menu.Items.Add(new MenuFlyoutSeparator());
                 menu.Items.Add(Item("Copy file name", Glyphs.Copy, () => MediaActions.CopyText(m.FileName)));
                 if (m.HasText) menu.Items.Add(Item("Copy caption", Glyphs.Copy, () => MediaActions.CopyText(m.Text)));
+                break;
+
+            case MessageKind.Video:
+                menu.Items.Add(Item("Play", Glyphs.Play, () => WhenDownloaded(m, _ => OpenVideo(m))));
+                if (m.HasText) menu.Items.Add(Item("Copy caption", Glyphs.Copy, () => MediaActions.CopyText(m.Text)));
+                menu.Items.Add(new MenuFlyoutSeparator());
+                menu.Items.Add(Item("Save as…", Glyphs.Save, () => WhenDownloaded(m, path => _ = MediaActions.SaveAsAsync(this, path, m))));
+                menu.Items.Add(Item("Open in Media Player", Glyphs.OpenExternal, () => WhenDownloaded(m, MediaActions.OpenExternally)));
+                menu.Items.Add(Item("Show in folder", Glyphs.Folder, () => MediaActions.ShowInFolder(m.MediaPath!), hasFile));
+                break;
+
+            case MessageKind.Location:
+                menu.Items.Add(Item("Open in Maps", Glyphs.Location, () => OpenLocation(m)));
+                menu.Items.Add(Item("Copy coordinates", Glyphs.Copy, () => MediaActions.CopyText(Coordinates(m))));
+                break;
+
+            case MessageKind.Contact:
+                foreach (var card in m.Contacts.Where(c => c.Phones.Count > 0))
+                    menu.Items.Add(Item(m.Contacts.Count > 1 ? $"Copy {card.Name}'s number" : "Copy number", Glyphs.Copy, () => MediaActions.CopyText(card.Phone)));
+                break;
+
+            case MessageKind.Poll:
+                menu.Items.Add(Item("Copy", Glyphs.Copy, () => MediaActions.CopyText(m.Text + "\n" + string.Join("\n", m.PollOptions.Select(o => "• " + o)))));
                 break;
         }
 
@@ -221,6 +248,12 @@ public sealed partial class MainWindow
                 break;
             case MessageKind.File:
                 lines.Add(("File", m.FileName));
+                break;
+            case MessageKind.Video:
+                lines.Add((m.IsGif ? "GIF" : "Video", MediaActions.Exists(m) ? "Downloaded" : m.MediaFailed ? "Unavailable" : "Not downloaded"));
+                break;
+            case MessageKind.Location:
+                lines.Add(("Location", Coordinates(m)));
                 break;
         }
 

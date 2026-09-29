@@ -112,7 +112,7 @@ public sealed partial class MainWindow
         else PopPill(pill);
     }
 
-    /// <summary>Double-click a message: react with your first quick reaction.</summary>
+    /// <summary>Double-click a message: react with your first quick reaction (again: remove it).</summary>
     private void Messages_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (ViewModel.IsSelecting || Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
@@ -121,15 +121,9 @@ public sealed partial class MainWindow
         e.Handled = true;
         ClearSelection(row);   // the double-click also selected a word
 
+        // Already reacted with it: a second double-click takes the reaction back.
         var first = _ui.QuickReactions[0];
-        var at = e.GetPosition(Root);
-        if (message.MyReaction == first)
-        {
-            row.UpdateLayout();
-            if (FindDescendant(row, el => el.Name == "ReactionPill") is { ActualWidth: > 0 } pill) PopPill(pill);
-            return;
-        }
-        React(message, row, first, at);
+        React(message, row, first, message.MyReaction == first ? null : e.GetPosition(Root));
     }
 
     private static bool IsInside<T>(DependencyObject? source, DependencyObject stop)

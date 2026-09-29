@@ -28,6 +28,14 @@ use store::{ChatMeta, Store, StoredMessage};
 type Tx = mpsc::UnboundedSender<Out>;
 type Db = Arc<Mutex<Store>>;
 
+/// An on-demand history request: its anchor, and the request id the answer will carry.
+#[derive(Clone)]
+struct Pending {
+    ts: i64,
+    id: String,
+    request: Option<String>,
+}
+
 /// Everything the event handlers share.
 #[derive(Clone)]
 pub(crate) struct Ctx {
@@ -37,7 +45,7 @@ pub(crate) struct Ctx {
     /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
     chats_dirty: Arc<Notify>,
     /// Chats waiting for an on-demand history reply from the phone -> anchor (ts, message id).
-    pending_history: Arc<Mutex<HashMap<String, (i64, String)>>>,
+    pending_history: Arc<Mutex<HashMap<String, Pending>>>,
     /// Profile-picture fetch queue (see avatars.rs).
     pub(crate) avatars: mpsc::UnboundedSender<avatars::Request>,
     /// Attachment download queue (see media.rs).
@@ -628,6 +636,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let db = Arc::clone(&ctx.db);
             let progress = lazy.progress();
             let on_demand = lazy.sync_type() == wa::history_sync::HistorySyncType::ON_DEMAND as i32;
+            let session = lazy.peer_data_request_session_id().map(str::to_string);
             let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
             match result {
                 Ok(Ok(Ingested { chats, upgraded })) => {
@@ -640,7 +649,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                         send_message_update(ctx, chat_id, message_id);
                     }
                     if on_demand {
-                        answer_pending_history(ctx, &chats);
+                        answer_pending_history(ctx, &chats, session.as_deref());
                     } else {
                         avatars::queue_stale(ctx);   // new chats from the sync
                     }
@@ -770,7 +779,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let Some(content) = extract::content(message) else { return };
     let quote = extract::quote(message);
 
-    let (chat_id, stored, media) = {
+    let (chat_id, stored, (media, thumb, extra)) = {
         let db = ctx.db();
         // A 1:1 chat can show up under its LID live while history stored it by
         // phone number (or the other way round); link the two.
@@ -802,7 +811,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
             file_name: content.file_name,
             status: if source.is_from_me { 1 } else { 0 },
         };
-        (chat_id, stored, content.media)
+        (chat_id, stored, (content.media, content.thumb, content.extra))
     };
 
     let (dto, chat) = {
@@ -813,6 +822,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         if let Some(media) = &media {
             db.insert_media(&chat_id, &stored.id, media);
         }
+        db.insert_extra(&chat_id, &stored.id, &thumb, extra.as_ref());
         if let Some(quote) = &quote {
             db.insert_quote(&chat_id, &stored.id, quote);
         }
@@ -838,39 +848,61 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
         return;
     }
 
+    // The phone already said this is where the chat begins.
     let oldest = ctx.db().oldest(&chat_id);
-    let (Some((oldest_id, from_me, ts)), Ok(jid)) = (oldest, chat_id.parse::<Jid>()) else {
+    let start_known = ctx.db().flag(&start_flag(&chat_id, oldest.as_ref().map_or("", |o| o.0.as_str())));
+    let (Some((oldest_id, from_me, ts)), Ok(jid), false) = (oldest, chat_id.parse::<Jid>(), start_known) else {
         ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: true });
         return;
     };
 
-    ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), (ts, oldest_id.clone()));
-    if let Err(e) = client.fetch_message_history(&jid, &oldest_id, from_me, ts * 1000, 50).await {
-        warn!("on-demand history request failed for {chat_id}: {e}");
-        ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
-        // Not `complete`: the phone may just be offline; the UI can retry later.
-        ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: false });
+    let pending = Pending { ts, id: oldest_id.clone(), request: None };
+    ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), pending);
+    match client.fetch_message_history(&jid, &oldest_id, from_me, ts * 1000, 50).await {
+        Ok(request) => {
+            if let Some(p) = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).get_mut(&chat_id) {
+                p.request = Some(request);
+            }
+        }
+        Err(e) => {
+            warn!("on-demand history request failed for {chat_id}: {e}");
+            ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
+            // Not `complete`: the phone may just be offline; the UI can retry later.
+            ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: false });
+        }
     }
+}
+
+/// Set once the phone has nothing older than this message: the chat starts here.
+fn start_flag(chat_id: &str, oldest_id: &str) -> String {
+    format!("history_start:{chat_id}:{oldest_id}")
 }
 
 /// An ON_DEMAND chunk arrived: hand each waiting chat whatever is now older than its anchor.
 ///
-/// A chunk can answer a different request for the same chat (media backfill), so one that
-/// brings nothing older than the anchor leaves the chat waiting; only an empty answer
-/// (the phone has nothing more) marks the history complete.
-fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>) {
-    let waiting: Vec<(String, (i64, String), usize)> = {
+/// The answer to a "load older" request carries that request's id; nothing older in it
+/// means the chat starts there (remembered, so it isn't asked again). A chunk without a
+/// matching id may answer a media backfill for the same chat instead, so it only passes on
+/// what it brought.
+fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>, session: Option<&str>) {
+    let waiting: Vec<(String, Pending, bool)> = {
         let pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
         pending
             .iter()
-            .filter_map(|(id, anchor)| chats_in_chunk.get(id).map(|n| (id.clone(), anchor.clone(), *n)))
+            .filter_map(|(chat, p)| {
+                let answers = session.is_some() && p.request.as_deref() == session;
+                (answers || chats_in_chunk.contains_key(chat)).then(|| (chat.clone(), p.clone(), answers))
+            })
             .collect()
     };
-    for (chat_id, (ts, id), in_chunk) in waiting {
-        let messages = ctx.db().messages_before(&chat_id, ts, &id, 200);
-        let complete = in_chunk == 0;
+    for (chat_id, p, answers) in waiting {
+        let messages = ctx.db().messages_before(&chat_id, p.ts, &p.id, 200);
+        let complete = messages.is_empty() && (answers || chats_in_chunk.get(&chat_id) == Some(&0));
         if messages.is_empty() && !complete {
             continue;
+        }
+        if complete {
+            ctx.db().set_flag(&start_flag(&chat_id, &p.id));
         }
         ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
         ctx.send(Out::OlderMessages { chat_id, messages, complete });
@@ -949,21 +981,22 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
             };
             s.set_reaction(&chat_id, id, &reactor, r.text.as_deref().unwrap_or(""), r.sender_timestamp_ms.unwrap_or(0));
         }
-        let Some(msg) = wmi.message.as_option() else { continue };
-        let Some(content) = extract::content(msg) else { continue };
+        let msg = wmi.message.as_option();
         let from_me = key.from_me.unwrap_or(false);
         let sender = match (from_me, is_group) {
             (true, _) => String::new(),
             (false, true) => key.participant.clone().or_else(|| wmi.participant.clone()).unwrap_or_default(),
             (false, false) => chat_id.clone(),
         };
+        let Some(content) = msg.and_then(extract::content).or_else(|| system_notice(s, wmi, from_me, &sender)) else { continue };
         let push_name = wmi.push_name.clone().unwrap_or_default();
         if !from_me && !sender.is_empty() {
             s.set_push_name(&sender, &push_name);
         }
         let id = key.id.clone().unwrap_or_default();
         let new_media = content.media.as_ref().is_some_and(|media| s.insert_media(&chat_id, &id, media));
-        if let Some(quote) = extract::quote(msg) {
+        let new_extra = s.insert_extra(&chat_id, &id, &content.thumb, content.extra.as_ref());
+        if let Some(quote) = msg.and_then(extract::quote) {
             s.insert_quote(&chat_id, &id, &quote);
         }
         let inserted = s.insert_message(
@@ -980,11 +1013,40 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
                 status: if from_me { delivery(wmi) } else { 0 },
             },
         );
-        if new_media && !inserted {
+        if (new_media || new_extra) && !inserted {
             upgraded.push((chat_id.clone(), id));
         }
     }
     Some(chat_id)
+}
+
+/// History carries WhatsApp's own notices as stubs: missed calls, group changes...
+fn system_notice(s: &Store, wmi: &wa::WebMessageInfo, from_me: bool, actor: &str) -> Option<extract::Content> {
+    use wa::web_message_info::StubType as T;
+    let name = |jid: &str| if s.is_me(jid) { "You".to_string() } else { s.person_name(jid, "") };
+    let params = &wmi.message_stub_parameters;
+    let who = if from_me || actor.is_empty() { "You".to_string() } else { name(actor) };
+    let names = params.iter().map(|p| name(p)).collect::<Vec<_>>().join(", ");
+    let first = params.first().cloned().unwrap_or_default();
+    let text = match wmi.message_stub_type? {
+        T::CALL_MISSED_VOICE | T::CALL_MISSED_GROUP_VOICE => "📞 Missed voice call".to_string(),
+        T::CALL_MISSED_VIDEO | T::CALL_MISSED_GROUP_VIDEO => "📹 Missed video call".to_string(),
+        T::GROUP_CREATE => format!("{who} created group \"{first}\""),
+        T::GROUP_CHANGE_SUBJECT => format!("{who} changed the group name to \"{first}\""),
+        T::GROUP_CHANGE_ICON => format!("{who} changed this group's icon"),
+        T::GROUP_CHANGE_DESCRIPTION => format!("{who} changed the group description"),
+        T::GROUP_PARTICIPANT_ADD => format!("{who} added {names}"),
+        T::GROUP_PARTICIPANT_REMOVE => format!("{who} removed {names}"),
+        T::GROUP_PARTICIPANT_LEAVE => format!("{names} left"),
+        T::GROUP_PARTICIPANT_PROMOTE => format!("{who} made {names} an admin"),
+        T::GROUP_PARTICIPANT_INVITE | T::GROUP_PARTICIPANT_LINKED_GROUP_JOIN | T::GROUP_PARTICIPANT_ADD_REQUEST_JOIN => {
+            format!("{names} joined using this group's invite link")
+        }
+        T::CHANGE_EPHEMERAL_SETTING => format!("{who} changed the disappearing messages setting"),
+        T::BLOCK_CONTACT => if first == "true" { "You blocked this contact" } else { "You unblocked this contact" }.to_string(),
+        _ => return None,
+    };
+    Some(extract::system(text))
 }
 
 /// WebMessageInfo.Status -> 1 sent, 2 delivered, 3 read.

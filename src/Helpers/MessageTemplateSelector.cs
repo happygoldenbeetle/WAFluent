@@ -12,6 +12,11 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
     public DataTemplate? DateDivider { get; set; }
     public DataTemplate? Voice { get; set; }
     public DataTemplate? Sticker { get; set; }
+    public DataTemplate? Video { get; set; }
+    public DataTemplate? Location { get; set; }
+    public DataTemplate? Contact { get; set; }
+    public DataTemplate? Poll { get; set; }
+    public DataTemplate? System { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item is Message m
         ? m.Kind switch
@@ -21,6 +26,11 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
             MessageKind.Sticker => Sticker,
             MessageKind.File => File,
             MessageKind.DateDivider => DateDivider,
+            MessageKind.Video => Video,
+            MessageKind.Location => Location,
+            MessageKind.Contact => Contact,
+            MessageKind.Poll => Poll,
+            MessageKind.System => System,
             _ => Text,
         }
         : Text;

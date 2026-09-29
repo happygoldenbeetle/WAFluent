@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using WhatsAppNative.Models;
 using WhatsAppNative.Services;
 
@@ -33,7 +34,7 @@ public static class Format
 
     public static string PreviewGlyph(string kind) => kind switch
     {
-        "image" => Glyphs.Photo,
+        "image" or "viewonce" => Glyphs.Photo,
         "video" or "gif" => Glyphs.Video,
         "voice" or "audio" => Glyphs.Mic,
         "document" => Glyphs.Document,
@@ -48,8 +49,12 @@ public static class Format
     {
         MessageKind.Image => m.HasText ? m.Text : "Photo",
         MessageKind.Sticker => "Sticker",
-        MessageKind.Voice => $"Voice message ({Duration(TimeSpan.FromSeconds(m.Seconds))})",
+        MessageKind.Voice => m.IsVoiceNote ? $"Voice message ({Duration(TimeSpan.FromSeconds(m.Seconds))})" : "Audio",
         MessageKind.File => m.FileName,
+        MessageKind.Video => m.HasText ? m.Text : m.IsGif ? "GIF" : m.IsVideoNote ? "Video message" : "Video",
+        MessageKind.Location => m.PlaceTitle,
+        MessageKind.Contact => m.ContactTitle,
+        MessageKind.Poll => m.Text,
         _ => m.Text,
     };
 
@@ -58,6 +63,10 @@ public static class Format
         MessageKind.Image => Glyphs.Photo,
         MessageKind.Voice => Glyphs.Mic,
         MessageKind.File => Glyphs.Document,
+        MessageKind.Video => Glyphs.Video,
+        MessageKind.Location => Glyphs.Location,
+        MessageKind.Contact => Glyphs.Contact,
+        MessageKind.Poll => Glyphs.Poll,
         _ => "",
     };
 
@@ -69,10 +78,61 @@ public static class Format
     };
 
     /// <summary>
-    /// Images, stickers and voice notes get their own bubbles once their download details are
-    /// known; other media (video, documents...) still show as a labelled line for now.
+    /// Every kind gets its own bubble: pictures, stickers, voice notes and audio, videos and
+    /// GIFs, documents, locations (map snapshot), contact cards, polls, link previews and
+    /// WhatsApp's notices. Media sent before this PC stored download details shows as a
+    /// labelled line until the phone fills them in.
     /// </summary>
     public static Message ToMessage(MessageDto dto, bool isGroup)
+    {
+        var message = Build(dto, isGroup);
+        if (dto.Extra is { ValueKind: JsonValueKind.Object } extra) AddDetails(message, extra);
+        return message;
+    }
+
+    /// <summary>What <c>extra</c> carries per kind (core/src/protocol.rs, MessageDto).</summary>
+    private static void AddDetails(Message m, JsonElement x)
+    {
+        static string Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+        static bool Bool(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+        static double Num(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+
+        switch (m.Kind)
+        {
+            case MessageKind.Location:
+                m.Latitude = Num(x, "lat");
+                m.Longitude = Num(x, "lng");
+                m.PlaceName = Str(x, "name");
+                m.PlaceAddress = Str(x, "address");
+                m.IsLiveLocation = Bool(x, "live");
+                break;
+            case MessageKind.Contact when x.TryGetProperty("contacts", out var cards) && cards.ValueKind == JsonValueKind.Array:
+                m.Contacts = cards.EnumerateArray()
+                    .Select(c => new ContactCard(Str(c, "name"),
+                        c.TryGetProperty("phones", out var ph) && ph.ValueKind == JsonValueKind.Array
+                            ? ph.EnumerateArray().Select(p => p.GetString() ?? "").Where(p => p.Length > 0).ToList()
+                            : []))
+                    .ToList();
+                break;
+            case MessageKind.Poll when x.TryGetProperty("options", out var options) && options.ValueKind == JsonValueKind.Array:
+                m.PollOptions = options.EnumerateArray().Select(o => o.GetString() ?? "").ToList();
+                m.PollMulti = Bool(x, "multi");
+                break;
+            case MessageKind.Text when x.TryGetProperty("link", out var link) && link.ValueKind == JsonValueKind.Object:
+                m.LinkUrl = Str(link, "url");
+                m.LinkTitle = Str(link, "title");
+                m.LinkDescription = Str(link, "description");
+                break;
+            case MessageKind.Video:
+                m.IsVideoNote = Bool(x, "note");
+                break;
+            case MessageKind.File:
+                m.Pages = (int)Num(x, "pages");
+                break;
+        }
+    }
+
+    private static Message Build(MessageDto dto, bool isGroup)
     {
         var when = FromUnix(dto.Ts);
         var media = dto.Media;
@@ -107,6 +167,9 @@ public static class Format
             Starred = dto.Starred,
             Edited = dto.Edited,
             IsDeleted = dto.Kind == "deleted",
+            Thumb = dto.Thumb,
+            IsVoiceNote = dto.Kind != "audio",
+            IsGif = dto.Kind == "gif",
         };
 
         switch (dto.Kind)
@@ -121,7 +184,19 @@ public static class Format
             case "document":
                 var name = string.IsNullOrEmpty(dto.FileName) ? "Document" : dto.FileName;
                 var ext = Path.GetExtension(name).TrimStart('.').ToUpperInvariant();
-                return Make(MessageKind.File, dto.Text, name, ext.Length > 0 ? $"{ext} document" : "Document");
+                return Make(MessageKind.File, dto.Text, name, ext.Length > 0 ? ext : "Document");
+            case "video" or "gif" when media is not null || dto.Thumb is not null:
+                var note = dto.Extra is { ValueKind: JsonValueKind.Object } x && x.TryGetProperty("note", out var n) && n.ValueKind == JsonValueKind.True;
+                var (vw, vh) = note ? (240, 240) : Fit(media?.Width ?? 0, media?.Height ?? 0, maxWidth: 300, maxHeight: 360);
+                return Make(MessageKind.Video, dto.Text, width: vw, height: vh);
+            case "location" when dto.Extra is not null:
+                return Make(MessageKind.Location, dto.Text, width: 300, height: 150);
+            case "contact" when dto.Extra is not null:
+                return Make(MessageKind.Contact, dto.Text);
+            case "poll" when dto.Extra is not null:
+                return Make(MessageKind.Poll, dto.Text);
+            case "system":
+                return Make(MessageKind.System, dto.Text);
         }
 
         var label = dto.Kind switch
@@ -136,6 +211,7 @@ public static class Format
             "location" => Label("📍", "Location", dto.Text),
             "contact" => Label("👤", "Contact", dto.Text),
             "poll" => Label("📊", "Poll", dto.Text),
+            "viewonce" => $"📷 View once {dto.Text}. Open WhatsApp on your phone to see it.",
             "deleted" => dto.FromMe ? "You deleted this message" : "This message was deleted",
             _ => dto.Text.Length > 0 ? dto.Text : "Unsupported message",
         };

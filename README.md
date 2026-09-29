@@ -2,7 +2,8 @@
 
 A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/dark theme, no browser engine.
 
-> **Status:** links to your phone by QR code, shows your real chats, photos, stickers and voice notes,
+> **Status:** links to your phone by QR code, shows your real chats: photos, stickers, voice notes and audio, videos and GIFs,
+> documents, locations, contact cards, polls, link previews and WhatsApp's notices (missed calls, group changes),
 > and sends text messages, replies (drag a message to the right) and reactions (right-click or double-click a message).
 > Right-click a chat for WhatsApp Desktop's menu (archive, mute, pin, mark unread, favourites, block, clear, delete, add to contacts)
 > and a message to forward, pin, star, select, report or delete it. Emoji: in-app keyboard and :shortcode: autocomplete.
@@ -58,7 +59,7 @@ Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
 | `src/Services/CoreClient.cs` | Starts the core and translates its events |
 | `src/MainWindow.xaml` | Rail, chat list, conversation pane, link screen |
 | `src/CallWindow.xaml` | In-call window (mockup) |
-| `src/Controls/` | `Avatar` (with status ring), `Bubble`, `DeliveryTicks`, `VoicePlayer`, `QuoteBlock`, `TiledBackground` (chat wallpaper) |
+| `src/Controls/` | `Avatar` (with status ring), `Bubble`, `ChatLayout` (conversation list layout), `DeliveryTicks`, `VoicePlayer`, `QuoteBlock`, `TiledBackground` (chat wallpaper) |
 | `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
 | `src/MainWindow.Reactions.cs` | Reaction row in the message menu, emoji flight into the pill |
 | `src/MainWindow.ChatListPane.cs` | Resizable / collapsible chat list (remembered in `ui.json`) |
