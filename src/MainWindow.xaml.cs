@@ -27,6 +27,11 @@ public sealed partial class MainWindow : Window
         var sample = Environment.GetCommandLineArgs().Contains("--sample");
         if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         ViewModel = new MainViewModel(_core);
+        Helpers.Ui.IMessage = _ui.IMessageBubbles;   // before any bubble is drawn
+#if DEBUG
+        // WAFLUENT_BUBBLES=imessage previews the iMessage look without changing your settings.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_BUBBLES") == "imessage") Helpers.Ui.IMessage = true;
+#endif
 
         InitializeComponent();
         SetupSwipe();
@@ -37,6 +42,7 @@ public sealed partial class MainWindow : Window
         SetupInfoPanel();
         SetupTheme();
         SetupTray();
+        SetupBubbles();
         DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         SystemAccentSwitch.IsOn = _ui.UseSystemAccent;
         Helpers.AppColors.Changed += RefreshTheme;
@@ -70,12 +76,15 @@ public sealed partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
             Messages.Loaded += async (_, _) => { await Task.Delay(4000); SelfTestLinks(); };
         // WAFLUENT_SELFTEST=poll: votes for the second option of the first poll after 6 s.
-        // WAFLUENT_SELFTEST=typing: the open chat "types" after 3 s.
+        // WAFLUENT_SELFTEST=typing: the open chat "types" after 3 s, then a reply arrives at 6 s.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "typing")
             Messages.Loaded += async (_, _) =>
             {
                 await Task.Delay(3000);
-                if (ViewModel.SelectedChat is { } chat) chat.TypingText = "typing…";
+                if (ViewModel.SelectedChat is not { } chat) return;
+                chat.TypingText = "typing…";
+                await Task.Delay(3000);
+                ViewModel.SimulateIncoming(chat, "On my way! 🚗");
             };
         var pollTestDone = false;
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "poll")

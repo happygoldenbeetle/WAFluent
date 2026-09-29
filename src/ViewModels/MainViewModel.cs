@@ -453,6 +453,7 @@ public sealed partial class MainViewModel : Observable
         chat.Messages.Clear();
         foreach (var dto in messages) Append(chat, Format.ToMessage(dto, chat.IsGroup));
         chat.MessagesLoaded = true;
+        UpdateRuns(chat);
         if (chat == _selectedChat) ConversationChanged?.Invoke();
         RequestMedia(chat, chat.Messages);
         BackfillIfNeeded(chat, messages);
@@ -496,6 +497,7 @@ public sealed partial class MainViewModel : Observable
         var after = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider)?.Id;
         var older = fresh.Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
         Prepend(chat, older);
+        UpdateRuns(chat);
         RequestMedia(chat, older);
         BackfillIfNeeded(chat, fresh, after);
 
@@ -525,9 +527,16 @@ public sealed partial class MainViewModel : Observable
 
     private void OnMessage(string chatId, MessageDto dto)
     {
+        // Their message is in: they've stopped typing (don't wait for the "paused").
+        if (!dto.FromMe && _byId.TryGetValue(chatId, out var sender) && sender.IsTyping)
+        {
+            _typingVersion[sender] = _typingVersion.GetValueOrDefault(sender) + 1;
+            sender.TypingText = "";
+        }
         if (!_byId.TryGetValue(chatId, out var chat) || !chat.MessagesLoaded) return;
         if (chat.Messages.Any(m => m.Id == dto.Id)) return;
         var message = Format.ToMessage(dto, chat.IsGroup);
+        message.AnimateIn = true;
         Append(chat, message);
         RequestMedia(chat, [message]);
         if (chat == _selectedChat) MessageArrived?.Invoke(message);
@@ -540,6 +549,28 @@ public sealed partial class MainViewModel : Observable
         if (last is null || last.Timestamp.Date != message.Timestamp.Date)
             chat.Messages.Add(new Message { Kind = MessageKind.DateDivider, Text = Format.DayLabel(message.Timestamp), Timestamp = message.Timestamp });
         chat.Messages.Add(message);
+        UpdateRuns(chat);
+    }
+
+    /// <summary>
+    /// iMessage look: a bubble gets the tail when it ends a run (the next message is someone
+    /// else's, a new day, or over a minute later), and your latest message shows its receipt.
+    /// </summary>
+    public static void UpdateRuns(Chat chat)
+    {
+        Message? lastOutgoing = null;
+        var list = chat.Messages;
+        for (var i = 0; i < list.Count; i++)
+        {
+            var m = list[i];
+            if (m.Kind == MessageKind.DateDivider) continue;
+            var next = i + 1 < list.Count ? list[i + 1] : null;
+            m.HasTail = next is null || next.Kind is MessageKind.DateDivider or MessageKind.System || m.Kind == MessageKind.System
+                        || next.IsOutgoing != m.IsOutgoing || next.SenderName != m.SenderName
+                        || (next.Timestamp - m.Timestamp).Duration() > TimeSpan.FromMinutes(1);
+            if (m.IsOutgoing) lastOutgoing = m;
+        }
+        foreach (var m in list) m.ShowReceipt = Helpers.Ui.IMessage && m == lastOutgoing;
     }
 
     // ───────────── Sending and replying ─────────────
@@ -605,6 +636,7 @@ public sealed partial class MainViewModel : Observable
             ReplyGlyph = quote is null ? "" : Format.QuoteGlyph(quote),
             ReplyFromMe = quote?.IsOutgoing ?? false,
         };
+        message.AnimateIn = true;
         Append(chat, message);
         CancelReply();
         _core?.SendText(chat.Id, text, message.HasReply ? message.ReplyId : null, message.Id);
