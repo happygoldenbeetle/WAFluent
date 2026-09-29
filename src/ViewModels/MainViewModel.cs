@@ -111,7 +111,8 @@ public sealed partial class MainViewModel : Observable
     }
 
     /// <summary>
-    /// Messages saved before media support lack download details (they show as "📷 Photo").
+    /// Messages saved before media support lack download details (they show as "📷 Photo"), and
+    /// older locations, contacts, polls and videos lack their map, numbers, options or preview.
     /// Asks the phone to resend them: each request covers the 50 messages before its anchor,
     /// the message just after a missing one. <paramref name="after"/> is the message that
     /// follows this batch in the chat (for older pages). Upgraded messages come back one by
@@ -123,7 +124,9 @@ public sealed partial class MainViewModel : Observable
         for (var i = batch.Count - 1; i >= 0; i--)
         {
             var d = batch[i];
-            if (d.Media is not null || d.Kind is not ("image" or "voice" or "audio" or "sticker" or "video" or "gif" or "document")) continue;
+            var noDownload = d.Media is null && d.Kind is "image" or "voice" or "audio" or "sticker" or "video" or "gif" or "document";
+            var noDetails = d.Extra is null && d.Thumb is null && d.Kind is "location" or "contact" or "poll" or "video" or "gif";
+            if (!noDownload && !noDetails) continue;
             var anchor = i + 1 < batch.Count ? batch[i + 1].Id : after;
             _core.BackfillMedia(chat.Id, anchor);
             i -= 49;   // the rest of that window comes with the same answer
