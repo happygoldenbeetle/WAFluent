@@ -655,9 +655,9 @@
                                                         <RowDefinition Height="Auto" />
                                                         <RowDefinition Height="Auto" />
                                                     </Grid.RowDefinitions>
-                                                    <!-- Circle for one choice, rounded square for several; filled green with a tick when it's yours.
-                                                         Centred on the option's text and bar together. -->
-                                                    <Grid Grid.RowSpan="2" Width="20" Height="20" VerticalAlignment="Center">
+                                                    <!-- A circle, filled green with a tick when it's yours; level with the option's name
+                                                         (nudged 1.5 px down to meet the middle of its capitals). -->
+                                                    <Grid Width="20" Height="20" VerticalAlignment="Center" Margin="0,3,0,0">
                                                         <Border CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" BorderThickness="1.6"
                                                                 BorderBrush="{ThemeResource MetaTextBrush}" Visibility="{x:Bind helpers:Ui.Collapsed(Selected)}" />
                                                         <Border x:Name="PollCheck" CornerRadius="{x:Bind helpers:Ui.PollMark(Multi)}" Background="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind Selected}">

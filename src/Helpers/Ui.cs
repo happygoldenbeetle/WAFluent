@@ -50,8 +50,8 @@ public static class Ui
     /// <summary>Round video messages are circles; other media has softly rounded corners.</summary>
     public static CornerRadius MediaCorner(bool round, double size) => new(round ? size / 2 : 6);
 
-    /// <summary>Poll option mark: a circle for one choice, a rounded square for several.</summary>
-    public static CornerRadius PollMark(bool multi) => new(multi ? 5 : 10);
+    /// <summary>Poll option mark: always a circle.</summary>
+    public static CornerRadius PollMark(bool multi) => new(10);
 
     /// <summary>Second button on a contact card.</summary>
     public static string ContactAction(int count) => count > 1 ? "View all" : "Copy number";
