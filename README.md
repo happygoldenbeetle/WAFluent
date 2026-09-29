@@ -4,7 +4,8 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 
 > **Status:** links to your phone by QR code, shows your real chats: photos, stickers, voice notes and audio, videos and GIFs,
 > documents, locations, contact cards, polls, link previews and WhatsApp's notices (missed calls, group changes),
-> and sends text messages, replies (drag a message to the right) and reactions (right-click or double-click a message).
+> and sends text messages, replies (drag a message to the right), reactions (right-click or double-click a message),
+> stickers (your favourites synced from the phone, and recents) and GIFs (recents, or GIPHY search with your own key).
 > Right-click a chat for WhatsApp Desktop's menu (archive, mute, pin, mark unread, favourites, block, clear, delete, add to contacts)
 > and a message to forward, pin, star, select, report or delete it. Emoji: in-app keyboard and :shortcode: autocomplete.
 > Sending media and calls are not wired up yet (the call window is a mockup).

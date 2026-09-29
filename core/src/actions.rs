@@ -356,3 +356,89 @@ pub async fn report(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id
         }
     }
 }
+
+// ───────────── GIF search ─────────────
+
+/// Uploads a GIF picked from search (an MP4, as WhatsApp sends GIFs) and sends it.
+pub async fn send_gif(ctx: &Ctx, client: &Arc<Client>, to: String, path: String, width: u32, height: u32, thumb: Option<String>) {
+    use whatsapp_rust::download::MediaType;
+    let Ok(jid) = to.parse::<Jid>() else { return };
+    let data = match std::fs::read(&path) {
+        Ok(data) => data,
+        Err(e) => {
+            warn!("gif {path}: {e}");
+            notice(ctx, false, "The GIF couldn't be read.");
+            return;
+        }
+    };
+    let thumb = thumb.and_then(|p| std::fs::read(p).ok()).unwrap_or_default();
+    let up = match client.upload(data, MediaType::Video, Default::default()).await {
+        Ok(up) => up,
+        Err(e) => {
+            warn!("gif upload failed: {e}");
+            notice(ctx, false, "The GIF couldn't be uploaded.");
+            return;
+        }
+    };
+    let media = extract::Media {
+        media_type: "video",
+        direct_path: up.direct_path.clone(),
+        media_key: up.media_key.to_vec(),
+        file_sha256: up.file_sha256.to_vec(),
+        file_enc_sha256: up.file_enc_sha256.to_vec(),
+        file_length: up.file_length,
+        mimetype: "video/mp4".into(),
+        width,
+        height,
+        seconds: 0,
+        waveform: Vec::new(),
+    };
+    let mut message = wa::Message::default();
+    message.video_message = MessageField::some(wa::message::VideoMessage {
+        url: Some(up.url),
+        direct_path: Some(up.direct_path),
+        media_key: Some(up.media_key.to_vec()),
+        media_key_timestamp: Some(up.media_key_timestamp),
+        file_sha256: Some(up.file_sha256.to_vec()),
+        file_enc_sha256: Some(up.file_enc_sha256.to_vec()),
+        file_length: Some(up.file_length),
+        mimetype: Some("video/mp4".into()),
+        width: Some(width),
+        height: Some(height),
+        gif_playback: Some(true),
+        gif_attribution: Some(wa::message::video_message::Attribution::GIPHY),
+        jpeg_thumbnail: (!thumb.is_empty()).then(|| thumb.clone()),
+        streaming_sidecar: up.streaming_sidecar,
+        ..Default::default()
+    });
+    let sent = match client.send_message(jid, message).await {
+        Ok(sent) => sent,
+        Err(e) => {
+            warn!("gif to {to} failed: {e}");
+            notice(ctx, false, "The GIF couldn't be sent.");
+            return;
+        }
+    };
+    let stored = StoredMessage {
+        id: sent.message_id,
+        from_me: true,
+        sender: String::new(),
+        push_name: String::new(),
+        ts: store::unix_now(),
+        kind: "gif".into(),
+        text: String::new(),
+        file_name: String::new(),
+        status: 1,
+    };
+    let dto = {
+        let db = ctx.db();
+        db.ensure_chat(&to, to.ends_with("@g.us"));
+        db.insert_message(&to, &stored);
+        db.insert_media(&to, &stored.id, &media);
+        db.set_media_path(&to, &stored.id, &path);
+        db.insert_extra(&to, &stored.id, &thumb, None);
+        db.to_dto(&to, stored)
+    };
+    ctx.send(Out::Message { chat_id: to.clone(), message: dto });
+    send_chat(ctx, &to);
+}

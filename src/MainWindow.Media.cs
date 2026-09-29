@@ -24,6 +24,7 @@ public sealed partial class MainWindow
     private void SetupStickers()
     {
         StickerButton.Content = Controls.StickerPanel.StickerGlyph();
+        GiphyKeyBox.Text = _ui.GiphyKey;
         if (_core is null) return;
         _core.Stickers += (favorites, stickers, gifs) => _stickerPanel?.SetItems(favorites, stickers, gifs);
         _core.MediaReceived += (chatId, messageId, path) => _stickerPanel?.MediaArrived(chatId, messageId, path);
@@ -36,6 +37,7 @@ public sealed partial class MainWindow
         {
             _stickerPanel = new Controls.StickerPanel();
             _stickerPanel.DownloadWanted += item => _core?.DownloadMedia(item.ChatId, item.MessageId);
+            _stickerPanel.GifPicked += SendGif;
             _stickerPanel.Picked += item =>
             {
                 _stickerFlyout?.Hide();
@@ -55,8 +57,33 @@ public sealed partial class MainWindow
                 Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft,
             };
         }
+        _stickerPanel!.GiphyKey = _ui.GiphyKey.Trim();
         _core?.LoadStickers();   // fresh recents each time
         _stickerFlyout.ShowAt(StickerButton);
+    }
+
+    /// <summary>A GIF from search: fetched as MP4 (with a preview), then uploaded and sent by the core.</summary>
+    private async void SendGif(Services.Giphy.Gif gif)
+    {
+        _stickerFlyout?.Hide();
+        ComposerBox.Focus(FocusState.Programmatic);
+        if (ViewModel.SelectedChat is not { Id.Length: > 0 } chat || _core is null) return;
+        try
+        {
+            var (mp4, thumb) = await Services.Giphy.DownloadAsync(gif);
+            _core.SendGif(chat.Id, mp4, gif.Width, gif.Height, thumb);
+        }
+        catch (Exception)
+        {
+            ShowToast(false, "Couldn't get that GIF from GIPHY. Check your connection.");
+        }
+    }
+
+    private void GiphyKey_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_ui.GiphyKey == GiphyKeyBox.Text) return;
+        _ui.GiphyKey = GiphyKeyBox.Text;
+        _ui.Save();
     }
 
     // ───────────── Downloads on demand ─────────────

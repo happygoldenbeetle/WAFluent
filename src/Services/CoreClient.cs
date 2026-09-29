@@ -119,6 +119,9 @@ public sealed class CoreClient : IDisposable
     /// <summary>Sends a sticker or GIF from the panel (not as forwarded).</summary>
     public void SendStored(string chatId, string messageId, string to) => Send(new { cmd = "sendStored", chatId, messageId, to });
 
+    /// <summary>Uploads and sends an MP4 from GIF search as a GIF; <paramref name="thumb"/> is a JPEG preview file.</summary>
+    public void SendGif(string to, string path, int width, int height, string? thumb) => Send(new { cmd = "sendGif", to, path, width, height, thumb });
+
     /// <summary>Your choice in a poll (none = take your vote back).</summary>
     public void VotePoll(string chatId, string messageId, IReadOnlyList<string> options) =>
         Send(new { cmd = "votePoll", chatId, messageId, options });

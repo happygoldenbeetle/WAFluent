@@ -267,6 +267,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             };
             ctx.send(Out::Stickers { favorites, stickers, gifs });
         }
+        Command::SendGif { to, path, width, height, thumb } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::send_gif(&ctx, &client, to, path, width, height, thumb).await });
+        }
         Command::SendStored { chat_id, message_id, to } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, vec![to], false).await });
