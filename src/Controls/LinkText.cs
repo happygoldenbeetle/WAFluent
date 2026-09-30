@@ -24,7 +24,7 @@ public static partial class LinkText
     public static Message? GetMessage(TextBlock element) => (Message?)element.GetValue(MessageProperty);
     public static void SetMessage(TextBlock element, Message? value) => element.SetValue(MessageProperty, value);
 
-    [GeneratedRegex(@"(?<email>[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})|(?<url>(?:https?://|www\.)[^\s<>""]*[^\s<>"".,;:!?)\]'])")]
+    [GeneratedRegex(@"(?<mention>@\u2068[^\u2069]*\u2069)|(?<email>[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})|(?<url>(?:https?://|www\.)[^\s<>""]*[^\s<>"".,;:!?)\]'])")]
     private static partial Regex Links();
 
     /// <summary>What a link points at: "mailto:…" or a web address, and the text shown.</summary>
@@ -52,6 +52,18 @@ public static partial class LinkText
             foreach (Match match in Links().Matches(text))
             {
                 if (match.Index > at) block.Inlines.Add(new Run { Text = text[at..match.Index] });
+                at = match.Index + match.Length;
+                if (match.Groups["mention"].Success)
+                {
+                    // @Name (the core marks mentions with Unicode isolates): green, like WhatsApp.
+                    block.Inlines.Add(new Run
+                    {
+                        Text = "@" + match.Value[2..^1],
+                        Foreground = Themed.Brush("ChatAccentTextBrush"),
+                        FontWeight = FontWeights.SemiBold,
+                    });
+                    continue;
+                }
                 var email = match.Groups["email"].Success;
                 var uri = email ? "mailto:" + match.Value : match.Value.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? "https://" + match.Value : match.Value;
                 var link = new Hyperlink

@@ -660,10 +660,23 @@ public sealed partial class MainViewModel : Observable
     /// Adds the message to the open chat right away (clock icon) and hands it to the core;
     /// <see cref="OnSent"/> swaps in the real id and a tick. Sample mode just shows it as sent.
     /// </summary>
-    public bool Send(string text)
+    public bool Send(string text, IReadOnlyList<(string Name, string Jid)>? mentions = null)
     {
         text = text.Trim();
         if (_selectedChat is not { } chat || text.Length == 0) return false;
+        // @mentions: the bubble shows "@Name" (marked for colour), WhatsApp gets "@<number>".
+        var wire = text;
+        var mentioned = new List<string>();
+        foreach (var (name, jid) in mentions ?? [])
+        {
+            var token = "@" + name;
+            var at = wire.IndexOf(token, StringComparison.Ordinal);
+            if (at < 0) continue;
+            wire = wire[..at] + "@" + jid.Split('@')[0] + wire[(at + token.Length)..];
+            var shown = text.IndexOf(token, StringComparison.Ordinal);
+            if (shown >= 0) text = text[..shown] + "@\u2068" + name + "\u2069" + text[(shown + token.Length)..];
+            mentioned.Add(jid);
+        }
 
         var now = DateTime.Now;
         var quote = _replyingTo;
@@ -686,7 +699,7 @@ public sealed partial class MainViewModel : Observable
         RemoveUnreadDivider(chat);   // you've read up to here
         Append(chat, message);
         CancelReply();
-        _core?.SendText(chat.Id, text, message.HasReply ? message.ReplyId : null, message.Id);
+        _core?.SendText(chat.Id, wire, message.HasReply ? message.ReplyId : null, message.Id, mentioned);
 
         chat.Preview = text;
         chat.PreviewSender = "";

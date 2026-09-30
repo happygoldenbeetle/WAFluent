@@ -43,6 +43,8 @@ pub enum Event {
     /// Search results; `oldest_ts`: the oldest message this PC has for the chat (older ones
     /// are only on the phone).
     SearchResults { chat_id: String, query: String, results: Vec<MessageDto>, oldest_ts: Option<i64> },
+    /// A group's members (without you), for @mentions.
+    GroupMembers { chat_id: String, members: Vec<MemberDto> },
     /// Receipts for one of your messages (Message info).
     MessageInfo { chat_id: String, message_id: String, receipts: Vec<ReceiptDto> },
     /// The message a date points at (none: nothing on or after it).
@@ -285,7 +287,17 @@ pub enum Command {
     SendTyping { chat_id: String, state: String },
     /// Send a text message, optionally quoting `reply_to` (a message id in the same chat).
     /// `temp_id` names the UI's pending bubble in the `sent` / `sendFailed` answer.
-    SendText { chat_id: String, text: String, reply_to: Option<String>, temp_id: String },
+    SendText {
+        chat_id: String,
+        text: String,
+        reply_to: Option<String>,
+        temp_id: String,
+        /// People @mentioned (their JIDs; the text holds "@<number>" for each).
+        #[serde(default)]
+        mentions: Vec<String>,
+    },
+    /// A group's members, for @mentions; answered by `groupMembers`.
+    GroupMembers { chat_id: String },
     /// Chat menu: archive | unarchive | mute (until_ms, or always) | unmute | markRead | markUnread |
     /// clear | delete | block | unblock. Synced with the phone.
     ChatAction { chat_id: String, action: String, until_ms: Option<i64> },
@@ -354,4 +366,14 @@ pub struct ReceiptDto {
     pub name: String,
     pub status: u8,
     pub ts: i64,
+}
+
+/// A group member: the JID to mention, their name, their 1:1 chat (for the picture), number.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MemberDto {
+    pub jid: String,
+    pub name: String,
+    pub chat_id: String,
+    pub phone: String,
 }

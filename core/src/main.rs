@@ -390,10 +390,14 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
                 tokio::time::sleep(Duration::from_millis(1500)).await;
             });
         }
-        Command::SendText { chat_id, text, reply_to, temp_id } => {
+        Command::GroupMembers { chat_id } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { group_members(&ctx, &client, chat_id).await });
+        }
+        Command::SendText { chat_id, text, reply_to, temp_id, mentions } => {
             // Sending waits on the server; keep reading commands meanwhile.
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id).await });
+            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id, mentions).await });
         }
         Command::ChatAction { chat_id, action, until_ms } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -461,7 +465,38 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     }
 }
 
-async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: String, reply_to: Option<String>, temp_id: String) {
+/// A group's members for the @mention list (you left out), named as the chat list names them.
+async fn group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let meta = match client.groups().get_metadata(&jid).await {
+        Ok(meta) => meta,
+        Err(e) => {
+            warn!("members of {chat_id}: {e}");
+            return;
+        }
+    };
+    let members = {
+        let db = ctx.db();
+        meta.participants
+            .iter()
+            .filter(|p| !db.is_me(&p.jid.to_non_ad_string()))
+            .map(|p| {
+                let id = p.jid.to_non_ad_string();
+                let pn = p.phone_number.as_ref().map(|j| j.to_non_ad_string());
+                let name = db.person_name(pn.as_deref().unwrap_or(&id), "");
+                crate::protocol::MemberDto {
+                    chat_id: db.canonical(pn.as_deref().unwrap_or(&id)),
+                    phone: pn.as_ref().map(|j| j.split('@').next().unwrap_or("").to_string()).unwrap_or_default(),
+                    jid: id,
+                    name,
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    ctx.send(Out::GroupMembers { chat_id, members });
+}
+
+async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: String, reply_to: Option<String>, temp_id: String, mentions: Vec<String>) {
     let jid = match chat_id.parse::<Jid>() {
         Ok(jid) => jid,
         Err(e) => {
@@ -496,6 +531,22 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
             (wa::Message::text_with_context(text.clone(), context), Some(quote))
         }
         None => (wa::Message::text(text.clone()), None),
+    };
+    // @mentions ride in the context (a plain text message becomes an extended one).
+    let message = if mentions.is_empty() {
+        message
+    } else {
+        let mut message = message;
+        let mut ext = message.extended_text_message.as_option().cloned().unwrap_or_else(|| wa::message::ExtendedTextMessage {
+            text: Some(text.clone()),
+            ..Default::default()
+        });
+        let mut context = ext.context_info.as_option().cloned().unwrap_or_default();
+        context.mentioned_jid = mentions.clone();
+        ext.context_info = MessageField::some(context);
+        message.conversation = None;
+        message.extended_text_message = MessageField::some(ext);
+        message
     };
 
     let sent = match client.send_message(jid, message).await {

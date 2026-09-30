@@ -769,7 +769,7 @@ impl Store {
                 };
                 ChatDto {
                     name: if name.is_empty() { self.person_name(&id, "") } else { name },
-                    preview: preview(&kind, text.as_deref().unwrap_or(""), file_name.as_deref().unwrap_or("")),
+                    preview: preview(&kind, &self.render_mentions(text.as_deref().unwrap_or("")), file_name.as_deref().unwrap_or("")),
                     preview_kind: kind,
                     muted: mute_end == -1 || mute_end > now,
                     last_from_me: from_me,
@@ -1000,7 +1000,7 @@ impl Store {
             sender_name,
             ts: m.ts,
             kind: m.kind,
-            text: m.text,
+            text: self.render_mentions(&m.text),
             file_name: m.file_name,
             status: m.status,
         }
@@ -1359,6 +1359,45 @@ impl Store {
                 ts,
             })
             .collect()
+    }
+
+    /// "@923001234567" (how WhatsApp writes a mention) becomes "@Name", the name set between
+    /// Unicode isolates (U+2068 U+2069) so the app can colour it. Unknown numbers stay.
+    pub fn render_mentions(&self, text: &str) -> String {
+        if !text.contains('@') {
+            return text.to_string();
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0;
+        while i < chars.len() {
+            let starts_word = i == 0 || !chars[i - 1].is_alphanumeric();
+            if chars[i] == '@' && starts_word {
+                let digits: String = chars[i + 1..].iter().take_while(|c| c.is_ascii_digit()).collect();
+                if (5..=20).contains(&digits.len()) {
+                    let name = [format!("{digits}@s.whatsapp.net"), format!("{digits}@lid")]
+                        .iter()
+                        .find_map(|jid| {
+                            if self.is_me(jid) {
+                                return Some("You".to_string());
+                            }
+                            let name = self.person_name(jid, "");
+                            (name != pretty_jid(jid) && !name.chars().filter(char::is_ascii_digit).eq(digits.chars())).then_some(name)
+                        });
+                    if let Some(name) = name {
+                        out.push('@');
+                        out.push('\u{2068}');
+                        out.push_str(&name);
+                        out.push('\u{2069}');
+                        i += 1 + digits.chars().count();
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
     }
 
     pub fn person_name(&self, jid: &str, fallback_push: &str) -> String {

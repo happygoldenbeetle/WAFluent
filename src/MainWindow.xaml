@@ -1169,6 +1169,20 @@
                         <StackPanel x:Name="ShortcodeList" />
                     </Border>
 
+                    <!-- @mention suggestions, like the :shortcode: list (MainWindow.Mentions.cs). -->
+                    <Border x:Name="MentionPanel" Grid.Row="2" Visibility="Collapsed"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,0,8"
+                            MinWidth="300" MaxWidth="420" MaxHeight="360" Padding="4" CornerRadius="8" Translation="0,0,16"
+                            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1">
+                        <Border.Shadow>
+                            <ThemeShadow />
+                        </Border.Shadow>
+                        <ScrollViewer x:Name="MentionScroller">
+                            <StackPanel x:Name="MentionList" />
+                        </ScrollViewer>
+                    </Border>
+
                     <!-- Composer: docked bar; the mic becomes Send once there is text. -->
                     <!-- Select mode replaces the composer: count, then copy / star / forward / delete. -->
                     <Grid Grid.Row="3" Padding="10,6" ColumnSpacing="4" MinHeight="52"

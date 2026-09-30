@@ -206,6 +206,25 @@ public sealed partial class MainWindow : Window
                 if (ViewModel.Chats.FirstOrDefault(c => c.Name == Environment.GetEnvironmentVariable("WAFLUENT_TEST_CHAT")) is { } target)
                     ChatList.SelectedItem = target;
             };
+        // WAFLUENT_SELFTEST=mention: in WAFLUENT_TEST_CHAT, types "hi @" (the list opens).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "mention")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                if (ViewModel.Chats.FirstOrDefault(c => c.Name == Environment.GetEnvironmentVariable("WAFLUENT_TEST_CHAT")) is { } target)
+                    ChatList.SelectedItem = target;
+                await Task.Delay(1000);
+                ComposerBox.Text = "hi @";
+                ComposerBox.SelectionStart = ComposerBox.Text.Length;
+                UpdateMentions();
+                if (Environment.GetEnvironmentVariable("WAFLUENT_TEST_SEND") == "1")
+                {
+                    await Task.Delay(800);
+                    ApplyMention();
+                    ComposerBox.Text += "see you there";
+                    SendCurrent();
+                }
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
@@ -425,6 +444,7 @@ public sealed partial class MainWindow : Window
     private void ComposerBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateShortcodes();
+        UpdateMentions();
         var hasText = ComposerBox.Text.Trim().Length > 0;
         ViewModel.ComposerEdited(hasText);
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
@@ -433,8 +453,8 @@ public sealed partial class MainWindow : Window
 
     private void ComposerBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        // The :shortcode: list gets ↑ ↓ Enter Tab Esc first.
-        if (ShortcodeKey(e.Key))
+        // The @mention and :shortcode: lists get ↑ ↓ Enter Tab Esc first.
+        if (MentionKey(e.Key) || ShortcodeKey(e.Key))
         {
             e.Handled = true;
             return;
@@ -475,7 +495,8 @@ public sealed partial class MainWindow : Window
             SaveEdit();
             return;
         }
-        if (!ViewModel.Send(ComposerBox.Text)) return;
+        if (!ViewModel.Send(ComposerBox.Text, _mentions)) return;
+        _mentions.Clear();
         ViewModel.StopTyping();
         ComposerBox.Text = "";
         ComposerBox.Focus(FocusState.Programmatic);

@@ -24,6 +24,9 @@ public sealed record MessageDto(
 /// <summary>A sticker or GIF for the sticker panel: the message it came in.</summary>
 public sealed record StickerDto(string ChatId, string MessageId, int Width, int Height, string? Path, string? Thumb);
 
+/// <summary>A group member for @mentions: the JID to mention, name, their 1:1 chat, number.</summary>
+public sealed record MemberDto(string Jid, string Name, string ChatId, string Phone);
+
 /// <summary>One person's receipt for your message: delivered (2) or read (3), when (Unix seconds).</summary>
 public sealed record ReceiptDto(string User, string ChatId, string Name, int Status, long Ts);
 
@@ -57,7 +60,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
     public event Action<string, string, IReadOnlyList<MessageDto>, long?>? SearchResults;  // chat, query, results, oldest time
     public event Action<string, string?, long>? FoundMessage;
-    public event Action<string, string, IReadOnlyList<ReceiptDto>>? MessageInfoReceived;   // chat, message, receipts                // chat, message (none: nothing there), its time
+    public event Action<string, string, IReadOnlyList<ReceiptDto>>? MessageInfoReceived;   // chat, message, receipts
+    public event Action<string, IReadOnlyList<MemberDto>>? GroupMembersReceived;            // group, members (not you)                // chat, message (none: nothing there), its time
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
     public event Action<string, string, string>? MediaReceived;      // chat, message, file path
     public event Action<string, string, string>? MediaFailed;        // chat, message, reason
@@ -182,8 +186,11 @@ public sealed class CoreClient : IDisposable
     public void BackfillMedia(string chatId, string? beforeId) => Send(new { cmd = "backfillMedia", chatId, beforeId });
 
     /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
-    public void SendText(string chatId, string text, string? replyTo, string tempId) =>
-        Send(new { cmd = "sendText", chatId, text, replyTo, tempId });
+    public void SendText(string chatId, string text, string? replyTo, string tempId, IReadOnlyList<string>? mentions = null) =>
+        Send(new { cmd = "sendText", chatId, text, replyTo, tempId, mentions = mentions ?? [] });
+
+    /// <summary>A group's members, for @mentions (answered by GroupMembersReceived).</summary>
+    public void GroupMembers(string chatId) => Send(new { cmd = "groupMembers", chatId });
 
     /// <summary>React to a message; "" removes your reaction. Answered by ReactionsReceived.</summary>
     public void React(string chatId, string messageId, string emoji) => Send(new { cmd = "react", chatId, messageId, emoji });
@@ -280,6 +287,11 @@ public sealed class CoreClient : IDisposable
                 var hits = root.GetProperty("results").Deserialize<List<MessageDto>>(Json) ?? [];
                 long? oldestTs = root.TryGetProperty("oldestTs", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt64() : null;
                 Post(() => SearchResults?.Invoke(searchChat, searchQuery, hits, oldestTs));
+                break;
+            case "groupMembers":
+                var membersChat = root.GetProperty("chatId").GetString() ?? "";
+                var members = root.GetProperty("members").Deserialize<List<MemberDto>>(Json) ?? [];
+                Post(() => GroupMembersReceived?.Invoke(membersChat, members));
                 break;
             case "messageInfo":
                 var infoChat = root.GetProperty("chatId").GetString() ?? "";
