@@ -716,3 +716,26 @@ fn store_sent_as(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, lo
     }
     send_chat(ctx, chat_id);
 }
+
+// ───────────── Editing ─────────────
+
+/// Sends new text for one of your messages; the bubble updates (with "Edited") once it's sent.
+pub async fn edit_message(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, text: String) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return;
+    }
+    match client.edit_message(jid, message_id.clone(), wa::Message::text(text.clone())).await {
+        Ok(_) => {
+            if ctx.db().set_edited(&chat_id, &message_id, &text) {
+                send_message_update(ctx, &chat_id, &message_id);
+                send_chat(ctx, &chat_id);
+            }
+        }
+        Err(e) => {
+            warn!("edit of {chat_id}/{message_id} failed: {e}");
+            notice(ctx, false, "The message couldn't be edited.");
+        }
+    }
+}

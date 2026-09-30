@@ -196,6 +196,7 @@ public sealed partial class MainWindow
         }
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Select", Glyphs.Select, () => ViewModel.BeginSelect(m)));
+        if (CanEdit(m)) menu.Items.Add(Item("Edit", "\uE70F", () => BeginEdit(m)));
         if (m.IsOutgoing) menu.Items.Add(Item("Message info", Glyphs.Info, () => OpenMessageInfo(m)));
         menu.Items.Add(new MenuFlyoutSeparator());
         if (!m.IsOutgoing && !m.IsDeleted)

@@ -213,6 +213,9 @@ public sealed class CoreClient : IDisposable
 
     public void Report(string chatId, string messageId) => Send(new { cmd = "report", chatId, messageId });
 
+    /// <summary>New text for one of your messages (the bubble updates through MessageUpdated).</summary>
+    public void EditMessage(string chatId, string messageId, string text) => Send(new { cmd = "editMessage", chatId, messageId, text });
+
     /// <summary>Who got and read one of your messages (answered by MessageInfoReceived).</summary>
     public void MessageInfo(string chatId, string messageId) => Send(new { cmd = "messageInfo", chatId, messageId });
 

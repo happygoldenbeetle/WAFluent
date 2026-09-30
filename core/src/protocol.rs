@@ -222,6 +222,8 @@ pub enum Command {
     /// Everything older than (before_ts, before_id) back to `until_ts`, plus a little before
     /// it: to show a search result or a date that isn't loaded yet. Answered by `olderMessages`.
     LoadOlderUntil { chat_id: String, before_ts: i64, before_id: String, until_ts: i64 },
+    /// Change the text of one of your messages (WhatsApp allows 15 minutes after sending).
+    EditMessage { chat_id: String, message_id: String, text: String },
     /// Who got and read one of your messages; answered by `messageInfo`.
     MessageInfo { chat_id: String, message_id: String },
     /// Messages in a chat containing `query` (text, captions, file names), newest first.

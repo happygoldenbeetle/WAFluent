@@ -1207,7 +1207,7 @@
                         </Grid.ColumnDefinitions>
                         <!-- Replying to: the quoted message, with ✕ to cancel (or Esc). -->
                         <Grid Grid.ColumnSpan="4" Margin="4,2,0,6" ColumnSpacing="6"
-                              Visibility="{x:Bind ViewModel.IsReplying, Mode=OneWay}">
+                              Visibility="{x:Bind ViewModel.IsReplying, Mode=OneWay}" x:Name="ReplyBanner">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -1219,6 +1219,28 @@
                             <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Cancel reply (Esc)" AutomationProperties.Name="Cancel reply"
                                     Click="CancelReply_Click">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
+                        </Grid>
+                        <!-- Editing one of your messages (MainWindow.Edit.cs): the composer holds its text. -->
+                        <Grid x:Name="EditBanner" Grid.ColumnSpan="4" Margin="4,2,0,6" ColumnSpacing="6" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border CornerRadius="6" Background="{ThemeResource QuoteBrush}" BorderBrush="{ThemeResource ChatAccentBrush}"
+                                    BorderThickness="4,0,0,0" Padding="10,6,10,6">
+                                <StackPanel Spacing="1">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon Glyph="&#xE70F;" FontSize="12" Foreground="{ThemeResource ChatAccentTextBrush}" />
+                                        <TextBlock Text="Editing message" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource ChatAccentTextBrush}" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="EditBannerText" FontSize="13" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Cancel editing (Esc)" AutomationProperties.Name="Cancel editing" Click="CancelEdit_Click">
                                 <FontIcon Glyph="&#xE711;" FontSize="14" />
                             </Button>
                         </Grid>

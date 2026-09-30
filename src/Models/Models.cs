@@ -57,7 +57,7 @@ public sealed class Message : Observable
     public string Text { get; init; } = "";
     public string Time { get; init; } = "";
     public DateTime Timestamp { get; init; }
-    public long UnixTs { get; init; }
+    public long UnixTs { get; set; }
     public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }
 
     private bool _hasTail = true;

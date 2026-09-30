@@ -188,6 +188,16 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(3000);
                 if (ViewModel.SelectedChat?.Messages.LastOrDefault(m => m.IsOutgoing && m.Kind == MessageKind.Text) is { } mine) OpenMessageInfo(mine);
             };
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "edit")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                if (ViewModel.SelectedChat?.Messages.LastOrDefault(m => m.IsOutgoing && m.Kind == MessageKind.Text) is { } mine)
+                {
+                    mine.UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds();   // sample messages are old
+                    BeginEdit(mine);
+                }
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
@@ -396,6 +406,19 @@ public sealed partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        // Editing: Esc stops; ↑ in an empty composer edits your latest message (like Discord).
+        if (e.Key == VirtualKey.Escape && _editing is not null)
+        {
+            CancelEdit();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == VirtualKey.Up && ComposerBox.Text.Length == 0 && _editing is null && LatestEditable() is { } latest)
+        {
+            BeginEdit(latest);
+            e.Handled = true;
+            return;
+        }
         // Esc drops the quote; Enter sends; Shift+Enter inserts a new line.
         if (e.Key == VirtualKey.Escape && ViewModel.IsReplying)
         {
@@ -414,6 +437,11 @@ public sealed partial class MainWindow : Window
 
     private void SendCurrent()
     {
+        if (_editing is not null)
+        {
+            SaveEdit();
+            return;
+        }
         if (!ViewModel.Send(ComposerBox.Text)) return;
         ViewModel.StopTyping();
         ComposerBox.Text = "";

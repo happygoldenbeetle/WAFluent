@@ -798,6 +798,13 @@ public sealed partial class MainViewModel : Observable
         RefreshRuns();
     }
 
+    /// <summary>New text for one of your messages; the bubble updates when the core confirms.</summary>
+    public void Edit(Message message, string text)
+    {
+        if (_selectedChat is not { } chat || text.Trim().Length == 0 || text.Trim() == message.Text) return;
+        _core?.EditMessage(chat.Id, message.Id, text.Trim());
+    }
+
     /// <summary>Sends a message that failed again (same pending bubble).</summary>
     public void RetrySend(Message message)
     {

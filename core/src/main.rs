@@ -416,6 +416,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::pin_message(&ctx, &client, chat_id, message_id, pin).await });
         }
+        Command::EditMessage { chat_id, message_id, text } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::edit_message(&ctx, &client, chat_id, message_id, text).await });
+        }
         Command::StarMessage { chat_id, message_id, star } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::star_message(&ctx, &client, chat_id, message_id, star).await });
