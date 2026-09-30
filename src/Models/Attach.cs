@@ -18,6 +18,9 @@ public sealed class OutgoingFile : Observable
     public ImageSource? Preview { get; init; }
     public long Size { get; init; }
 
+    /// <summary>Bigger than standard quality, so HD keeps more (photos over 1600 px, videos over 480p).</summary>
+    public bool SupportsHd => Helpers.MediaCompression.SupportsHd(Kind, Width, Height);
+
     public string FileName => System.IO.Path.GetFileName(Path);
     public string Extension => System.IO.Path.GetExtension(Path).TrimStart('.').ToUpperInvariant();
     public bool IsAudio => Mime.StartsWith("audio/", StringComparison.OrdinalIgnoreCase);

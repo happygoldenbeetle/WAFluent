@@ -29,6 +29,9 @@ public sealed class UiSettings
     /// <summary>WhatsApp's classic bubbles (off: the rounder iMessage-style ones, in WhatsApp's colours).</summary>
     public bool ClassicBubbles { get; set; }
 
+    /// <summary>Photos and videos go in HD by default (when they're bigger than standard).</summary>
+    public bool HdMedia { get; set; }
+
     /// <summary>A GIPHY API key to use instead of the built-in one (no UI; empty: built-in).</summary>
     public string GiphyKey { get; set; } = "";
 

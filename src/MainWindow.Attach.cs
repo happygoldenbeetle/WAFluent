@@ -81,6 +81,7 @@ public sealed partial class MainWindow
     private readonly List<OutgoingFile> _outgoing = [];
     private OutgoingFile? _shown;
     private bool _composingDocuments;
+    private bool _hd;
     private MediaPlayerElement? _stagePlayer;
 
     private static readonly string[] PhotoTypes = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
@@ -134,6 +135,7 @@ public sealed partial class MainWindow
         {
             _outgoing.Clear();
             _composingDocuments = documents;
+            _hd = _ui.HdMedia;
         }
         OutgoingFile? first = null;
         foreach (var file in files)
@@ -162,6 +164,7 @@ public sealed partial class MainWindow
         StopStagePlayer();
         MediaComposerStage.Children.Clear();
         RebuildStrip();
+        UpdateHdButton();
         if (item is null) return;
         MediaComposerTitle.Text = item.FileName;
         MediaCaptionBox.Text = item.Caption;
@@ -282,6 +285,34 @@ public sealed partial class MainWindow
         Show(item == _shown ? _outgoing[Math.Min(index, _outgoing.Count - 1)] : _shown);
     }
 
+    /// <summary>HD pill: green when on; hidden for documents, dimmed when nothing is bigger than standard.</summary>
+    private void UpdateHdButton()
+    {
+        HdButton.Visibility = _composingDocuments ? Visibility.Collapsed : Visibility.Visible;
+        var available = _outgoing.Any(o => o.SupportsHd);
+        var on = _hd && available;
+        HdButton.IsEnabled = available;
+        HdButton.Background = on ? Themed.Brush("ChatAccentBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        HdButton.BorderBrush = on ? Themed.Brush("ChatAccentBrush") : Themed.Brush("TextFillColorSecondaryBrush");
+        HdLabel.Foreground = on ? new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x0B, 0x14, 0x1A)) : Themed.Brush("TextFillColorSecondaryBrush");
+        ToolTipService.SetToolTip(HdButton, !available ? "HD isn't available: these are no bigger than standard quality"
+                                           : on ? "HD quality (click for standard)" : "Standard quality (click for HD)");
+    }
+
+    private void HdToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _hd = !_hd;
+        UpdateHdButton();
+        ShowToast(true, _hd ? "HD quality" : "Standard quality");
+    }
+
+    private void HdMedia_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.HdMedia == HdMediaSwitch.IsOn) return;
+        _ui.HdMedia = HdMediaSwitch.IsOn;
+        _ui.Save();
+    }
+
     private void MediaCaption_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_shown is not null) _shown.Caption = MediaCaptionBox.Text;
@@ -317,7 +348,7 @@ public sealed partial class MainWindow
     private void SendComposer()
     {
         if (SendTarget is not { } chat || _outgoing.Count == 0) return;
-        foreach (var item in _outgoing) ViewModel.SendFile(item);
+        foreach (var item in _outgoing) _ = ViewModel.SendFileAsync(item, hd: _hd && item.SupportsHd);
         CloseComposer();
         ScrollToBottom();
     }

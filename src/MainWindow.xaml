@@ -988,6 +988,12 @@
                                            Text="WhatsApp's classic bubble corners, with the tail on the first bubble of a run. Off: rounder bubbles with a curled tail on the last one." />
                             </StackPanel>
                             <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="HdMediaSwitch" Header="Send photos and videos in HD" OffContent="Off" OnContent="On"
+                                              Toggled="HdMedia_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="Off: standard quality, smaller and faster to send, like WhatsApp (photos up to 1600 px, videos 480p). On: HD (photos up to 4096 px, videos 720p) when a photo or video is bigger than standard. You can switch it for each send with the HD button." />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On"
                                               Toggled="SystemAccent_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -1279,7 +1285,12 @@
                                 ToolTipService.ToolTip="Close (Esc)" AutomationProperties.Name="Close" Click="MediaComposerClose_Click">
                             <FontIcon Glyph="&#xE711;" FontSize="16" />
                         </Button>
-                        <TextBlock x:Name="MediaComposerTitle" Margin="70,0" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        <!-- HD or standard quality for the photos and videos (HD only when one is bigger than standard). -->
+                        <Button x:Name="HdButton" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,20,0" Padding="10,3,10,4"
+                                CornerRadius="6" BorderThickness="1.5" Click="HdToggle_Click" AutomationProperties.Name="HD quality">
+                            <TextBlock x:Name="HdLabel" Text="HD" FontSize="13" FontWeight="Bold" />
+                        </Button>
+                        <TextBlock x:Name="MediaComposerTitle" Margin="90,0" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    FontSize="15" TextTrimming="CharacterEllipsis" />
                         <!-- The selected file, big: picture, video/audio player, or a card when there's nothing to show. -->
                         <Grid x:Name="MediaComposerStage" Grid.Row="1" Margin="40,8,40,8" />

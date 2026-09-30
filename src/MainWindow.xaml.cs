@@ -117,6 +117,27 @@ public sealed partial class MainWindow : Window
                 SendComposer();
                 foreach (var m in ViewModel.SelectedChat!.Messages.TakeLast(2)) { m.IsUploading = true; m.Delivery = Delivery.Pending; }
             };
+        // WAFLUENT_SELFTEST=compress: SD and HD of WAFLUENT_TEST_PHOTO / WAFLUENT_TEST_VIDEO, to %TEMP%\wafluent-selftest.txt.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "compress")
+            Messages.Loaded += async (_, _) =>
+            {
+                var lines = new List<string>();
+                foreach (var hd in new[] { false, true })
+                {
+                    try
+                    {
+                        var photo = Environment.GetEnvironmentVariable("WAFLUENT_TEST_PHOTO")!;
+                        var (p, w, h) = await MediaCompression.PhotoAsync(photo, hd);
+                        lines.Add($"photo {(hd ? "HD" : "SD")}: {w}x{h} {new FileInfo(p).Length / 1024} KB (from {new FileInfo(photo).Length / 1024} KB)");
+                        var video = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO")!;
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        var (vp, vw, vh) = await MediaCompression.VideoAsync(video, 1920, 1080, hd, CancellationToken.None);
+                        lines.Add($"video {(hd ? "HD" : "SD")}: {vw}x{vh} {new FileInfo(vp).Length / 1024} KB (from {new FileInfo(video).Length / 1024} KB) in {sw.ElapsedMilliseconds} ms");
+                    }
+                    catch (Exception e) { lines.Add(e.ToString()); }
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

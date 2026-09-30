@@ -660,10 +660,11 @@ public sealed partial class MainViewModel : Observable
     }
 
     /// <summary>
-    /// A file from the send preview: its bubble shows at once, uploading (ring and ✕), from
-    /// the local file; <see cref="OnSent"/> makes it a normal sent message.
+    /// A file from the send preview: its bubble shows at once, uploading (ring and ✕), while
+    /// photos and videos are made smaller (standard, or HD when asked and bigger than
+    /// standard); then the core uploads it. <see cref="OnSent"/> makes it a normal sent message.
     /// </summary>
-    public void SendFile(OutgoingFile file)
+    public async Task SendFileAsync(OutgoingFile file, bool hd)
     {
         if (_selectedChat is not { } chat) return;
         var thumb = file.Thumb is { } t && File.Exists(t) ? Convert.ToBase64String(File.ReadAllBytes(t)) : null;
@@ -677,7 +678,29 @@ public sealed partial class MainViewModel : Observable
         message.IsUploading = _core is not null;
         message.AnimateIn = true;
         Append(chat, message);
-        _core?.SendMedia(chat.Id, file.Path, file.Kind, file.Caption.Trim(), file.Mime, file.Width, file.Height, file.Seconds, file.Thumb, message.Id);
+        var (path, width, height, mime) = (file.Path, file.Width, file.Height, file.Mime);
+        if (_core is not null)
+        {
+            try
+            {
+                if (file.Kind == "image")
+                {
+                    (path, width, height) = await MediaCompression.PhotoAsync(file.Path, hd);
+                    mime = "image/jpeg";
+                }
+                else if (file.Kind == "video")
+                {
+                    (path, width, height) = await MediaCompression.VideoAsync(file.Path, file.Width, file.Height, hd, CancellationToken.None);
+                    if (path != file.Path) mime = "video/mp4";
+                }
+            }
+            catch (Exception)
+            {
+                (path, width, height, mime) = (file.Path, file.Width, file.Height, file.Mime);   // send the original rather than nothing
+            }
+            if (!chat.Messages.Contains(message)) return;   // cancelled (✕) while it was being made smaller
+        }
+        _core?.SendMedia(chat.Id, path, file.Kind, file.Caption.Trim(), mime, width, height, file.Seconds, file.Thumb, message.Id);
 
         chat.Preview = Format.QuotePreview(message);
         chat.PreviewSender = "";
