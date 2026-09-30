@@ -1630,7 +1630,7 @@
                             <KeyboardAccelerator Key="Escape" Invoked="AttachSheetEscape_Invoked" />
                         </Grid.KeyboardAccelerators>
 
-                        <!-- Send contacts -->
+                        <!-- Send contacts; also Forward message to (MainWindow.MessageMenu.cs) -->
                         <Grid x:Name="ContactsCard" Width="440" MaxHeight="680" Margin="24" VerticalAlignment="Center" CornerRadius="8"
                               Background="{ThemeResource SheetBackgroundBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
                               Tapped="Card_Tapped" Visibility="Collapsed">
@@ -1645,7 +1645,7 @@
                                         AutomationProperties.Name="Close">
                                     <FontIcon Glyph="&#xE711;" FontSize="15" />
                                 </Button>
-                                <TextBlock Text="Send contacts" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock x:Name="ContactsTitle" Text="Send contacts" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
                             <TextBox x:Name="ContactSearch" Grid.Row="1" Margin="16,4,16,8" PlaceholderText="Search name or number" CornerRadius="20"
                                      Padding="38,8,12,8" TextChanged="ContactSearch_TextChanged" />

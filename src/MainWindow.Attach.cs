@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -499,11 +500,16 @@ public sealed partial class MainWindow
 
     private List<ContactRow> _contacts = [];
     private ContactRow? _meRow;
+    /// <summary>Set while the card picks chats to forward these to (null: sending contacts).</summary>
+    private IReadOnlyList<Message>? _forwarding;
 
     /// <summary>You first, then your 1:1 chats by name; tick several to send them together.</summary>
     private void OpenContacts()
     {
         if (SendTarget is null) return;
+        _forwarding = null;
+        ContactsTitle.Text = "Send contacts";
+        AutomationProperties.SetName(ContactsSend, "Send contacts");
         var sample = _core is null;   // --sample: no numbers, but the list still shows
         _meRow = ViewModel.SelfPhone.Length > 0
             ? new ContactRow { Name = ViewModel.SelfName.Length > 0 ? ViewModel.SelfName : "You", Phone = ViewModel.SelfPhone, AvatarPath = ViewModel.SelfAvatarPath }
@@ -538,7 +544,7 @@ public sealed partial class MainWindow
         var groups = new List<ContactGroup>();
         if (_meRow is not null && Matches(_meRow)) groups.Add(new ContactGroup("You", [_meRow]));
         var others = _contacts.Where(Matches).ToList();
-        if (others.Count > 0) groups.Add(new ContactGroup("Contacts", others));
+        if (others.Count > 0) groups.Add(new ContactGroup(_forwarding is null ? "Contacts" : "Recent chats", others));
         ContactList.ItemsSource = new Microsoft.UI.Xaml.Data.CollectionViewSource { IsSourceGrouped = true, Source = groups }.View;
     }
 
@@ -561,6 +567,14 @@ public sealed partial class MainWindow
 
     private void ContactsSend_Click(object sender, RoutedEventArgs e)
     {
+        if (_forwarding is { } messages)
+        {
+            var to = PickedContacts.Select(r => r.Chat).OfType<Chat>().ToList();
+            if (to.Count > 0) ViewModel.Forward(messages, to);
+            ViewModel.EndSelect();
+            CloseSheet();
+            return;
+        }
         if (SendTarget is not { } chat) return;
         var picked = PickedContacts.Where(r => r.Phone.Length > 0).Select(r => (r.Name, r.Phone)).ToList();
         if (picked.Count > 0) _core?.SendContacts(chat.Id, picked);

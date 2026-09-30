@@ -318,6 +318,15 @@ public sealed partial class MainWindow : Window
                 if (ViewModel.SelectedChat.Messages.LastOrDefault(m => m.Kind == MessageKind.Image) is { } photo)
                     BuildMessageMenu(photo, Messages, null).ShowAt(Messages, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = new Windows.Foundation.Point(600, 300) });
             };
+        // WAFLUENT_SELFTEST=forward: opens Forward message to for the open chat's last message, two chats ticked.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "forward")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                await ForwardAsync([ViewModel.SelectedChat!.Messages.Last(m => m.Kind == MessageKind.Text)]);
+                foreach (var row in _contacts.Skip(1).Take(2)) row.Picked = true;
+                UpdatePickedContacts();
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

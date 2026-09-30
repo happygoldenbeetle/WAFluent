@@ -45,6 +45,8 @@ public sealed class ContactRow : Observable
     public required string Phone { get; init; }
     public string Subtitle { get; init; } = "";
     public string? AvatarPath { get; init; }
+    /// <summary>Forwarding: the chat this row sends to.</summary>
+    public Chat? Chat { get; init; }
     public bool HasSubtitle => Subtitle.Length > 0;
 
     private bool _picked;

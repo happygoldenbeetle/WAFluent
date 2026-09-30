@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
@@ -241,36 +242,32 @@ public sealed partial class MainWindow
         return item;
     }
 
-    /// <summary>Pick chats to forward to (search, several at once).</summary>
-    private async Task ForwardAsync(IReadOnlyList<Message> messages)
+    /// <summary>
+    /// Pick chats to forward to, in the same card as Send contacts: search, recent chats
+    /// (groups too) with a tick each, the picked names along the bottom and send.
+    /// </summary>
+    private Task ForwardAsync(IReadOnlyList<Message> messages)
     {
-        var chats = ViewModel.ForwardTargets();
-        var search = new TextBox { PlaceholderText = "Search name or number" };
-        var list = new ListView { SelectionMode = ListViewSelectionMode.Multiple, Height = 360, ItemsSource = chats, DisplayMemberPath = nameof(Chat.Name) };
-        search.TextChanged += (_, _) =>
-        {
-            var picked = list.SelectedItems.Cast<Chat>().ToHashSet();
-            var shown = chats.Where(c => c.Name.Contains(search.Text, StringComparison.CurrentCultureIgnoreCase)).ToList();
-            list.ItemsSource = shown;
-            foreach (var c in shown.Where(picked.Contains)) list.SelectedItems.Add(c);
-        };
-        var panel = new StackPanel { Spacing = 10, Width = 380 };
-        panel.Children.Add(search);
-        panel.Children.Add(list);
-        var dialog = new ContentDialog
-        {
-            XamlRoot = Content.XamlRoot,
-            Title = messages.Count == 1 ? "Forward message to" : $"Forward {messages.Count} messages to",
-            Content = panel,
-            PrimaryButtonText = "Forward",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            IsPrimaryButtonEnabled = false,
-        };
-        list.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = list.SelectedItems.Count > 0;
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        ViewModel.Forward(messages, list.SelectedItems.Cast<Chat>().ToList());
-        ViewModel.EndSelect();
+        _forwarding = messages;
+        _meRow = null;
+        ContactsTitle.Text = messages.Count == 1 ? "Forward message to" : $"Forward {messages.Count} messages to";
+        AutomationProperties.SetName(ContactsSend, "Forward");
+        _contacts = ViewModel.ForwardTargets()
+            .Select(c => new ContactRow
+            {
+                Name = c.Name,
+                Phone = ContactPhone(c),
+                Subtitle = c.IsGroup ? "" : c.PhoneCode.Length > 0 ? $"{c.PhoneCode} {c.PhoneNational}" : "",
+                AvatarPath = c.AvatarPath,
+                Chat = c,
+            })
+            .ToList();
+        ContactSearch.Text = "";
+        FilterContacts();
+        UpdatePickedContacts();
+        ShowSheet(ContactsCard);
+        ContactSearch.Focus(FocusState.Programmatic);
+        return Task.CompletedTask;
     }
 
     /// <summary>Delete for me, or for everyone when they're all yours (and recent enough for WhatsApp).</summary>
