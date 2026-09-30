@@ -252,6 +252,29 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let messages = ctx.db().messages(&chat_id, limit.unwrap_or(300));
             ctx.send(Out::Messages { chat_id, messages });
         }
+        Command::LoadOlderUntil { chat_id, before_ts, before_id, until_ts } => {
+            let messages = {
+                let db = ctx.db();
+                let count = db.count_between(&chat_id, before_ts, &before_id, until_ts);
+                db.messages_before(&chat_id, before_ts, &before_id, (count + 15).min(5000))
+            };
+            ctx.send(Out::OlderMessages { chat_id, messages, complete: false });
+        }
+        Command::SearchMessages { chat_id, query } => {
+            let (results, oldest_ts) = {
+                let db = ctx.db();
+                (db.search(&chat_id, &query), db.oldest_ts(&chat_id))
+            };
+            ctx.send(Out::SearchResults { chat_id, query, results, oldest_ts });
+        }
+        Command::FindMessageAt { chat_id, ts } => {
+            let found = ctx.db().message_at(&chat_id, ts);
+            ctx.send(Out::FoundMessage {
+                chat_id,
+                message_id: found.as_ref().map(|f| f.0.clone()),
+                ts: found.map_or(ts, |f| f.1),
+            });
+        }
         Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
             load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
         }

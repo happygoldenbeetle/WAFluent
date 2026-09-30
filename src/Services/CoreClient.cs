@@ -52,6 +52,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, IReadOnlyList<MessageDto>>? MessagesReceived;
     public event Action<string, MessageDto>? MessageReceived;
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
+    public event Action<string, string, IReadOnlyList<MessageDto>, long?>? SearchResults;  // chat, query, results, oldest time
+    public event Action<string, string?, long>? FoundMessage;                // chat, message (none: nothing there), its time
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
     public event Action<string, string, string>? MediaReceived;      // chat, message, file path
     public event Action<string, string, string>? MediaFailed;        // chat, message, reason
@@ -112,6 +114,16 @@ public sealed class CoreClient : IDisposable
     /// <summary>Messages before the given one: from the local store, else requested from the phone.</summary>
     public void LoadOlder(string chatId, long beforeTs, string beforeId, int limit = 100) =>
         Send(new { cmd = "loadOlder", chatId, beforeTs, beforeId, limit });
+
+    /// <summary>Everything older than the given message back to <paramref name="untilTs"/> (answered by OlderMessagesReceived).</summary>
+    public void LoadOlderUntil(string chatId, long beforeTs, string beforeId, long untilTs) =>
+        Send(new { cmd = "loadOlderUntil", chatId, beforeTs, beforeId, untilTs });
+
+    /// <summary>Messages in a chat containing the text, newest first (answered by SearchResults).</summary>
+    public void SearchMessages(string chatId, string query) => Send(new { cmd = "searchMessages", chatId, query });
+
+    /// <summary>The first message on or after a date (answered by FoundMessage).</summary>
+    public void FindMessageAt(string chatId, long ts) => Send(new { cmd = "findMessageAt", chatId, ts });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
 
@@ -250,6 +262,19 @@ public sealed class CoreClient : IDisposable
                 var chatId = root.GetProperty("chatId").GetString() ?? "";
                 var messages = root.GetProperty("messages").Deserialize<List<MessageDto>>(Json) ?? [];
                 Post(() => MessagesReceived?.Invoke(chatId, messages));
+                break;
+            case "searchResults":
+                var searchChat = root.GetProperty("chatId").GetString() ?? "";
+                var searchQuery = root.GetProperty("query").GetString() ?? "";
+                var hits = root.GetProperty("results").Deserialize<List<MessageDto>>(Json) ?? [];
+                long? oldestTs = root.TryGetProperty("oldestTs", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt64() : null;
+                Post(() => SearchResults?.Invoke(searchChat, searchQuery, hits, oldestTs));
+                break;
+            case "foundMessage":
+                var foundChat = root.GetProperty("chatId").GetString() ?? "";
+                var foundId = root.TryGetProperty("messageId", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() : null;
+                var foundTs = root.GetProperty("ts").GetInt64();
+                Post(() => FoundMessage?.Invoke(foundChat, foundId, foundTs));
                 break;
             case "olderMessages":
                 var olderChat = root.GetProperty("chatId").GetString() ?? "";

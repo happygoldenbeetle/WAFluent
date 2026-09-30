@@ -170,7 +170,7 @@ public sealed partial class MainWindow
         MediaCaptionBox.Text = item.Caption;
         MediaCaptionBox.SelectionStart = item.Caption.Length;
 
-        if (item.Kind == "image" && item.Preview is not null)
+        if (item.Kind is "image" or "gif" && item.Preview is not null)
         {
             var image = new Image { Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
             image.Source = new BitmapImage(new Uri(item.Path));
@@ -399,8 +399,7 @@ public sealed partial class MainWindow
     private static async Task<OutgoingFile> PrepareAsync(StorageFile file, bool asDocument)
     {
         var ext = System.IO.Path.GetExtension(file.Path).ToLowerInvariant();
-        var kind = asDocument ? "document" : VideoTypes.Contains(ext) ? "video" : PhotoTypes.Contains(ext) ? "image" : "document";
-        if (ext == ".gif" && !asDocument) kind = "document";   // an animated GIF would lose its motion as a photo
+        var kind = asDocument ? "document" : ext == ".gif" ? "gif" : VideoTypes.Contains(ext) ? "video" : PhotoTypes.Contains(ext) ? "image" : "document";
         if (kind == "document") return await PlainAsync(file);
 
         int width, height, seconds = 0;

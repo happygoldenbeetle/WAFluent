@@ -1064,7 +1064,11 @@
                                 <FontIcon Glyph="&#xE717;" FontSize="16" />
                             </Button>
                             <Rectangle Width="1" Height="18" Margin="6,0" VerticalAlignment="Center" Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Search" AutomationProperties.Name="Search in chat">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Search (Ctrl+F)" AutomationProperties.Name="Search in chat"
+                                    Click="SearchChat_Click">
+                                <Button.KeyboardAccelerators>
+                                    <KeyboardAccelerator Modifiers="Control" Key="F" />
+                                </Button.KeyboardAccelerators>
                                 <FontIcon Glyph="&#xE721;" FontSize="16" />
                             </Button>
                         </StackPanel>
@@ -1535,6 +1539,45 @@
                         </StackPanel>
                     </ScrollViewer>
 
+                    <!-- Search messages (MainWindow.Search.cs) -->
+                    <Grid x:Name="SearchView" Grid.Row="1" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="10,4,14,10" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="SearchDateButton" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Go to date" AutomationProperties.Name="Go to date">
+                                <FontIcon Glyph="&#xE787;" FontSize="17" />
+                                <Button.Flyout>
+                                    <Flyout x:Name="SearchDateFlyout" Placement="BottomEdgeAlignedLeft">
+                                        <CalendarView x:Name="SearchCalendar" SelectionMode="Single" SelectedDatesChanged="SearchCalendar_SelectedDatesChanged" />
+                                    </Flyout>
+                                </Button.Flyout>
+                            </Button>
+                            <TextBox x:Name="MessageSearchBox" Grid.Column="1" PlaceholderText="Search" CornerRadius="20" Padding="38,8,12,8"
+                                     TextChanged="MessageSearchBox_TextChanged" />
+                            <FontIcon Grid.Column="1" Glyph="&#xE721;" FontSize="14" HorizontalAlignment="Left" Margin="14,0,0,0"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
+                        </Grid>
+                        <ScrollViewer Grid.Row="1">
+                            <StackPanel>
+                                <TextBlock x:Name="SearchHint" Margin="24,24,24,12" TextWrapping="Wrap" TextAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ProgressRing x:Name="SearchRing" Width="24" Height="24" IsActive="False" Margin="0,12,0,0" />
+                                <ListView x:Name="SearchResultsList" SelectionMode="None" IsItemClickEnabled="True" ItemClick="SearchResult_ItemClick"
+                                          ScrollViewer.VerticalScrollMode="Disabled" />
+                                <Rectangle x:Name="SearchFooterLine" Height="1" Margin="0,4,0,0" Fill="{ThemeResource PaneDividerBrush}" Visibility="Collapsed" />
+                                <TextBlock x:Name="SearchFooter" Margin="24,16,24,24" TextWrapping="Wrap" TextAlignment="Center" Visibility="Collapsed"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
                     <!-- New contact -->
                     <Grid x:Name="NewContactView" Grid.Row="1" Visibility="Collapsed" Padding="16,8,16,16">
                         <Grid.RowDefinitions>
@@ -1668,15 +1711,22 @@
         <!-- ═════════════ Video viewer (MainWindow.Video.cs) ═════════════
              A lightbox like the photos': the video at its own shape, a click outside closes it.
              Controls: play on the left, seek, volume always shown on the right. GIFs loop, muted. -->
-        <Grid x:Name="VideoViewer" Grid.Row="1" Visibility="Collapsed" Background="{ThemeResource LightboxBackgroundBrush}"
+        <Grid x:Name="VideoViewer" Grid.Row="1" Visibility="Collapsed" Background="Transparent"
               KeyboardAcceleratorPlacementMode="Hidden" Tapped="VideoViewer_Tapped" SizeChanged="VideoViewer_SizeChanged">
             <Grid.KeyboardAccelerators>
                 <KeyboardAccelerator Key="Escape" Invoked="VideoClose_Invoked" />
                 <KeyboardAccelerator Key="Space" Invoked="VideoPlayPause_Invoked" />
+                <KeyboardAccelerator Key="F" Invoked="VideoFullScreen_Invoked" />
             </Grid.KeyboardAccelerators>
-            <Grid x:Name="VideoFrame" HorizontalAlignment="Center" VerticalAlignment="Center" Tapped="VideoFrame_Tapped">
+            <Border x:Name="VideoScrim" Opacity="0" Background="{ThemeResource LightboxBackgroundBrush}">
+                <Border.OpacityTransition>
+                    <ScalarTransition Duration="0:0:0.22" />
+                </Border.OpacityTransition>
+            </Border>
+            <Grid x:Name="VideoFrame" HorizontalAlignment="Center" VerticalAlignment="Center" Tapped="VideoFrame_Tapped"
+                  DoubleTapped="VideoFrame_DoubleTapped">
                 <MediaPlayerElement x:Name="VideoPlayer" AreTransportControlsEnabled="False" AutoPlay="True" Stretch="Uniform"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="8" />
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <Grid x:Name="VideoBar" VerticalAlignment="Bottom" Margin="12" Padding="14,4,14,8" CornerRadius="8" RowSpacing="0"
                       Background="{ThemeResource LightboxBarBrush}" Tapped="VideoBar_Tapped">
                     <Grid.RowDefinitions>
@@ -1689,6 +1739,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -1705,10 +1756,14 @@
                         <Slider x:Name="VideoVolume" Grid.Column="3" Width="96" Minimum="0" Maximum="100" Value="100"
                                 VerticalAlignment="Center" IsThumbToolTipEnabled="False" ValueChanged="VideoVolume_ValueChanged"
                                 AutomationProperties.Name="Volume" />
+                        <Button x:Name="VideoFullScreenButton" Grid.Column="4" Style="{StaticResource IconButtonStyle}" Margin="6,0,0,0"
+                                Click="VideoFullScreen_Click" ToolTipService.ToolTip="Full screen (F)" AutomationProperties.Name="Full screen">
+                            <FontIcon x:Name="VideoFullScreenIcon" Glyph="&#xE740;" FontSize="15" />
+                        </Button>
                     </Grid>
                 </Grid>
             </Grid>
-            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Style="{StaticResource IconButtonStyle}"
+            <Button x:Name="VideoCloseButton" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Style="{StaticResource IconButtonStyle}"
                     Click="VideoClose_Click" ToolTipService.ToolTip="Close (Esc)" AutomationProperties.Name="Close video">
                 <FontIcon Glyph="&#xE711;" />
             </Button>

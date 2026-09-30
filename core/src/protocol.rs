@@ -40,6 +40,11 @@ pub enum Event {
     /// Reply to `loadOlder`: messages older than the anchor, oldest first.
     /// `complete` = the phone has nothing older; stop asking.
     OlderMessages { chat_id: String, messages: Vec<MessageDto>, complete: bool },
+    /// Search results; `oldest_ts`: the oldest message this PC has for the chat (older ones
+    /// are only on the phone).
+    SearchResults { chat_id: String, query: String, results: Vec<MessageDto>, oldest_ts: Option<i64> },
+    /// The message a date points at (none: nothing on or after it).
+    FoundMessage { chat_id: String, message_id: Option<String>, ts: i64 },
     /// A profile picture was downloaded, changed or removed (`path` = None).
     /// `chat_id` is "self" for your own picture.
     Avatar { chat_id: String, path: Option<String> },
@@ -212,6 +217,13 @@ pub enum Command {
     /// Messages before (`before_ts`, `before_id`): served from the local store,
     /// or requested from the phone (history sync on demand) when the store has none.
     LoadOlder { chat_id: String, before_ts: i64, before_id: String, limit: Option<u32> },
+    /// Everything older than (before_ts, before_id) back to `until_ts`, plus a little before
+    /// it: to show a search result or a date that isn't loaded yet. Answered by `olderMessages`.
+    LoadOlderUntil { chat_id: String, before_ts: i64, before_id: String, until_ts: i64 },
+    /// Messages in a chat containing `query` (text, captions, file names), newest first.
+    SearchMessages { chat_id: String, query: String },
+    /// The first message on or after `ts` (the search calendar); answered by `foundMessage`.
+    FindMessageAt { chat_id: String, ts: i64 },
     /// Download (or return the cached copy of) a message's attachment. `force` also
     /// retries one the phone said it no longer has.
     DownloadMedia {

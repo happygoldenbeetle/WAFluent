@@ -123,7 +123,8 @@ public sealed partial class MainWindow
         if (ViewModel.IsSelecting || sender is not FrameworkElement { Tag: Message m }) return;
         e.Handled = true;
         if (m.IsMediaLoading) return;   // already on its way; it opens when it lands
-        WhenDownloaded(m, _ => OpenVideo(m));
+        var bubble = (FrameworkElement)sender;
+        WhenDownloaded(m, _ => OpenVideo(m, bubble));
     }
 
     // ───────────── Documents ─────────────

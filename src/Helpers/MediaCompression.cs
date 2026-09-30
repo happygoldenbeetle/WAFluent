@@ -115,4 +115,138 @@ public static class MediaCompression
         }
         return (destination.Path, (int)outWidth, (int)outHeight);
     }
+    /// <summary>
+    /// A GIF as WhatsApp sends one: a short silent H.264 MP4 (the chat loops it). Frames are
+    /// put together the way a GIF viewer does (offsets, transparency, clearing), on white.
+    /// Returns the MP4, its size and length.
+    /// </summary>
+    public static async Task<(string Path, int Width, int Height, int Seconds)> GifAsync(string path)
+    {
+        var file = await StorageFile.GetFileFromPathAsync(path);
+        using var input = await file.OpenReadAsync();
+        var decoder = await BitmapDecoder.CreateAsync(BitmapDecoder.GifDecoderId, input);
+        int width = (int)decoder.PixelWidth, height = (int)decoder.PixelHeight;
+        try
+        {
+            var screen = await decoder.BitmapContainerProperties.GetPropertiesAsync(["/logscrdesc/Width", "/logscrdesc/Height"]);
+            if (screen.TryGetValue("/logscrdesc/Width", out var w) && screen.TryGetValue("/logscrdesc/Height", out var h))
+                (width, height) = (Convert.ToInt32(w.Value), Convert.ToInt32(h.Value));
+        }
+        catch (Exception) { /* no screen size: the first frame's */ }
+        // H.264 wants even sizes; the extra row/column stays white.
+        int outWidth = width + width % 2, outHeight = height + height % 2;
+
+        var canvas = new byte[width * height * 4];
+        var frames = new List<(byte[] Pixels, TimeSpan Duration)>();
+        for (uint i = 0; i < decoder.FrameCount; i++)
+        {
+            var frame = await decoder.GetFrameAsync(i);
+            int left = 0, top = 0, delay = 10, disposal = 0;
+            try
+            {
+                var props = await frame.BitmapProperties.GetPropertiesAsync(["/imgdesc/Left", "/imgdesc/Top", "/grctlext/Delay", "/grctlext/Disposal"]);
+                if (props.TryGetValue("/imgdesc/Left", out var l)) left = Convert.ToInt32(l.Value);
+                if (props.TryGetValue("/imgdesc/Top", out var t)) top = Convert.ToInt32(t.Value);
+                if (props.TryGetValue("/grctlext/Delay", out var d)) delay = Convert.ToInt32(d.Value);
+                if (props.TryGetValue("/grctlext/Disposal", out var x)) disposal = Convert.ToInt32(x.Value);
+            }
+            catch (Exception) { }
+            if (delay < 2) delay = 10;   // browsers show "0" and "1" as 100 ms too
+
+            var data = await frame.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, new BitmapTransform(),
+                                                     ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+            var pixels = data.DetachPixelData();
+            int fw = (int)frame.PixelWidth, fh = (int)frame.PixelHeight;
+            var before = disposal == 3 ? (byte[])canvas.Clone() : null;
+            for (var y = 0; y < fh; y++)
+            {
+                var cy = top + y;
+                if (cy < 0 || cy >= height) continue;
+                for (var x = 0; x < fw; x++)
+                {
+                    var cx = left + x;
+                    if (cx < 0 || cx >= width) continue;
+                    var src = (y * fw + x) * 4;
+                    if (pixels[src + 3] < 128) continue;   // GIF transparency is on/off
+                    var dst = (cy * width + cx) * 4;
+                    canvas[dst] = pixels[src];
+                    canvas[dst + 1] = pixels[src + 1];
+                    canvas[dst + 2] = pixels[src + 2];
+                    canvas[dst + 3] = 255;
+                }
+            }
+
+            // The shown frame: the canvas on white, padded to even size, bottom row first
+            // (uncompressed RGB frames are read bottom-up by the encoder).
+            var shown = new byte[outWidth * outHeight * 4];
+            Array.Fill(shown, (byte)255);
+            for (var y = 0; y < height; y++)
+                for (var x = 0; x < width; x++)
+                {
+                    var src = (y * width + x) * 4;
+                    if (canvas[src + 3] == 0) continue;
+                    var dst = ((outHeight - 1 - y) * outWidth + x) * 4;
+                    shown[dst] = canvas[src];
+                    shown[dst + 1] = canvas[src + 1];
+                    shown[dst + 2] = canvas[src + 2];
+                }
+            frames.Add((shown, TimeSpan.FromMilliseconds(delay * 10)));
+
+            if (disposal == 2)   // clear this frame's area
+            {
+                int x0 = Math.Max(0, left), x1 = Math.Min(width, left + fw);
+                if (x1 > x0)
+                    for (var y = Math.Max(0, top); y < Math.Min(height, top + fh); y++)
+                        Array.Clear(canvas, (y * width + x0) * 4, (x1 - x0) * 4);
+            }
+            else if (before is not null)
+            {
+                canvas = before;
+            }
+        }
+        if (frames.Count == 0) throw new InvalidOperationException("no frames");
+        // Very short GIFs play at least a second, repeated, so every player shows them.
+        var total = frames.Aggregate(TimeSpan.Zero, (a, f) => a + f.Duration);
+        var loops = Math.Max(1, (int)Math.Ceiling(1.0 / Math.Max(0.05, total.TotalSeconds)));
+        var sequence = Enumerable.Repeat(frames, loops).SelectMany(f => f).ToList();
+
+        var descriptor = new Windows.Media.Core.VideoStreamDescriptor(
+            VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)outWidth, (uint)outHeight));
+        var source = new Windows.Media.Core.MediaStreamSource(descriptor) { BufferTime = TimeSpan.Zero };
+        var index = 0;
+        var at = TimeSpan.Zero;
+        source.SampleRequested += (_, args) =>
+        {
+            if (index >= sequence.Count)
+            {
+                args.Request.Sample = null;   // end of stream
+                return;
+            }
+            var (pixels, duration) = sequence[index++];
+            var sample = Windows.Media.Core.MediaStreamSample.CreateFromBuffer(pixels.AsBuffer(), at);
+            sample.Duration = duration;
+            sample.KeyFrame = index == 1;
+            at += duration;
+            args.Request.Sample = sample;
+        };
+
+        var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Vga);
+        profile.Audio = null;
+        profile.Video!.Width = (uint)outWidth;
+        profile.Video.Height = (uint)outHeight;
+        profile.Video.Bitrate = 1_200_000;
+        profile.Video.FrameRate.Numerator = 30;
+        profile.Video.FrameRate.Denominator = 1;
+
+        Directory.CreateDirectory(Folder);
+        var output = Path.Combine(Folder, Guid.NewGuid().ToString("N") + ".mp4");
+        using (var stream = File.Create(output).AsRandomAccessStream())
+        {
+            var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
+            var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(source, stream, profile);
+            if (!prepared.CanTranscode) throw new InvalidOperationException($"can't encode the GIF: {prepared.FailureReason}");
+            await prepared.TranscodeAsync();
+        }
+        return (output, outWidth, outHeight, Math.Max(1, (int)Math.Round(at.TotalSeconds)));
+    }
 }

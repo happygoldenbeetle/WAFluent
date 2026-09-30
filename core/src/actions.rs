@@ -473,6 +473,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
     let what = match file.kind.as_str() {
         "image" => "photo",
         "video" => "video",
+        "gif" => "GIF",
         _ => "file",
     };
     let data = match std::fs::read(&file.path) {
@@ -486,7 +487,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
     };
     let media_type = match file.kind.as_str() {
         "image" => MediaType::Image,
-        "video" => MediaType::Video,
+        "video" | "gif" => MediaType::Video,
         _ => MediaType::Document,
     };
     let up = match client.upload(data, media_type, Default::default()).await {
@@ -520,8 +521,9 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
                 ..Default::default()
             })
         }
-        "video" => {
+        "video" | "gif" => {
             message.video_message = MessageField::some(wa::message::VideoMessage {
+                gif_playback: (file.kind == "gif").then_some(true),
                 url: Some(up.url),
                 direct_path: Some(up.direct_path),
                 media_key: Some(up.media_key.to_vec()),

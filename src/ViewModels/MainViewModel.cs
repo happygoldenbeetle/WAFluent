@@ -493,7 +493,41 @@ public sealed partial class MainViewModel : Observable
         }
     }
 
+    /// <summary>A message to show once it's loaded (search result, date): its id and chat.</summary>
+    private (string ChatId, string MessageId)? _reveal;
+
+    /// <summary>The window scrolls to and flashes this message (it's in the loaded list now).</summary>
+    public event Action<string>? RevealMessage;
+
+    /// <summary>
+    /// Shows a message of the open chat: at once when it's loaded, else after loading
+    /// everything back to it (search results and dates can be far up).
+    /// </summary>
+    public void Reveal(string messageId, long ts)
+    {
+        if (_selectedChat is not { } chat) return;
+        if (chat.Messages.Any(m => m.Id == messageId))
+        {
+            RevealMessage?.Invoke(messageId);
+            return;
+        }
+        var oldest = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider);
+        if (_core is null || oldest is null) return;
+        _reveal = (chat.Id, messageId);
+        _core.LoadOlderUntil(chat.Id, oldest.UnixTs, oldest.Id, ts);
+    }
+
     private void OnOlderMessages(string chatId, IReadOnlyList<MessageDto> messages, bool complete)
+    {
+        OnOlderMessagesCore(chatId, messages, complete);
+        if (_reveal is { } r && r.ChatId == chatId && _byId.TryGetValue(chatId, out var chat) && chat.Messages.Any(m => m.Id == r.MessageId))
+        {
+            _reveal = null;
+            RevealMessage?.Invoke(r.MessageId);
+        }
+    }
+
+    private void OnOlderMessagesCore(string chatId, IReadOnlyList<MessageDto> messages, bool complete)
     {
         if (!_byId.TryGetValue(chatId, out var chat)) return;
         chat.LoadingOlder = false;
@@ -664,6 +698,8 @@ public sealed partial class MainViewModel : Observable
     /// photos and videos are made smaller (standard, or HD when asked and bigger than
     /// standard); then the core uploads it. <see cref="OnSent"/> makes it a normal sent message.
     /// </summary>
+    private readonly Dictionary<string, int> _gifSeconds = [];
+
     public async Task SendFileAsync(OutgoingFile file, bool hd)
     {
         if (_selectedChat is not { } chat) return;
@@ -688,19 +724,34 @@ public sealed partial class MainViewModel : Observable
                     (path, width, height) = await MediaCompression.PhotoAsync(file.Path, hd);
                     mime = "image/jpeg";
                 }
+                else if (file.Kind == "gif")
+                {
+                    int length;
+                    (path, width, height, length) = await MediaCompression.GifAsync(file.Path);
+                    mime = "video/mp4";
+                    _gifSeconds[message.Id] = length;
+                }
                 else if (file.Kind == "video")
                 {
                     (path, width, height) = await MediaCompression.VideoAsync(file.Path, file.Width, file.Height, hd, CancellationToken.None);
                     if (path != file.Path) mime = "video/mp4";
                 }
             }
-            catch (Exception)
+            catch (Exception) when (file.Kind != "gif")
             {
                 (path, width, height, mime) = (file.Path, file.Width, file.Height, file.Mime);   // send the original rather than nothing
             }
+            catch (Exception)
+            {
+                message.IsUploading = false;   // a GIF that can't be made into a video can't go as a GIF
+                message.Delivery = Delivery.Failed;
+                Notify(false, "This GIF couldn't be converted. Send it as a document instead.");
+                return;
+            }
             if (!chat.Messages.Contains(message)) return;   // cancelled (✕) while it was being made smaller
         }
-        _core?.SendMedia(chat.Id, path, file.Kind, file.Caption.Trim(), mime, width, height, file.Seconds, file.Thumb, message.Id);
+        var seconds = _gifSeconds.Remove(message.Id, out var s) ? s : file.Seconds;
+        _core?.SendMedia(chat.Id, path, file.Kind, file.Caption.Trim(), mime, width, height, seconds, file.Thumb, message.Id);
 
         chat.Preview = Format.QuotePreview(message);
         chat.PreviewSender = "";

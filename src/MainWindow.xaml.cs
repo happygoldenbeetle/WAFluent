@@ -129,6 +129,11 @@ public sealed partial class MainWindow : Window
                         var photo = Environment.GetEnvironmentVariable("WAFLUENT_TEST_PHOTO")!;
                         var (p, w, h) = await MediaCompression.PhotoAsync(photo, hd);
                         lines.Add($"photo {(hd ? "HD" : "SD")}: {w}x{h} {new FileInfo(p).Length / 1024} KB (from {new FileInfo(photo).Length / 1024} KB)");
+                        if (Environment.GetEnvironmentVariable("WAFLUENT_TEST_GIF") is { Length: > 0 } gif)
+                        {
+                            var (gp, gw, gh, gs) = await MediaCompression.GifAsync(gif);
+                            lines.Add($"gif: {gw}x{gh} {gs}s {new FileInfo(gp).Length / 1024} KB -> {gp}");
+                        }
                         var video = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO")!;
                         var sw = System.Diagnostics.Stopwatch.StartNew();
                         var (vp, vw, vh) = await MediaCompression.VideoAsync(video, 1920, 1080, hd, CancellationToken.None);
@@ -146,13 +151,33 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(3000);
                 if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "video")
                 {
-                    OpenVideo(new Message { Kind = MessageKind.Video, HasMedia = true, MediaPath = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO"), MediaWidth = 300, MediaHeight = 200 });
+                    if (Environment.GetEnvironmentVariable("WAFLUENT_TEST_CHAT") is { Length: > 0 } name
+                        && ViewModel.Chats.FirstOrDefault(c => c.Name == name) is { } testChat)
+                    {
+                        ChatList.SelectedItem = testChat;
+                        await Task.Delay(1500);
+                    }
+                    // From a video bubble on screen when there is one (the flight), else on its own.
+                    var bubble = Descendants(Messages).OfType<FrameworkElement>()
+                        .Where(f => f.Tag is Message { Kind: MessageKind.Video, IsGif: false } && f.ActualWidth > 0)
+                        .OrderBy(f => f.ActualWidth).FirstOrDefault();
+                    var video = bubble?.Tag as Message ?? new Message { Kind = MessageKind.Video, HasMedia = true, MediaWidth = 300, MediaHeight = 200 };
+                    video.MediaPath = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO");
+                    OpenVideo(video, bubble);
                     return;
                 }
                 var picture = Descendants(Messages).OfType<FrameworkElement>()
                     .Where(f => f.Tag is Message { Kind: MessageKind.Image, MediaPath: not null } && f.ActualWidth > 0)
                     .OrderBy(f => f.ActualWidth).FirstOrDefault();
                 if (picture?.Tag is Message m) OpenViewer(m, picture);
+            };
+        // WAFLUENT_SELFTEST=search: searches the open chat for WAFLUENT_TEST_QUERY.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "search")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                OpenSearch();
+                MessageSearchBox.Text = Environment.GetEnvironmentVariable("WAFLUENT_TEST_QUERY") ?? "the";
             };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };

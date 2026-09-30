@@ -812,6 +812,80 @@ impl Store {
     }
 
     /// Up to `limit` messages older than the anchor message, oldest first.
+    /// Newest first, up to 300: text, captions and file names containing `query`
+    /// (case-insensitive for Latin letters).
+    pub fn search(&self, chat_id: &str, query: &str) -> Vec<MessageDto> {
+        let needle = query.trim().to_lowercase();
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let rows: Vec<StoredMessage> = self
+            .db
+            .prepare(
+                "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status FROM messages
+                 WHERE chat_id = ?1 AND kind NOT IN ('system', 'deleted')
+                   AND (instr(lower(text), ?2) > 0 OR instr(lower(file_name), ?2) > 0)
+                 ORDER BY ts DESC, rowid DESC LIMIT 300",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map(params![chat_id, needle], |r| {
+                    Ok(StoredMessage {
+                        id: r.get(0)?,
+                        from_me: r.get(1)?,
+                        sender: r.get(2)?,
+                        push_name: r.get(3)?,
+                        ts: r.get(4)?,
+                        kind: r.get(5)?,
+                        text: r.get(6)?,
+                        file_name: r.get(7)?,
+                        status: r.get(8)?,
+                    })
+                })?
+                .collect()
+            })
+            .unwrap_or_default();
+        rows.into_iter().map(|m| self.to_dto(chat_id, m)).collect()
+    }
+
+    /// The oldest message's time in a chat.
+    pub fn oldest_ts(&self, chat_id: &str) -> Option<i64> {
+        self.db.query_row("SELECT MIN(ts) FROM messages WHERE chat_id = ?1", [chat_id], |r| r.get(0)).ok().flatten()
+    }
+
+    /// The first message on or after `ts` (else the last one before it).
+    pub fn message_at(&self, chat_id: &str, ts: i64) -> Option<(String, i64)> {
+        let after = self
+            .db
+            .query_row(
+                "SELECT id, ts FROM messages WHERE chat_id = ?1 AND ts >= ?2 AND kind != 'system' ORDER BY ts, rowid LIMIT 1",
+                params![chat_id, ts],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok();
+        after.or_else(|| {
+            self.db
+                .query_row(
+                    "SELECT id, ts FROM messages WHERE chat_id = ?1 AND ts < ?2 AND kind != 'system' ORDER BY ts DESC, rowid DESC LIMIT 1",
+                    params![chat_id, ts],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .ok()
+        })
+    }
+
+    /// How many messages are older than (before_ts, before_id) back to `until_ts`.
+    pub fn count_between(&self, chat_id: &str, before_ts: i64, before_id: &str, until_ts: i64) -> u32 {
+        self.db
+            .query_row(
+                "SELECT COUNT(*) FROM messages
+                 WHERE chat_id = ?1 AND ts >= ?4
+                   AND (ts < ?2 OR (ts = ?2 AND rowid < IFNULL((SELECT rowid FROM messages WHERE chat_id = ?1 AND id = ?3), -1)))",
+                params![chat_id, before_ts, before_id, until_ts],
+                |r| r.get(0),
+            )
+            .unwrap_or(0)
+    }
+
     pub fn messages_before(&self, chat_id: &str, before_ts: i64, before_id: &str, limit: u32) -> Vec<MessageDto> {
         let Ok(mut stmt) = self.db.prepare(
             "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status
