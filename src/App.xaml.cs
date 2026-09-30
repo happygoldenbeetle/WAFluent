@@ -9,9 +9,6 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
-        // Web views (Spotify players) keep their data with WAFluent's, not next to the exe.
-        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER",
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent", "webview"));
         // Anything unhandled is written to %LOCALAPPDATA%\WAFluent\crash.log before the app goes down.
         UnhandledException += (_, e) => LogCrash(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject as Exception);

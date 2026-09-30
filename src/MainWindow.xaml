@@ -153,9 +153,6 @@
                                             </StackPanel>
                                         </Grid>
                                     </Border>
-                                    <!-- A Spotify link: Spotify's own player, big, instead of the link (Controls/SpotifyEmbed.cs). -->
-                                    <controls:SpotifyEmbed Grid.Row="2" Margin="-6,-6,-6,10" Width="340" CornerRadius="{x:Bind LinkCardCorners}"
-                                                           Url="{x:Bind SpotifyEmbed}" Visibility="{x:Bind HasSpotify}" />
                                     <TextBlock Grid.Row="3" TextWrapping="Wrap" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" FontSize="14"
                                                Margin="0,-5.3,0,-3.5" FontStyle="{x:Bind helpers:Ui.Italic(IsDeleted)}" controls:LinkText.Message="{x:Bind}" />
                                     <!-- Time on the same baseline as the last line of text. -->

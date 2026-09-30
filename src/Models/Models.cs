@@ -207,32 +207,7 @@ public sealed class Message : Observable
     public string LinkUrl { get; set; } = "";
     public string LinkTitle { get; set; } = "";
     public string LinkDescription { get; set; } = "";
-    public bool HasLink => LinkUrl.Length > 0 && SpotifyEmbed is null;
-
-    private static readonly System.Text.RegularExpressions.Regex SpotifyLink = new(
-        @"https?://open\.spotify\.com/(?:intl-[a-z-]+/)?(?:embed/)?(track|album|playlist|episode|show|artist)/([A-Za-z0-9]{10,40})[^\s]*",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-    private string? _spotify;
-    private bool _spotifyChecked;
-
-    /// <summary>A Spotify link in the text: Spotify's player (embed address) goes in the bubble instead of the link.</summary>
-    public string? SpotifyEmbed
-    {
-        get
-        {
-            if (_spotifyChecked) return _spotify;
-            _spotifyChecked = true;
-            if (Kind == MessageKind.Text && !IsDeleted && SpotifyLink.Match(Text) is { Success: true } m)
-                _spotify = $"https://open.spotify.com/embed/{m.Groups[1].Value.ToLowerInvariant()}/{m.Groups[2].Value}?utm_source=generator&theme=0";
-            return _spotify;
-        }
-    }
-
-    public bool HasSpotify => SpotifyEmbed is not null;
-
-    /// <summary>The text with the Spotify link taken out (the player stands for it).</summary>
-    public string TextWithoutSpotify => HasSpotify ? SpotifyLink.Replace(Text, "").Trim() : Text;
+    public bool HasLink => LinkUrl.Length > 0;
     public bool HasLinkDescription => LinkDescription.Length > 0;
     public string LinkHost => Uri.TryCreate(LinkUrl.Contains("://") ? LinkUrl : "https://" + LinkUrl, UriKind.Absolute, out var u) ? u.Host : LinkUrl;
 
