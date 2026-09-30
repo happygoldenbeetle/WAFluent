@@ -10,16 +10,11 @@ namespace WhatsAppNative;
 
 /// <summary>
 /// An album opened up: every photo and video sent together, in a grid over the conversation
-/// (the "+N" tile or the album's expand button). A click opens one in the viewer; Esc or ✕
+/// (the "+N" tile). A click opens one in the viewer; Esc or ✕
 /// goes back to the chat.
 /// </summary>
 public sealed partial class MainWindow
 {
-    private void AlbumExpand_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: Message album }) OpenAlbum(album);
-    }
-
     private void OpenAlbum(Message album)
     {
         if (album.AlbumItems is not { Count: > 0 } items) return;

@@ -30,7 +30,7 @@ public sealed partial class AlbumGrid : Grid
     /// <summary>Opens an item (the window's photo or video viewer), from its tile.</summary>
     public static Action<Message, FrameworkElement>? Open;
 
-    /// <summary>Shows every item of an album in a grid (the "+N" tile, or the expand button).</summary>
+    /// <summary>Shows every item of an album in a grid (the "+N" tile).</summary>
     public static Action<Message>? Expand;
 
     /// <summary>An item's context menu, at its tile.</summary>
