@@ -234,6 +234,8 @@ public sealed class Message : Observable
     public string ReplyName { get; init; } = "";
     public string ReplyPreview { get; init; } = "";
     public string ReplyGlyph { get; init; } = "";
+    /// <summary>The quoted photo's/video's preview (base64), shown at the quote's right.</summary>
+    public string? ReplyThumb { get; init; }
     public bool ReplyFromMe { get; init; }
     public bool HasReply => ReplyId.Length > 0;
 
@@ -268,7 +270,7 @@ public sealed class Message : Observable
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.
     /// Must end in a non-whitespace character: trailing spaces take no width at a line end.
     /// </summary>
-    public string TimeSpacer => "  " + (Starred ? "__ " : "") + (Edited ? "Edited " : "") + Time + (IsOutgoing ? " ___" : "");
+    public string TimeSpacer => "  " + (Starred ? "__ " : "") + (Edited ? "  Edited " : "") + Time + (IsOutgoing ? " ___" : "");
 }
 
 public sealed class Chat : Observable

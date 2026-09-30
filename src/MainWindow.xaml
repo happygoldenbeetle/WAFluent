@@ -161,7 +161,7 @@
                                         <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                   Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                         <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
-                                                   Margin="0,0,2,0" Visibility="{x:Bind Edited}" />
+                                                   Margin="8,0,2,0" Visibility="{x:Bind Edited}" />
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
                                         <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
                                                                 Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -190,7 +190,7 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click opens the picture in the viewer. -->
@@ -242,7 +242,7 @@
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                   Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                         <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
-                                                   Margin="0,0,2,0" Visibility="{x:Bind Edited}" />
+                                                   Margin="8,0,2,0" Visibility="{x:Bind Edited}" />
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
                                             <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
                                                                     Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -276,7 +276,7 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" />
                                     </controls:Redact>
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <controls:VoicePlayer Message="{x:Bind}" />
@@ -376,7 +376,7 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10">
@@ -458,7 +458,7 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click: download (first time), then play in the video viewer. -->
@@ -553,7 +553,7 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- A sharp street map (Controls/MapView.cs); click opens the place in Google Maps. -->
@@ -635,7 +635,7 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <Grid ColumnSpacing="12" Padding="4,4,4,0">
@@ -703,7 +703,7 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
-                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
+                                    <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <TextBlock Text="{x:Bind Text}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" IsTextSelectionEnabled="True"
@@ -1272,6 +1272,7 @@
                             <controls:QuoteBlock Author="{x:Bind ViewModel.ReplyingToName, Mode=OneWay}"
                                                  Preview="{x:Bind ViewModel.ReplyingToPreview, Mode=OneWay}"
                                                  Glyph="{x:Bind ViewModel.ReplyingToGlyph, Mode=OneWay}"
+                                                 Thumb="{x:Bind ViewModel.ReplyingToThumb, Mode=OneWay}"
                                                  FromMe="{x:Bind ViewModel.ReplyingToFromMe, Mode=OneWay}" />
                             <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Cancel reply (Esc)" AutomationProperties.Name="Cancel reply"

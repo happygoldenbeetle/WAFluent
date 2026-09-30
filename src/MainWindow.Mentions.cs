@@ -20,7 +20,7 @@ public sealed partial class MainWindow
     private static readonly Regex MentionTail = new(@"(?:^|\s)@([^\s@]{0,30})$");
 
     /// <summary>Names inserted in the composer and who they are, for the next send.</summary>
-    private readonly List<(string Name, string Jid)> _mentions = [];
+    private readonly List<Mention> _mentions = [];
     private readonly Dictionary<string, List<MemberDto>> _members = [];
     private List<MemberDto> _mentionMatches = [];
     private int _mentionIndex;
@@ -45,6 +45,7 @@ public sealed partial class MainWindow
         WireMentions();
         var people = PeopleFor(chat);
         var query = m.Groups[1].Value;
+        var everyone = chat.IsGroup && people.Count > 1 && "all".StartsWith(query, StringComparison.OrdinalIgnoreCase);
         _mentionMatches = people
             .Where(p => query.Length == 0
                         || p.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
@@ -53,6 +54,7 @@ public sealed partial class MainWindow
             .ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
             .Take(50)
             .ToList();
+        if (everyone) _mentionMatches.Insert(0, new MemberDto("all", "all", "", ""));
         if (_mentionMatches.Count == 0)
         {
             HideMentions();
@@ -107,14 +109,36 @@ public sealed partial class MainWindow
             };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var avatar = ViewModel.Chats.FirstOrDefault(c => c.Id == person.ChatId)?.AvatarPath;
-            var picture = new Controls.Redact { VeilRadius = new CornerRadius(18) };
-            picture.Children.Add(new Controls.Avatar { DisplayName = person.Name, Source = avatar, Size = 36 });
-            row.Children.Add(picture);
-            var name = new Controls.Redact { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
-            name.Children.Add(new TextBlock { Text = person.Name, FontSize = 15, TextTrimming = TextTrimming.CharacterEllipsis });
-            Grid.SetColumn(name, 1);
-            row.Children.Add(name);
+            if (person.Jid == "all")
+            {
+                // Like WhatsApp: "all — Mention all members in this chat".
+                row.Children.Add(new Grid
+                {
+                    Width = 36,
+                    Height = 36,
+                    Children =
+                    {
+                        new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = Themed.Brush("SubtleFillColorSecondaryBrush") },
+                        new FontIcon { Glyph = "", FontSize = 16 },
+                    },
+                });
+                var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+                label.Children.Add(new TextBlock { Text = "all", FontSize = 15 });
+                label.Children.Add(new TextBlock { Text = "Mention all members in this chat", FontSize = 12.5, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
+                Grid.SetColumn(label, 1);
+                row.Children.Add(label);
+            }
+            else
+            {
+                var avatar = ViewModel.Chats.FirstOrDefault(c => c.Id == person.ChatId)?.AvatarPath;
+                var picture = new Controls.Redact { VeilRadius = new CornerRadius(18) };
+                picture.Children.Add(new Controls.Avatar { DisplayName = person.Name, Source = avatar, Size = 36 });
+                row.Children.Add(picture);
+                var name = new Controls.Redact { VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
+                name.Children.Add(new TextBlock { Text = person.Name, FontSize = 15, TextTrimming = TextTrimming.CharacterEllipsis });
+                Grid.SetColumn(name, 1);
+                row.Children.Add(name);
+            }
             row.PointerEntered += (_, _) => { _mentionIndex = index; RenderMentions(); };
             row.Tapped += (_, e) => { e.Handled = true; _mentionIndex = index; ApplyMention(); };
             MentionList.Children.Add(row);
@@ -159,7 +183,7 @@ public sealed partial class MainWindow
         ComposerBox.Text = text[.._mentionStart] + insert + text[caret..];
         ComposerBox.SelectionStart = _mentionStart + insert.Length;
         _mentions.RemoveAll(m => m.Name == person.Name);
-        _mentions.Add((person.Name, person.Jid));
+        _mentions.Add(new Mention(person.Name, person.Jid, person.ChatId, person.Phone));
         ComposerBox.Focus(FocusState.Programmatic);
     }
 
@@ -168,5 +192,22 @@ public sealed partial class MainWindow
         if (MentionPanel.Visibility == Visibility.Collapsed) return;
         MentionPanel.Visibility = Visibility.Collapsed;
         MentionList.Children.Clear();
+    }
+}
+
+public sealed partial class MainWindow
+{
+    /// <summary>Everyone to mention for "@all" in the open group (its members' JIDs).</summary>
+    private List<string> EveryoneInOpenChat() =>
+        ViewModel.SelectedChat is { IsGroup: true } chat && _members.TryGetValue(chat.Id, out var members)
+            ? members.Select(m => m.Jid).ToList()
+            : [];
+
+    /// <summary>A mention in a message was clicked: their chat, or a new one with their number.</summary>
+    private void OpenMention(string chatId, string phone)
+    {
+        if (ViewModel.Chats.FirstOrDefault(c => c.Id == chatId) is { } chat) ViewModel.OpenChat(chat.Id);
+        else if (phone.Length > 0) ViewModel.OpenNumber(phone);
+        else ShowToast(false, "Their number isn't known on this PC.");
     }
 }

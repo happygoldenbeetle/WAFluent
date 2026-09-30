@@ -193,6 +193,9 @@ pub struct ReplyDto {
     pub kind: String,
     /// One-line summary ("Photo", the text, the file name...).
     pub preview: String,
+    /// The quoted photo's/video's/sticker's small preview (base64), for the quote's thumbnail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumb: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -301,6 +304,9 @@ pub enum Command {
         /// The link card the app made for the first link in the text.
         #[serde(default)]
         link: Option<LinkPreview>,
+        /// "@all": everyone in the group is mentioned.
+        #[serde(default)]
+        everyone: bool,
     },
     /// A group's members, for @mentions; answered by `groupMembers`.
     GroupMembers { chat_id: String },

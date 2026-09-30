@@ -151,7 +151,7 @@ public sealed partial class MainWindow
             line.Children.Add(new Controls.DeliveryTicks { Delivery = m.Delivery, VerticalAlignment = VerticalAlignment.Center });
         var text = new TextBlock { FontSize = 15, TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 2, TextWrapping = TextWrapping.Wrap, MaxWidth = 300 };
         if (m.SenderName.Length > 0) text.Inlines.Add(new Run { Text = m.SenderName + ": ", Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
-        var body = m.Text.Length > 0 ? m.Text : m.FileName;
+        var body = m.Text.Length > 0 ? Format.PlainMentions(m.Text) : m.FileName;
         var at = body.IndexOf(query, StringComparison.CurrentCultureIgnoreCase);
         // Long texts: start a little before the match so it shows.
         var start = at > 60 ? at - 30 : 0;

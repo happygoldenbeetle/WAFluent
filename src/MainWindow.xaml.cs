@@ -72,6 +72,7 @@ public sealed partial class MainWindow : Window
             else if (!m.IsOutgoing) { _missedWhileUp++; UpdateJumpDown(); }   // count it on the jump button
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
+        Controls.LinkText.MentionClicked = OpenMention;
         // Album tiles open their item like a single photo or video, and have its menu.
         Controls.AlbumGrid.Open = (item, tile) =>
         {
@@ -276,6 +277,13 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(1500);
                 File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), $"shown={Notifications.Count()}");
                 Notifications.ClearAll();
+            };
+        // WAFLUENT_SELFTEST=reply: replies to the photo in the open chat (the quote above the composer).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "reply")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Image) is { } photo) ViewModel.BeginReply(photo);
             };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
@@ -548,7 +556,7 @@ public sealed partial class MainWindow : Window
             SaveEdit();
             return;
         }
-        if (!ViewModel.Send(ComposerBox.Text, _mentions, ReadyLinkCard())) return;
+        if (!ViewModel.Send(ComposerBox.Text, _mentions, ReadyLinkCard(), EveryoneInOpenChat())) return;
         _mentions.Clear();
         ResetLinkCard();
         ViewModel.StopTyping();

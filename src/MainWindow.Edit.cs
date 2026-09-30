@@ -16,6 +16,7 @@ public sealed partial class MainWindow
 
     private static bool CanEdit(Message m) =>
         m.IsOutgoing && m.Kind == MessageKind.Text && !m.IsDeleted && !m.Id.StartsWith("pending-")
+        && !m.HasLink && Services.LinkPreviews.FirstLink(m.Text) is null   // WhatsApp can't edit messages with links
         && m.Delivery != Delivery.Failed
         && DateTimeOffset.Now.ToUnixTimeSeconds() - m.UnixTs < EditWindow.TotalSeconds;
 

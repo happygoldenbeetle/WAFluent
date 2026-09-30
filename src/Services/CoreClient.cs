@@ -31,7 +31,7 @@ public sealed record MemberDto(string Jid, string Name, string ChatId, string Ph
 public sealed record ReceiptDto(string User, string ChatId, string Name, int Status, long Ts);
 
 /// <summary>The message a reply quotes.</summary>
-public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview);
+public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview, string? Thumb = null);
 
 /// <summary>Attachment details; <c>Path</c> is set once the file has been downloaded.</summary>
 public sealed record MediaDto(string Mime, int Width, int Height, int Seconds, int[]? Waveform, string? Path);
@@ -188,10 +188,11 @@ public sealed class CoreClient : IDisposable
     public void BackfillMedia(string chatId, string? beforeId) => Send(new { cmd = "backfillMedia", chatId, beforeId });
 
     /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
-    public void SendText(string chatId, string text, string? replyTo, string tempId, IReadOnlyList<string>? mentions = null, LinkPreviews.Card? link = null) =>
+    public void SendText(string chatId, string text, string? replyTo, string tempId, IReadOnlyList<string>? mentions = null, LinkPreviews.Card? link = null,
+                         bool everyone = false) =>
         Send(new
         {
-            cmd = "sendText", chatId, text, replyTo, tempId, mentions = mentions ?? [],
+            cmd = "sendText", chatId, text, replyTo, tempId, mentions = mentions ?? [], everyone,
             link = link is null ? null : new { url = link.Url, title = link.Title, description = link.Description, thumb = link.Thumb },
         });
 

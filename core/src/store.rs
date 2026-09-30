@@ -769,7 +769,7 @@ impl Store {
                 };
                 ChatDto {
                     name: if name.is_empty() { self.person_name(&id, "") } else { name },
-                    preview: preview(&kind, &self.render_mentions(text.as_deref().unwrap_or("")), file_name.as_deref().unwrap_or("")),
+                    preview: preview(&kind, &plain_mentions(&self.render_mentions(text.as_deref().unwrap_or(""))), file_name.as_deref().unwrap_or("")),
                     preview_kind: kind,
                     muted: mute_end == -1 || mute_end > now,
                     last_from_me: from_me,
@@ -1305,7 +1305,10 @@ impl Store {
         } else {
             self.person_name(&sender, &push)
         };
-        Some(ReplyDto { id: quoted_id, from_me, sender_name, preview: preview(&kind, &text, &file_name), kind })
+        let thumb = matches!(kind.as_str(), "image" | "video" | "gif" | "sticker" | "document" | "location")
+            .then(|| self.extra(chat_id, &quoted_id).0)
+            .flatten();
+        Some(ReplyDto { id: quoted_id, from_me, sender_name, preview: preview(&kind, &text, &file_name), kind, thumb })
     }
 
     pub fn media_dto(&self, chat_id: &str, message_id: &str) -> Option<MediaDto> {
@@ -1385,13 +1388,30 @@ impl Store {
                             (name != pretty_jid(jid) && !name.chars().filter(char::is_ascii_digit).eq(digits.chars())).then_some(name)
                         });
                     if let Some(name) = name {
+                        let jid = if self.is_me(&format!("{digits}@s.whatsapp.net")) || self.person_name(&format!("{digits}@s.whatsapp.net"), "") != pretty_jid(&format!("{digits}@s.whatsapp.net")) {
+                            format!("{digits}@s.whatsapp.net")
+                        } else {
+                            format!("{digits}@lid")
+                        };
+                        let phone = self.phone_number(&jid).map(|p| p.split('@').next().unwrap_or("").to_string()).unwrap_or_default();
                         out.push('@');
                         out.push('\u{2068}');
                         out.push_str(&name);
+                        out.push('\u{2063}');
+                        out.push_str(&self.canonical(&jid));
+                        out.push('\u{2063}');
+                        out.push_str(&phone);
                         out.push('\u{2069}');
                         i += 1 + digits.chars().count();
                         continue;
                     }
+                }
+                // "@all": everyone in the group was mentioned.
+                let word: String = chars[i + 1..].iter().take_while(|c| c.is_alphanumeric()).collect();
+                if word.eq_ignore_ascii_case("all") {
+                    out.push_str("@\u{2068}all\u{2069}");
+                    i += 4;
+                    continue;
                 }
             }
             out.push(chars[i]);
@@ -1525,6 +1545,22 @@ pub fn preview(kind: &str, text: &str, file_name: &str) -> String {
 }
 
 /// Standard base64 (the UI decodes previews with Convert.FromBase64String).
+/// Mentions as plain "@Name" (chat list previews): drops the markers and who they point at.
+fn plain_mentions(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut hidden = false;
+    for c in text.chars() {
+        match c {
+            '\u{2068}' => {}
+            '\u{2063}' => hidden = true,
+            '\u{2069}' => hidden = false,
+            _ if hidden => {}
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 fn base64(data: &[u8]) -> String {
     const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);

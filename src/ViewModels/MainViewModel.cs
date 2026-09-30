@@ -701,6 +701,7 @@ public sealed partial class MainViewModel : Observable
             Raise(nameof(ReplyingToName));
             Raise(nameof(ReplyingToPreview));
             Raise(nameof(ReplyingToGlyph));
+            Raise(nameof(ReplyingToThumb));
             Raise(nameof(ReplyingToFromMe));
         }
     }
@@ -709,6 +710,14 @@ public sealed partial class MainViewModel : Observable
     public string ReplyingToName => _replyingTo is null ? "" : AuthorName(_replyingTo);
     public string ReplyingToPreview => _replyingTo is null ? "" : Format.QuotePreview(_replyingTo);
     public string ReplyingToGlyph => _replyingTo is null ? "" : Format.QuoteGlyph(_replyingTo);
+
+    /// <summary>The picture of what you're replying to (its file when downloaded, else its preview).</summary>
+    public string? ReplyingToThumb => _replyingTo switch
+    {
+        { Kind: MessageKind.Image or MessageKind.Sticker, MediaPath: { } p } when File.Exists(p) => p,
+        { Kind: MessageKind.Image or MessageKind.Video or MessageKind.Sticker or MessageKind.Location or MessageKind.File, Thumb: { Length: > 0 } t } => t,
+        _ => null,
+    };
     public bool ReplyingToFromMe => _replyingTo?.IsOutgoing ?? false;
 
     public void BeginReply(Message message)
@@ -728,22 +737,34 @@ public sealed partial class MainViewModel : Observable
     /// Adds the message to the open chat right away (clock icon) and hands it to the core;
     /// <see cref="OnSent"/> swaps in the real id and a tick. Sample mode just shows it as sent.
     /// </summary>
-    public bool Send(string text, IReadOnlyList<(string Name, string Jid)>? mentions = null, LinkPreviews.Card? link = null)
+    public bool Send(string text, IReadOnlyList<Mention>? mentions = null, LinkPreviews.Card? link = null, IReadOnlyList<string>? everyone = null)
     {
         text = text.Trim();
         if (_selectedChat is not { } chat || text.Length == 0) return false;
         // @mentions: the bubble shows "@Name" (marked for colour), WhatsApp gets "@<number>".
         var wire = text;
         var mentioned = new List<string>();
-        foreach (var (name, jid) in mentions ?? [])
+        var all = false;
+        foreach (var (name, jid, mentionChat, phone) in mentions ?? [])
         {
             var token = "@" + name;
+            if (jid == "all")
+            {
+                // "@all" stays as it is; everyone is mentioned.
+                if (text.Contains(token, StringComparison.Ordinal) && everyone is { Count: > 0 })
+                {
+                    all = true;
+                    text = text.Replace(token, "@\u2068all\u2069");
+                    mentioned.AddRange(everyone.Where(j => !mentioned.Contains(j)));
+                }
+                continue;
+            }
             var at = wire.IndexOf(token, StringComparison.Ordinal);
             if (at < 0) continue;
             wire = wire[..at] + "@" + jid.Split('@')[0] + wire[(at + token.Length)..];
             var shown = text.IndexOf(token, StringComparison.Ordinal);
-            if (shown >= 0) text = text[..shown] + "@\u2068" + name + "\u2069" + text[(shown + token.Length)..];
-            mentioned.Add(jid);
+            if (shown >= 0) text = text[..shown] + "@\u2068" + name + "\u2063" + mentionChat + "\u2063" + phone + "\u2069" + text[(shown + token.Length)..];
+            if (!mentioned.Contains(jid)) mentioned.Add(jid);
         }
 
         var now = DateTime.Now;
@@ -775,9 +796,9 @@ public sealed partial class MainViewModel : Observable
             message.LinkDescription = link.Description;
             if (link.Thumb is { } t && File.Exists(t)) message.Thumb = Convert.ToBase64String(File.ReadAllBytes(t));
         }
-        _core?.SendText(chat.Id, wire, message.HasReply ? message.ReplyId : null, message.Id, mentioned, link);
+        _core?.SendText(chat.Id, wire, message.HasReply ? message.ReplyId : null, message.Id, mentioned, link, all);
 
-        chat.Preview = text;
+        chat.Preview = Format.PlainMentions(text);
         chat.PreviewSender = "";
         chat.PreviewGlyph = "";
         chat.Time = message.Time;

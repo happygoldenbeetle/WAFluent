@@ -394,10 +394,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { group_members(&ctx, &client, chat_id).await });
         }
-        Command::SendText { chat_id, text, reply_to, temp_id, mentions, link } => {
+        Command::SendText { chat_id, text, reply_to, temp_id, mentions, link, everyone } => {
             // Sending waits on the server; keep reading commands meanwhile.
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id, mentions, link).await });
+            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id, mentions, link, everyone).await });
         }
         Command::ChatAction { chat_id, action, until_ms } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -506,6 +506,7 @@ async fn send_text(
     temp_id: String,
     mentions: Vec<String>,
     link: Option<protocol::LinkPreview>,
+    everyone: bool,
 ) {
     let jid = match chat_id.parse::<Jid>() {
         Ok(jid) => jid,
@@ -554,6 +555,10 @@ async fn send_text(
         if !mentions.is_empty() {
             let mut context = ext.context_info.as_option().cloned().unwrap_or_default();
             context.mentioned_jid = mentions.clone();
+            // "@all": the everyone marker newer apps show, plus every member's mention (so all are pinged).
+            if everyone {
+                context.non_jid_mentions = Some(1);
+            }
             ext.context_info = MessageField::some(context);
         }
         // The link card: WhatsApp shows it from these fields.

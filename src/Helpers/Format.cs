@@ -64,7 +64,25 @@ public static class Format
     };
 
     /// <summary>One-line summary of a message for a quote ("Photo", the text, the file name...).</summary>
-    public static string QuotePreview(Message m) => m.Kind switch
+    /// <summary>Text with mentions as plain "@Name" (the markers and who they point at dropped).</summary>
+    public static string PlainMentions(string text)
+    {
+        if (text.IndexOf('⁨') < 0) return text;
+        var sb = new System.Text.StringBuilder(text.Length);
+        var hidden = false;
+        foreach (var c in text)
+        {
+            if (c == '⁨') continue;
+            if (c == '⁣') { hidden = true; continue; }
+            if (c == '⁩') { hidden = false; continue; }
+            if (!hidden) sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    public static string QuotePreview(Message m) => PlainMentions(QuotePreviewRaw(m));
+
+    private static string QuotePreviewRaw(Message m) => m.Kind switch
     {
         MessageKind.Image => m.HasText ? m.Text : "Photo",
         MessageKind.Sticker => "Sticker",
@@ -209,6 +227,7 @@ public static class Format
             ReplyPreview = dto.Reply?.Preview ?? "",
             ReplyGlyph = PreviewGlyph(dto.Reply?.Kind ?? ""),
             ReplyFromMe = dto.Reply?.FromMe ?? false,
+            ReplyThumb = dto.Reply?.Thumb,
             Reactions = dto.Reactions ?? [],
             MyReaction = dto.MyReaction ?? "",
             Starred = dto.Starred,

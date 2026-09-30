@@ -24,6 +24,9 @@ public static partial class LinkText
     public static Message? GetMessage(TextBlock element) => (Message?)element.GetValue(MessageProperty);
     public static void SetMessage(TextBlock element, Message? value) => element.SetValue(MessageProperty, value);
 
+    /// <summary>A mention was clicked: their chat id and number (the window opens or starts the chat).</summary>
+    public static Action<string, string>? MentionClicked;
+
     [GeneratedRegex(@"(?<mention>@\u2068[^\u2069]*\u2069)|(?<email>[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,})|(?<url>(?:https?://|www\.)[^\s<>""]*[^\s<>"".,;:!?)\]'])")]
     private static partial Regex Links();
 
@@ -55,13 +58,28 @@ public static partial class LinkText
                 at = match.Index + match.Length;
                 if (match.Groups["mention"].Success)
                 {
-                    // @Name (the core marks mentions with Unicode isolates): green, like WhatsApp.
-                    block.Inlines.Add(new Run
+                    // @Name (marked with Unicode isolates, then who it is): green, like WhatsApp; a click opens their chat.
+                    var parts = match.Value[2..^1].Split('\u2063');
+                    var run = new Run { Text = "@" + parts[0] };
+                    if (parts.Length >= 3)
                     {
-                        Text = "@" + match.Value[2..^1],
-                        Foreground = Themed.Brush("ChatAccentTextBrush"),
-                        FontWeight = FontWeights.SemiBold,
-                    });
+                        var (mentionChat, phone) = (parts[1], parts[2]);
+                        var mention = new Hyperlink
+                        {
+                            Foreground = Themed.Brush("ChatAccentTextBrush"),
+                            FontWeight = FontWeights.SemiBold,
+                            UnderlineStyle = UnderlineStyle.None,
+                        };
+                        mention.Inlines.Add(run);
+                        mention.Click += (_, _) => MentionClicked?.Invoke(mentionChat, phone);
+                        block.Inlines.Add(mention);
+                    }
+                    else
+                    {
+                        run.Foreground = Themed.Brush("ChatAccentTextBrush");
+                        run.FontWeight = FontWeights.SemiBold;
+                        block.Inlines.Add(run);
+                    }
                     continue;
                 }
                 var email = match.Groups["email"].Success;

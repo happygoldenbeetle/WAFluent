@@ -57,6 +57,9 @@ public sealed class ContactGroup(string key, IEnumerable<ContactRow> rows) : Lis
     public string Key { get; } = key;
 }
 
+/// <summary>Someone @mentioned in the composer: their name, JID, 1:1 chat and number ("all": everyone).</summary>
+public sealed record Mention(string Name, string Jid, string ChatId, string Phone);
+
 /// <summary>An option box in Create poll.</summary>
 public sealed class PollOptionDraft : Observable
 {
