@@ -455,6 +455,8 @@ pub struct Outgoing {
     pub height: u32,
     pub seconds: u32,
     pub thumb: Option<String>,
+    /// Voice notes: 64 levels, 0-100.
+    pub waveform: Vec<u8>,
 }
 
 /// Uploads in progress, by their bubble's id, so ✕ can stop one.
@@ -474,6 +476,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
         "image" => "photo",
         "video" => "video",
         "gif" => "GIF",
+        "voice" => "voice message",
         _ => "file",
     };
     let data = match std::fs::read(&file.path) {
@@ -488,6 +491,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
     let media_type = match file.kind.as_str() {
         "image" => MediaType::Image,
         "video" | "gif" => MediaType::Video,
+        "voice" => MediaType::Audio,
         _ => MediaType::Document,
     };
     let up = match client.upload(data, media_type, Default::default()).await {
@@ -518,6 +522,24 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
                 height: Some(file.height),
                 jpeg_thumbnail: thumb,
                 caption,
+                ..Default::default()
+            })
+        }
+        "voice" => {
+            // A voice note (push-to-talk): OGG Opus, its length and waveform, like the phone sends.
+            message.audio_message = MessageField::some(wa::message::AudioMessage {
+                url: Some(up.url),
+                direct_path: Some(up.direct_path),
+                media_key: Some(up.media_key.to_vec()),
+                media_key_timestamp: Some(up.media_key_timestamp),
+                file_sha256: Some(up.file_sha256.to_vec()),
+                file_enc_sha256: Some(up.file_enc_sha256.to_vec()),
+                file_length: Some(up.file_length),
+                mimetype: Some(file.mime.clone()),
+                seconds: Some(file.seconds),
+                ptt: Some(true),
+                waveform: (!file.waveform.is_empty()).then(|| file.waveform.clone()),
+                streaming_sidecar: up.streaming_sidecar,
                 ..Default::default()
             })
         }

@@ -246,6 +246,18 @@ public sealed partial class MainWindow : Window
                     SendCurrent();
                 }
             };
+        // WAFLUENT_SELFTEST=voice: encodes WAFLUENT_TEST_WAV (no microphone) to %TEMP%\wafluent-selftest.txt,
+        // and shows the recording bar.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "voice")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var result = VoiceRecorder.EncodeWav(Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV")!);
+                File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"),
+                    result is var (p, s, w) ? $"{p}\n{s}\n{string.Join(",", w)}" : "none");
+                RecordingTime.Text = "0:07";
+                RecordingBar.Visibility = Visibility.Visible;
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

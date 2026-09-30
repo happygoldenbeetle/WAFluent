@@ -294,9 +294,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             };
             ctx.send(Out::Stickers { favorites, stickers, gifs });
         }
-        Command::SendMedia { chat_id, path, kind, caption, mime, width, height, seconds, thumb, temp_id } => {
+        Command::SendMedia { chat_id, path, kind, caption, mime, width, height, seconds, thumb, temp_id, waveform } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            let media = actions::Outgoing { path, kind, caption, mime, width, height, seconds, thumb };
+            let media = actions::Outgoing { path, kind, caption, mime, width, height, seconds, thumb, waveform };
             let id = temp_id.clone();
             let task = tokio::spawn(async move {
                 actions::send_media(&ctx, &client, chat_id, media, temp_id.clone()).await;

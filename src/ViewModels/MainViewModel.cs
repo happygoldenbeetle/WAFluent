@@ -788,6 +788,32 @@ public sealed partial class MainViewModel : Observable
     /// </summary>
     private readonly Dictionary<string, int> _gifSeconds = [];
 
+    /// <summary>A recorded voice note (OGG Opus): its bubble shows at once, then the core uploads it.</summary>
+    public void SendVoice(string path, int seconds, byte[] waveform)
+    {
+        if (_selectedChat is not { } chat) return;
+        const string mime = "audio/ogg; codecs=opus";
+        var dto = new MessageDto(
+            "pending-" + Guid.NewGuid().ToString("N"), true, "", "", DateTimeOffset.Now.ToUnixTimeSeconds(), "voice",
+            "", null, 0, new MediaDto(mime, 0, 0, seconds, waveform.Select(b => (int)b).ToArray(), path),
+            null, null, null, false, false);
+        var message = Format.ToMessage(dto, chat.IsGroup);
+        message.Delivery = _core is null ? Delivery.Sent : Delivery.Pending;
+        message.AnimateIn = true;
+        RemoveUnreadDivider(chat);
+        Append(chat, message);
+        _core?.SendMedia(chat.Id, path, "voice", "", mime, 0, 0, seconds, null, message.Id, waveform);
+
+        chat.Preview = Format.QuotePreview(message);
+        chat.PreviewSender = "";
+        chat.PreviewGlyph = Format.QuoteGlyph(message);
+        chat.Time = message.Time;
+        chat.LastActivity = DateTime.Now;
+        chat.LastDelivery = message.Delivery;
+        Reorder();
+        SyncVisible();
+    }
+
     public async Task SendFileAsync(OutgoingFile file, bool hd)
     {
         if (_selectedChat is not { } chat) return;

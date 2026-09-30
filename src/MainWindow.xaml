@@ -1342,6 +1342,30 @@
                                 <FontIcon Glyph="&#xE76E;" FontSize="17" />
                             </Button>
                         </StackPanel>
+                        <!-- Recording a voice note (MainWindow.Voice.cs): delete, time, send. -->
+                        <Grid x:Name="RecordingBar" Grid.Row="1" Grid.ColumnSpan="4" Visibility="Collapsed" Canvas.ZIndex="5"
+                              Background="{ThemeResource ComposerBrush}" ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Style="{StaticResource IconButtonStyle}" Click="RecordingDelete_Click" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Delete (Esc)" AutomationProperties.Name="Delete recording">
+                                <FontIcon Glyph="&#xE74D;" FontSize="17" />
+                            </Button>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Ellipse x:Name="RecordingDot" Width="10" Height="10" Fill="#F15C6D" />
+                                <TextBlock x:Name="RecordingTime" Text="0:00" FontSize="15" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="Recording…" VerticalAlignment="Center" FontSize="14"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Button x:Name="RecordingSend" Grid.Column="3" Style="{StaticResource IconButtonStyle}" Click="RecordingSend_Click"
+                                    VerticalAlignment="Center" ToolTipService.ToolTip="Send (Enter)" AutomationProperties.Name="Send voice message">
+                                <FontIcon Glyph="&#xE725;" FontSize="18" Foreground="{ThemeResource ChatAccentBrush}" />
+                            </Button>
+                        </Grid>
                         <TextBox x:Name="ComposerBox" Grid.Row="1" Grid.Column="2"
                                  PlaceholderText="{x:Bind ViewModel.ComposerPlaceholder}"
                                  IsEnabled="{x:Bind ViewModel.CanSend}"
@@ -1360,8 +1384,8 @@
                             </TextBox.Resources>
                         </TextBox>
                         <Grid Grid.Row="1" Grid.Column="3">
-                            <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}"
-                                    ToolTipService.ToolTip="Voice message" AutomationProperties.Name="Voice message">
+                            <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}" Click="Mic_Click"
+                                    ToolTipService.ToolTip="Record a voice message" AutomationProperties.Name="Record a voice message">
                                 <FontIcon Glyph="&#xE720;" FontSize="17" />
                             </Button>
                             <Button x:Name="SendButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed"

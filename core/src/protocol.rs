@@ -270,6 +270,9 @@ pub enum Command {
         thumb: Option<String>,
         /// The uploading bubble's id: answered by `sent` (or `sendFailed`) with it.
         temp_id: String,
+        /// Voice notes: 64 levels, 0-100 (the bars in the bubble).
+        #[serde(default)]
+        waveform: Vec<u8>,
     },
     /// Stop an upload that hasn't been sent yet.
     CancelSend { temp_id: String },

@@ -142,8 +142,10 @@ public sealed class CoreClient : IDisposable
     public void SendStored(string chatId, string messageId, string to) => Send(new { cmd = "sendStored", chatId, messageId, to });
 
     /// <summary>Uploads and sends a file: <paramref name="kind"/> "image", "video" or "document"; <paramref name="thumb"/> a JPEG preview file.</summary>
-    public void SendMedia(string chatId, string path, string kind, string caption, string mime, int width, int height, int seconds, string? thumb, string tempId) =>
-        Send(new { cmd = "sendMedia", chatId, path, kind, caption, mime, width, height, seconds, thumb, tempId });
+    public void SendMedia(string chatId, string path, string kind, string caption, string mime, int width, int height, int seconds, string? thumb, string tempId,
+                          IReadOnlyList<byte>? waveform = null) =>
+        Send(new { cmd = "sendMedia", chatId, path, kind, caption, mime, width, height, seconds, thumb, tempId,
+                   waveform = (waveform ?? []).Select(b => (int)b).ToArray() });
 
     /// <summary>Stops an upload that hasn't been sent yet (its bubble's ✕).</summary>
     public void CancelSend(string tempId) => Send(new { cmd = "cancelSend", tempId });
