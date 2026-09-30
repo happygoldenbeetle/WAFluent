@@ -115,16 +115,38 @@ public static class MediaCompression
         }
         return (destination.Path, (int)outWidth, (int)outHeight);
     }
+    /// <summary>What a file really is, from its first bytes: "gif", "webp", "mp4" (and MOV), or "".</summary>
+    public static string Sniff(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var head = new byte[12];
+            var read = stream.Read(head, 0, head.Length);
+            if (read >= 6 && head[0] == 'G' && head[1] == 'I' && head[2] == 'F') return "gif";
+            if (read >= 12 && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F'
+                && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') return "webp";
+            if (read >= 8 && head[4] == 'f' && head[5] == 't' && head[6] == 'y' && head[7] == 'p') return "mp4";
+        }
+        catch (Exception)
+        {
+        }
+        return "";
+    }
+
     /// <summary>
     /// A GIF as WhatsApp sends one: a short silent H.264 MP4 (the chat loops it). Frames are
     /// put together the way a GIF viewer does (offsets, transparency, clearing), on white.
     /// Returns the MP4, its size and length.
     /// </summary>
-    public static async Task<(string Path, int Width, int Height, int Seconds)> GifAsync(string path)
+    /// <returns>Null when it has one frame (a still picture: send it as a photo).</returns>
+    public static async Task<(string Path, int Width, int Height, int Seconds)?> GifAsync(string path)
     {
         var file = await StorageFile.GetFileFromPathAsync(path);
         using var input = await file.OpenReadAsync();
-        var decoder = await BitmapDecoder.CreateAsync(BitmapDecoder.GifDecoderId, input);
+        // Whatever the file really is (GIF, animated WebP...): Windows picks the decoder.
+        var decoder = await BitmapDecoder.CreateAsync(input);
+        if (decoder.FrameCount < 2) return null;
         int width = (int)decoder.PixelWidth, height = (int)decoder.PixelHeight;
         try
         {

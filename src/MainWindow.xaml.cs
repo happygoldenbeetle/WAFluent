@@ -131,8 +131,11 @@ public sealed partial class MainWindow : Window
                         lines.Add($"photo {(hd ? "HD" : "SD")}: {w}x{h} {new FileInfo(p).Length / 1024} KB (from {new FileInfo(photo).Length / 1024} KB)");
                         if (Environment.GetEnvironmentVariable("WAFLUENT_TEST_GIF") is { Length: > 0 } gif)
                         {
-                            var (gp, gw, gh, gs) = await MediaCompression.GifAsync(gif);
-                            lines.Add($"gif: {gw}x{gh} {gs}s {new FileInfo(gp).Length / 1024} KB -> {gp}");
+                            lines.Add($"sniffed: {MediaCompression.Sniff(gif)}");
+                            if (await MediaCompression.GifAsync(gif) is var (gp, gw, gh, gs))
+                                lines.Add($"gif: {gw}x{gh} {gs}s {new FileInfo(gp).Length / 1024} KB -> {gp}");
+                            else
+                                lines.Add("gif: one frame (sent as a photo)");
                         }
                         var video = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO")!;
                         var sw = System.Diagnostics.Stopwatch.StartNew();

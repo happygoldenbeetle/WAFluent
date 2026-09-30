@@ -263,11 +263,25 @@ public sealed partial class MainWindow
 
     private int _toastVersion;
 
+    /// <summary>Over the middle of the conversation when one is open, else the middle of the window.</summary>
+    private void CenterToast()
+    {
+        Toast.HorizontalAlignment = HorizontalAlignment.Center;
+        Toast.Margin = new Thickness(0, 0, 0, 84);
+        if (ViewModel.SelectedChat is null || ConversationPane.ActualWidth <= 0 || Toast.Parent is not UIElement root) return;
+        Toast.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var pane = ConversationPane.TransformToVisual(root).TransformPoint(new Windows.Foundation.Point(0, 0));
+        var left = pane.X + (ConversationPane.ActualWidth - Toast.DesiredSize.Width) / 2;
+        Toast.HorizontalAlignment = HorizontalAlignment.Left;
+        Toast.Margin = new Thickness(Math.Max(8, left), 0, 0, 84);
+    }
+
     private async void ShowToast(bool ok, string text)
     {
         var version = ++_toastVersion;
         ToastIcon.Glyph = ok ? Glyphs.CheckMark : Glyphs.Warning;
         ToastText.Text = text;
+        CenterToast();
         Toast.Opacity = 1;
         await Task.Delay(2600);
         if (version == _toastVersion) Toast.Opacity = 0;

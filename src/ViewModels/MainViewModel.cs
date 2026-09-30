@@ -715,6 +715,7 @@ public sealed partial class MainViewModel : Observable
         message.AnimateIn = true;
         Append(chat, message);
         var (path, width, height, mime) = (file.Path, file.Width, file.Height, file.Mime);
+        var kind = file.Kind;
         if (_core is not null)
         {
             try
@@ -726,10 +727,31 @@ public sealed partial class MainViewModel : Observable
                 }
                 else if (file.Kind == "gif")
                 {
-                    int length;
-                    (path, width, height, length) = await MediaCompression.GifAsync(file.Path);
-                    mime = "video/mp4";
-                    _gifSeconds[message.Id] = length;
+                    // Files called .gif are often something else (sites serve WebP or MP4 under that name).
+                    switch (MediaCompression.Sniff(file.Path))
+                    {
+                        case "mp4":
+                            (path, width, height) = await MediaCompression.VideoAsync(file.Path, file.Width, file.Height, false, CancellationToken.None);
+                            mime = "video/mp4";
+                            break;
+                        default:
+                            var gif = await MediaCompression.GifAsync(file.Path);
+                            if (gif is { } animated)
+                            {
+                                int length;
+                                (path, width, height, length) = animated;
+                                mime = "video/mp4";
+                                _gifSeconds[message.Id] = length;
+                            }
+                            else
+                            {
+                                // One frame: it's a picture, and goes as one.
+                                (path, width, height) = await MediaCompression.PhotoAsync(file.Path, hd);
+                                mime = "image/jpeg";
+                                kind = "image";
+                            }
+                            break;
+                    }
                 }
                 else if (file.Kind == "video")
                 {
@@ -737,12 +759,14 @@ public sealed partial class MainViewModel : Observable
                     if (path != file.Path) mime = "video/mp4";
                 }
             }
-            catch (Exception) when (file.Kind != "gif")
+            catch (Exception e) when (file.Kind != "gif")
             {
+                AppLog.Write($"compressing {file.Path} ({file.Kind}) failed; sending the original", e);
                 (path, width, height, mime) = (file.Path, file.Width, file.Height, file.Mime);   // send the original rather than nothing
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                AppLog.Write($"converting GIF {file.Path} failed", e);
                 message.IsUploading = false;   // a GIF that can't be made into a video can't go as a GIF
                 message.Delivery = Delivery.Failed;
                 Notify(false, "This GIF couldn't be converted. Send it as a document instead.");
@@ -751,7 +775,7 @@ public sealed partial class MainViewModel : Observable
             if (!chat.Messages.Contains(message)) return;   // cancelled (✕) while it was being made smaller
         }
         var seconds = _gifSeconds.Remove(message.Id, out var s) ? s : file.Seconds;
-        _core?.SendMedia(chat.Id, path, file.Kind, file.Caption.Trim(), mime, width, height, seconds, file.Thumb, message.Id);
+        _core?.SendMedia(chat.Id, path, kind, file.Caption.Trim(), mime, width, height, seconds, file.Thumb, message.Id);
 
         chat.Preview = Format.QuotePreview(message);
         chat.PreviewSender = "";

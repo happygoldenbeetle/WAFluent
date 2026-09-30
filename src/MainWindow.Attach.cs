@@ -401,9 +401,10 @@ public sealed partial class MainWindow
         var ext = System.IO.Path.GetExtension(file.Path).ToLowerInvariant();
         var kind = asDocument ? "document" : ext == ".gif" ? "gif" : VideoTypes.Contains(ext) ? "video" : PhotoTypes.Contains(ext) ? "image" : "document";
         if (kind == "document") return await PlainAsync(file);
+        var isVideo = kind == "video" || (kind == "gif" && MediaCompression.Sniff(file.Path) == "mp4");
 
         int width, height, seconds = 0;
-        if (kind == "video")
+        if (isVideo)
         {
             var props = await file.Properties.GetVideoPropertiesAsync();
             (width, height, seconds) = ((int)props.Width, (int)props.Height, (int)Math.Round(props.Duration.TotalSeconds));
@@ -415,7 +416,7 @@ public sealed partial class MainWindow
             var decoder = await BitmapDecoder.CreateAsync(stream);
             (width, height) = ((int)decoder.OrientedPixelWidth, (int)decoder.OrientedPixelHeight);
         }
-        var mode = kind == "video" ? ThumbnailMode.VideosView : ThumbnailMode.PicturesView;
+        var mode = isVideo ? ThumbnailMode.VideosView : ThumbnailMode.PicturesView;
         string? thumb;
         using (var source = await file.GetThumbnailAsync(mode, 256)) thumb = await JpegThumbAsync(source);
         var preview = new BitmapImage { DecodePixelWidth = 120 };
