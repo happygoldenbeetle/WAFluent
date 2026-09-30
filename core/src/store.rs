@@ -193,6 +193,9 @@ impl Store {
             "ALTER TABLE chats ADD COLUMN pinned_msg TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE receipts ADD COLUMN delivered_ts INTEGER NOT NULL DEFAULT 0",
+            // Group receipts once saved under the group instead of the person.
+            "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
             let _ = db.execute(sql, []);
         }
@@ -1339,22 +1342,26 @@ impl Store {
     /// One person's receipt: kept when it moves forward (delivered, then read).
     pub fn set_receipt(&self, chat_id: &str, message_id: &str, user: &str, status: u8, ts: i64) {
         let _ = self.db.execute(
-            "INSERT INTO receipts(chat_id, message_id, user, status, ts) VALUES(?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT(chat_id, message_id, user) DO UPDATE SET status = excluded.status, ts = excluded.ts
-             WHERE excluded.status > receipts.status",
+            "INSERT INTO receipts(chat_id, message_id, user, status, ts, delivered_ts)
+             VALUES(?1, ?2, ?3, ?4, ?5, CASE WHEN ?4 = 2 THEN ?5 ELSE 0 END)
+             ON CONFLICT(chat_id, message_id, user) DO UPDATE SET
+                status = MAX(receipts.status, excluded.status),
+                ts = CASE WHEN excluded.status > receipts.status THEN excluded.ts ELSE receipts.ts END,
+                delivered_ts = CASE WHEN excluded.status = 2 AND receipts.delivered_ts = 0 THEN excluded.ts ELSE receipts.delivered_ts END",
             params![chat_id, message_id, user, status, ts],
         );
     }
 
     /// Everyone who got or read a message: (person, name, status, when).
     pub fn receipts(&self, chat_id: &str, message_id: &str) -> Vec<crate::protocol::ReceiptDto> {
-        let rows: Vec<(String, u8, i64)> = self
+        let rows: Vec<(String, u8, i64, i64)> = self
             .db
-            .prepare("SELECT user, status, ts FROM receipts WHERE chat_id = ?1 AND message_id = ?2 ORDER BY ts DESC")
-            .and_then(|mut stmt| stmt.query_map([chat_id, message_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect())
+            .prepare("SELECT user, status, ts, delivered_ts FROM receipts WHERE chat_id = ?1 AND message_id = ?2 ORDER BY ts DESC")
+            .and_then(|mut stmt| stmt.query_map([chat_id, message_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?.collect())
             .unwrap_or_default();
         rows.into_iter()
-            .map(|(user, status, ts)| crate::protocol::ReceiptDto {
+            .map(|(user, status, ts, delivered_ts): (String, u8, i64, i64)| crate::protocol::ReceiptDto {
+                delivered_ts,
                 name: self.person_name(&user, ""),
                 chat_id: self.canonical(&user),
                 user,

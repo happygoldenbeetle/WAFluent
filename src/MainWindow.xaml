@@ -1019,10 +1019,10 @@
                                 <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
                             </StackPanel>
                             <StackPanel Spacing="4">
-                                <ToggleSwitch x:Name="ClassicBubblesSwitch" Header="Classic bubbles" OffContent="Off" OnContent="On"
-                                              Toggled="ClassicBubbles_Toggled" />
+                                <ToggleSwitch x:Name="Use24HourSwitch" Header="Use 24-hour time" OffContent="Off" OnContent="On"
+                                              Toggled="Use24Hour_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Text="WhatsApp's classic bubble corners, with the tail on the first bubble of a run. Off: rounder bubbles with a curled tail on the last one." />
+                                           Text="Times as 18:27. Off: 6:27 pm." />
                             </StackPanel>
                             <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="NotificationsSwitch" Header="Notifications" OffContent="Off" OnContent="On"
@@ -1366,24 +1366,31 @@
                         <Grid x:Name="RecordingBar" Grid.Row="1" Grid.ColumnSpan="4" Visibility="Collapsed" Canvas.ZIndex="5"
                               Background="{ThemeResource ComposerBrush}" ColumnSpacing="10">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button Style="{StaticResource IconButtonStyle}" Click="RecordingDelete_Click" VerticalAlignment="Center"
+                            <!-- Like WhatsApp: everything on the right, delete · time · waveform · pause · send. -->
+                            <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Click="RecordingDelete_Click" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Delete (Esc)" AutomationProperties.Name="Delete recording">
                                 <FontIcon Glyph="&#xE74D;" FontSize="17" />
                             </Button>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Ellipse x:Name="RecordingDot" Width="10" Height="10" Fill="#F15C6D" />
-                                <TextBlock x:Name="RecordingTime" Text="0:00" FontSize="15" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="4,0,8,0">
+                                <Ellipse x:Name="RecordingDot" Width="10" Height="10" Fill="#F15C6D" VerticalAlignment="Center" />
+                                <TextBlock x:Name="RecordingTime" Text="0:00" FontSize="16" VerticalAlignment="Center" MinWidth="38" />
                             </StackPanel>
-                            <TextBlock Grid.Column="2" Text="Recording…" VerticalAlignment="Center" FontSize="14"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <Button x:Name="RecordingSend" Grid.Column="3" Style="{StaticResource IconButtonStyle}" Click="RecordingSend_Click"
-                                    VerticalAlignment="Center" ToolTipService.ToolTip="Send (Enter)" AutomationProperties.Name="Send voice message">
-                                <FontIcon Glyph="&#xE725;" FontSize="18" Foreground="{ThemeResource ChatAccentBrush}" />
+                            <controls:LiveWaveform x:Name="RecordingWave" Grid.Column="3" Margin="0,0,10,0" />
+                            <Button x:Name="RecordingPause" Grid.Column="4" Style="{StaticResource IconButtonStyle}" Click="RecordingPause_Click"
+                                    VerticalAlignment="Center" ToolTipService.ToolTip="Pause" AutomationProperties.Name="Pause recording">
+                                <FontIcon x:Name="RecordingPauseIcon" Glyph="&#xE769;" FontSize="16" Foreground="#F15C6D" />
+                            </Button>
+                            <Button x:Name="RecordingSend" Grid.Column="5" Style="{StaticResource SendFabStyle}" Width="44" Height="44" Margin="6,0,2,0"
+                                    Click="RecordingSend_Click" VerticalAlignment="Center" ToolTipService.ToolTip="Send (Enter)"
+                                    AutomationProperties.Name="Send voice message">
+                                <FontIcon Glyph="&#xE725;" FontSize="17" />
                             </Button>
                         </Grid>
                         <TextBox x:Name="ComposerBox" Grid.Row="1" Grid.Column="2"

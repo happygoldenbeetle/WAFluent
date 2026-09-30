@@ -773,7 +773,7 @@ public sealed partial class MainViewModel : Observable
         {
             Id = "pending-" + Guid.NewGuid().ToString("N"),
             Text = text,
-            Time = now.ToString("H:mm"),
+            Time = Format.Clock(now),
             Timestamp = now,
             UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds(),
             IsOutgoing = true,
@@ -825,7 +825,7 @@ public sealed partial class MainViewModel : Observable
         {
             Id = "pending-" + Guid.NewGuid().ToString("N"),
             Text = text.Trim(),
-            Time = now.ToString("H:mm"),
+            Time = Format.Clock(now),
             Timestamp = now,
             UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds(),
             IsOutgoing = true,
@@ -843,6 +843,17 @@ public sealed partial class MainViewModel : Observable
         chat.LastDelivery = message.Delivery;
         Reorder();
         SyncVisible();
+    }
+
+    /// <summary>Settings › Use 24-hour time changed: every time shown is written again.</summary>
+    public void RefreshTimes()
+    {
+        foreach (var chat in _allChats)
+        {
+            if (chat.LastActivity != default) chat.Time = Format.ListTime(chat.LastActivity);
+            foreach (var m in Everything(chat).Concat(chat.Messages.Where(m => m.AlbumItems is not null)))
+                if (m.Timestamp != default && m.Kind != MessageKind.DateDivider) m.Time = Format.Clock(m.Timestamp);
+        }
     }
 
     /// <summary>Opens a chat by id (a notification was clicked).</summary>

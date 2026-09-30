@@ -28,7 +28,7 @@ public sealed record StickerDto(string ChatId, string MessageId, int Width, int 
 public sealed record MemberDto(string Jid, string Name, string ChatId, string Phone);
 
 /// <summary>One person's receipt for your message: delivered (2) or read (3), when (Unix seconds).</summary>
-public sealed record ReceiptDto(string User, string ChatId, string Name, int Status, long Ts);
+public sealed record ReceiptDto(string User, string ChatId, string Name, int Status, long Ts, long DeliveredTs = 0);
 
 /// <summary>The message a reply quotes.</summary>
 public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview, string? Thumb = null);

@@ -64,22 +64,21 @@ public sealed partial class MainWindow
     private void SetupBubbleMotion()
     {
         SetupJumpDownMotion();
-        ClassicBubblesSwitch.IsOn = _ui.ClassicBubbles;
+        Use24HourSwitch.IsOn = _ui.Use24Hour;
         NotificationsSwitch.IsOn = _ui.Notifications;
         HdMediaSwitch.IsOn = _ui.HdMedia;
         Messages.ElementPrepared += Messages_ElementPrepared;
         SetupTypingBubbleMotion();
     }
 
-    /// <summary>Settings › Classic bubbles: redraw the open conversation in the other style.</summary>
-    private void ClassicBubbles_Toggled(object sender, RoutedEventArgs e)
+    /// <summary>Settings › Use 24-hour time: every time is written again and the conversation redrawn.</summary>
+    private void Use24Hour_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_ui.ClassicBubbles == ClassicBubblesSwitch.IsOn) return;
-        _ui.ClassicBubbles = ClassicBubblesSwitch.IsOn;
+        if (_ui.Use24Hour == Use24HourSwitch.IsOn) return;
+        _ui.Use24Hour = Use24HourSwitch.IsOn;
         _ui.Save();
-        Helpers.Ui.IMessage = !_ui.ClassicBubbles;
-        ViewModel.RefreshRuns();
-        TypingBubble.Refresh();
+        Helpers.Format.Use24Hour = _ui.Use24Hour;
+        ViewModel.RefreshTimes();
         Messages.ItemsSource = null;
         Messages.ItemsSource = ViewModel.SelectedChat?.Messages;
         ScrollToBottom();

@@ -1,87 +1,159 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Concentus;
 using Concentus.Enums;
 using Concentus.Oggfile;
+using Windows.Media.Audio;
 using Windows.Media.Capture;
-using Windows.Media.MediaProperties;
-using Windows.Storage;
+using Windows.Media.Render;
 
 namespace WhatsAppNative.Services;
 
 /// <summary>
-/// Voice notes: records the microphone (48 kHz mono PCM, to a temporary WAV), then encodes it
-/// the way WhatsApp sends voice notes — Opus in an OGG file (Concentus) — and works out the
-/// 64-bar waveform the bubbles draw. Microphone access for desktop apps must be on in
-/// Windows' privacy settings.
+/// Voice notes: records the microphone through an AudioGraph (the samples arrive as they're
+/// spoken, so the recording bar can draw a live waveform), can pause and resume, then encodes
+/// the way WhatsApp sends voice notes — Opus in an OGG file (Concentus) — with the 64-bar
+/// waveform the bubbles draw. Microphone access for desktop apps must be on in Windows'
+/// privacy settings.
 /// </summary>
 public sealed class VoiceRecorder : IAsyncDisposable
 {
     private const int Rate = 48000;
-    private MediaCapture? _capture;
-    private StorageFile? _wav;
-    private DateTime _started;
+    private AudioGraph? _graph;
+    private AudioFrameOutputNode? _output;
+    private readonly List<float> _samples = [];
+    private readonly Lock _gate = new();
+    private int _graphRate = Rate, _channels = 1;
+    private float _level;
 
-    public bool IsRecording => _capture is not null;
-    public TimeSpan Elapsed => IsRecording ? DateTime.Now - _started : TimeSpan.Zero;
+    public bool IsRecording => _graph is not null;
+    public bool IsPaused { get; private set; }
+
+    /// <summary>What's been recorded so far.</summary>
+    public TimeSpan Elapsed
+    {
+        get { lock (_gate) return TimeSpan.FromSeconds(_samples.Count / (double)Rate); }
+    }
+
+    /// <summary>The loudness right now, 0-1 (for the live waveform).</summary>
+    public float Level => IsPaused ? 0 : _level;
 
     /// <summary>Starts recording. Throws <see cref="UnauthorizedAccessException"/> when microphone access is off.</summary>
     public async Task StartAsync()
     {
-        if (_capture is not null) return;
-        var capture = new MediaCapture();
-        await capture.InitializeAsync(new MediaCaptureInitializationSettings
+        if (_graph is not null) return;
+        var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Speech));
+        if (created.Status != AudioGraphCreationStatus.Success) throw new InvalidOperationException($"audio: {created.Status}");
+        var graph = created.Graph;
+        var input = await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech);
+        if (input.Status == AudioDeviceNodeCreationStatus.AccessDenied)
         {
-            StreamingCaptureMode = StreamingCaptureMode.Audio,
-            MediaCategory = MediaCategory.Speech,
-        });
-        var folder = await StorageFolder.GetFolderFromPathAsync(Path.GetTempPath());
-        _wav = await folder.CreateFileAsync($"wafluent-voice-{Guid.NewGuid():N}.wav", CreationCollisionOption.ReplaceExisting);
-        var profile = MediaEncodingProfile.CreateWav(AudioEncodingQuality.High);
-        profile.Audio = AudioEncodingProperties.CreatePcm(Rate, 1, 16);
-        await capture.StartRecordToStorageFileAsync(profile, _wav);
-        _capture = capture;
-        _started = DateTime.Now;
+            graph.Dispose();
+            throw new UnauthorizedAccessException("microphone access is off");
+        }
+        if (input.Status != AudioDeviceNodeCreationStatus.Success)
+        {
+            graph.Dispose();
+            throw new InvalidOperationException($"microphone: {input.Status}");
+        }
+        _graphRate = (int)graph.EncodingProperties.SampleRate;
+        _channels = (int)Math.Max(1, graph.EncodingProperties.ChannelCount);
+        _output = graph.CreateFrameOutputNode();
+        input.DeviceInputNode.AddOutgoingConnection(_output);
+        graph.QuantumStarted += (_, _) => Collect();
+        _graph = graph;
+        IsPaused = false;
+        graph.Start();
+    }
+
+    /// <summary>Pauses or resumes (what's recorded so far is kept).</summary>
+    public void TogglePause()
+    {
+        if (_graph is not { } graph) return;
+        IsPaused = !IsPaused;
+        if (IsPaused) graph.Stop();
+        else graph.Start();
+        _level = 0;
+    }
+
+    /// <summary>Each audio quantum: its samples, made mono at 48 kHz, and the level.</summary>
+    private void Collect()
+    {
+        if (_output is not { } output) return;
+        using var frame = output.GetFrame();
+        using var buffer = frame.LockBuffer(Windows.Media.AudioBufferAccessMode.Read);
+        var bytes = Windows.Storage.Streams.Buffer.CreateCopyFromMemoryBuffer(buffer).ToArray();
+        var floats = new float[bytes.Length / 4];
+        Buffer.BlockCopy(bytes, 0, floats, 0, floats.Length * 4);
+        var frames = floats.Length / _channels;
+        if (frames == 0) return;
+
+        var mono = new float[frames];
+        double sum = 0;
+        for (var i = 0; i < frames; i++)
+        {
+            float v = 0;
+            for (var c = 0; c < _channels; c++) v += floats[i * _channels + c];
+            v /= _channels;
+            mono[i] = v;
+            sum += v * v;
+        }
+        _level = (float)Math.Min(1, Math.Sqrt(sum / frames) * 4);
+
+        lock (_gate)
+        {
+            if (_graphRate == Rate)
+            {
+                _samples.AddRange(mono);
+                return;
+            }
+            // Another rate (44.1 kHz microphones): linear resampling to 48 kHz.
+            var step = _graphRate / (double)Rate;
+            for (double t = 0; t < frames - 1; t += step)
+            {
+                var k = (int)t;
+                var f = (float)(t - k);
+                _samples.Add(mono[k] * (1 - f) + mono[k + 1] * f);
+            }
+        }
     }
 
     /// <summary>Stops and throws the recording away.</summary>
-    public async Task CancelAsync()
+    public Task CancelAsync()
     {
-        await StopCaptureAsync();
-        TryDelete(_wav?.Path);
-        _wav = null;
+        Stop();
+        lock (_gate) _samples.Clear();
+        return Task.CompletedTask;
     }
 
     /// <summary>Stops and encodes: the OGG Opus file, its length in seconds and its waveform (null when too short).</summary>
     public async Task<(string Path, int Seconds, byte[] Waveform)?> FinishAsync()
     {
-        await StopCaptureAsync();
-        var wav = _wav?.Path;
-        _wav = null;
-        if (wav is null || !File.Exists(wav)) return null;
-        try
+        Stop();
+        short[] pcm;
+        lock (_gate)
         {
-            return await Task.Run(() => Encode(wav));
+            pcm = new short[_samples.Count];
+            for (var i = 0; i < pcm.Length; i++) pcm[i] = (short)Math.Clamp(_samples[i] * 32767f, short.MinValue, short.MaxValue);
+            _samples.Clear();
         }
-        finally
-        {
-            TryDelete(wav);
-        }
+        return await Task.Run(() => Encode(pcm));
     }
 
-    private async Task StopCaptureAsync()
+    private void Stop()
     {
-        if (_capture is not { } capture) return;
-        _capture = null;
-        try { await capture.StopRecordAsync(); }
-        catch (Exception) { /* already stopped */ }
-        capture.Dispose();
+        if (_graph is not { } graph) return;
+        _graph = null;
+        try { graph.Stop(); }
+        catch (Exception) { }
+        graph.Dispose();
+        _output = null;
     }
 
     /// <summary>Encodes a 48 kHz mono 16-bit WAV (the self-test uses this without a microphone).</summary>
-    internal static (string Path, int Seconds, byte[] Waveform)? EncodeWav(string wav) => Encode(wav);
+    internal static (string Path, int Seconds, byte[] Waveform)? EncodeWav(string wav) => Encode(ReadPcm(wav));
 
-    private static (string Path, int Seconds, byte[] Waveform)? Encode(string wav)
+    private static (string Path, int Seconds, byte[] Waveform)? Encode(short[] samples)
     {
-        var samples = ReadPcm(wav);
         if (samples.Length < Rate / 2) return null;   // under half a second: nothing to send
 
         var output = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -136,12 +208,6 @@ public sealed class VoiceRecorder : IAsyncDisposable
         }
         var peak = Math.Max(1, levels.Max());
         return levels.Select(l => (byte)Math.Clamp(Math.Round(100 * Math.Pow(l / peak, 0.7)), 0, 100)).ToArray();
-    }
-
-    private static void TryDelete(string? path)
-    {
-        try { if (path is not null) File.Delete(path); }
-        catch (Exception) { }
     }
 
     public async ValueTask DisposeAsync() => await CancelAsync();

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using WhatsAppNative.Services;
@@ -41,6 +42,8 @@ public sealed partial class MainWindow
         _recorder = recorder;
         AudioPlayback.Stop();   // don't record a playing voice note
         RecordingTime.Text = "0:00";
+        RecordingWave.Clear();
+        RecordingPauseIcon.Glyph = "\uE769";
         RecordingBar.Visibility = Visibility.Visible;
         _recordingTimer!.Start();
         RecordingSend.Focus(FocusState.Programmatic);
@@ -50,13 +53,14 @@ public sealed partial class MainWindow
     {
         if (_recordingWired) return;
         _recordingWired = true;
-        _recordingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _recordingTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
         _recordingTimer.Tick += (_, _) =>
         {
             if (_recorder is not { } r) return;
             var t = r.Elapsed;
             RecordingTime.Text = $"{(int)t.TotalMinutes}:{t.Seconds:00}";
-            RecordingDot.Opacity = t.Milliseconds < 500 ? 1 : 0.35;   // blinks, like WhatsApp's
+            RecordingDot.Opacity = r.IsPaused || DateTime.Now.Millisecond < 500 ? 1 : 0.35;   // blinks while recording
+            if (!r.IsPaused) RecordingWave.Push(r.Level);
             if (t >= MaxRecording) _ = FinishRecordingAsync(send: true);
         };
         RecordingBar.KeyDown += (_, e) =>
@@ -68,6 +72,14 @@ public sealed partial class MainWindow
         {
             if (e.PropertyName == nameof(ViewModel.SelectedChat) && _recorder is not null) _ = FinishRecordingAsync(send: false);
         };
+    }
+
+    private void RecordingPause_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recorder is not { } r) return;
+        r.TogglePause();
+        RecordingPauseIcon.Glyph = r.IsPaused ? "\uE720" : "\uE769";   // mic to carry on, pause to stop for a moment
+        ToolTipService.SetToolTip(RecordingPause, r.IsPaused ? "Resume" : "Pause");
     }
 
     private void RecordingSend_Click(object sender, RoutedEventArgs e) => _ = FinishRecordingAsync(send: true);

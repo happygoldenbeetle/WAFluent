@@ -1012,9 +1012,14 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let (changed, chat) = {
                 let db = ctx.db();
                 // Per person, for Message info (in 1:1 chats the sender is the chat).
-                let who = if receipt.source.is_group { receipt.source.sender.to_non_ad_string() } else { chat_id.clone() };
+                // Groups: the person who read it (the receipt's participant); 1:1: the chat.
+                let who = if chat_id.ends_with("@g.us") { db.canonical(&receipt.source.sender.to_non_ad_string()) } else { chat_id.clone() };
+                if who == chat_id && chat_id.ends_with("@g.us") {
+                    // No participant: nothing to say who.
+                } else {
                 for id in &receipt.message_ids {
                     db.set_receipt(&chat_id, id, &who, status, receipt.timestamp.timestamp());
+                }
                 }
                 let changed = db.upgrade_status(&chat_id, &receipt.message_ids, status);
                 let chat = if changed.is_empty() { None } else { db.chat(&chat_id) };
@@ -1290,6 +1295,18 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
         }
         let msg = wmi.message.as_option();
         let from_me = key.from_me.unwrap_or(false);
+        // Who got and read your older messages, and when (Message info).
+        if from_me && let Some(id) = key.id.as_deref() {
+            for r in &wmi.user_receipt {
+                let who = if is_group { s.canonical(&r.user_jid) } else { chat_id.clone() };
+                if let Some(ts) = r.receipt_timestamp.filter(|t| *t > 0) {
+                    s.set_receipt(&chat_id, id, &who, 2, ts);
+                }
+                if let Some(ts) = r.read_timestamp.or(r.played_timestamp).filter(|t| *t > 0) {
+                    s.set_receipt(&chat_id, id, &who, 3, ts);
+                }
+            }
+        }
         let sender = match (from_me, is_group) {
             (true, _) => String::new(),
             (false, true) => key.participant.clone().or_else(|| wmi.participant.clone()).unwrap_or_default(),

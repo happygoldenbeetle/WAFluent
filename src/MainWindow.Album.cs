@@ -25,7 +25,7 @@ public sealed partial class MainWindow
         {
             photos > 0 ? $"{photos} photo{(photos == 1 ? "" : "s")}" : null,
             videos > 0 ? $"{videos} video{(videos == 1 ? "" : "s")}" : null,
-        }.Where(s => s is not null)) + (album.Timestamp == default ? "" : " · " + album.Timestamp.ToString("d MMM yyyy, H:mm"));
+        }.Where(s => s is not null)) + (album.Timestamp == default ? "" : " · " + album.Timestamp.ToString("d MMM yyyy") + ", " + Format.Clock(album.Timestamp));
 
         AlbumViewGrid.Children.Clear();
         foreach (var item in items)

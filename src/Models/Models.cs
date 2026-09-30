@@ -55,7 +55,9 @@ public sealed class Message : Observable
     public MessageKind Kind { get; init; }
     public bool IsOutgoing { get; init; }
     public string Text { get; init; } = "";
-    public string Time { get; init; } = "";
+    private string _time = "";
+    /// <summary>"18:27" (or "6:27 pm"): changes with Settings › Use 24-hour time.</summary>
+    public string Time { get => _time; set { if (Set(ref _time, value)) Raise(nameof(TimeSpacer)); } }
     public DateTime Timestamp { get; init; }
     public long UnixTs { get; set; }
     public Delivery Delivery { get => _delivery; set => Set(ref _delivery, value); }

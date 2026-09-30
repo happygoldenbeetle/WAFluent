@@ -378,6 +378,8 @@ pub struct ReceiptDto {
     pub name: String,
     pub status: u8,
     pub ts: i64,
+    /// When it was delivered (0: not known), kept apart from when it was read.
+    pub delivered_ts: i64,
 }
 
 /// A group member: the JID to mention, their name, their 1:1 chat (for the picture), number.

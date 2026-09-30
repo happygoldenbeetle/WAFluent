@@ -106,7 +106,7 @@ public sealed partial class MainViewModel
         _typingVersion[chat] = _typingVersion.GetValueOrDefault(chat) + 1;
         chat.TypingText = "";
         var now = DateTime.Now;
-        var message = new Message { Id = Guid.NewGuid().ToString("N"), Text = text, Time = now.ToString("H:mm"), Timestamp = now, AnimateIn = true };
+        var message = new Message { Id = Guid.NewGuid().ToString("N"), Text = text, Time = Format.Clock(now), Timestamp = now, AnimateIn = true };
         Append(chat, message);
         if (chat == _selectedChat) MessageArrived?.Invoke(message);
     }
@@ -393,7 +393,7 @@ public sealed partial class MainViewModel
             Kind = isDeleted ? MessageKind.Text : m.Kind,
             IsOutgoing = isOutgoing,
             Text = isDeleted ? (isOutgoing ? "You deleted this message" : "This message was deleted") : m.Text,
-            Time = outgoing is null ? m.Time : now.ToString("H:mm"),
+            Time = outgoing is null ? m.Time : Format.Clock(now),
             Timestamp = outgoing is null ? m.Timestamp : now,
             UnixTs = m.UnixTs,
             Delivery = isOutgoing ? (outgoing is null ? m.Delivery : Delivery.Sent) : Delivery.None,

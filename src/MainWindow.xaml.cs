@@ -27,7 +27,8 @@ public sealed partial class MainWindow : Window
         var sample = Environment.GetCommandLineArgs().Contains("--sample");
         if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         ViewModel = new MainViewModel(_core);
-        Helpers.Ui.IMessage = !_ui.ClassicBubbles;   // before any bubble is drawn
+        Helpers.Ui.IMessage = true;   // the round bubbles (classic ones were a setting once)
+        Helpers.Format.Use24Hour = _ui.Use24Hour;   // before any bubble is drawn
 #if DEBUG
         // WAFLUENT_BUBBLES=classic|imessage previews a style without changing your settings.
         var style = Environment.GetEnvironmentVariable("WAFLUENT_BUBBLES");
@@ -263,7 +264,9 @@ public sealed partial class MainWindow : Window
                 var result = VoiceRecorder.EncodeWav(Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV")!);
                 File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"),
                     result is var (p, s, w) ? $"{p}\n{s}\n{string.Join(",", w)}" : "none");
-                RecordingTime.Text = "0:07";
+                RecordingTime.Text = "0:04";
+                var rnd = new Random(4);
+                for (var i = 0; i < 48; i++) RecordingWave.Push(i < 14 ? 0.3 + rnd.NextDouble() * 0.6 : rnd.NextDouble() < 0.2 ? 0.1 : 0);
                 RecordingBar.Visibility = Visibility.Visible;
             };
         // WAFLUENT_SELFTEST=notify: notifies for a sample chat, counts WAFluent's notifications, removes them.

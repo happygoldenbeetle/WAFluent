@@ -20,12 +20,19 @@ public static class Format
     public static DateTime FromUnix(long seconds) =>
         seconds <= 0 ? DateTime.MinValue : DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
 
+    /// <summary>Settings › Use 24-hour time: "18:27"; off: "6:27 pm".</summary>
+    public static bool Use24Hour { get; set; } = true;
+
+    /// <summary>A time of day in the chosen clock.</summary>
+    public static string Clock(DateTime local) =>
+        Use24Hour ? local.ToString("H:mm", CultureInfo.InvariantCulture) : local.ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant();
+
     /// <summary>Chat list: "14:05", "Yesterday", "Monday", then a short date.</summary>
     public static string ListTime(DateTime local)
     {
         if (local == DateTime.MinValue) return "";
         var today = DateTime.Today;
-        if (local.Date == today) return local.ToString("H:mm");
+        if (local.Date == today) return Clock(local);
         if (local.Date == today.AddDays(-1)) return "Yesterday";
         if (local.Date > today.AddDays(-7)) return local.ToString("dddd", CultureInfo.CurrentCulture);
         return local.ToString("d", CultureInfo.CurrentCulture);
@@ -38,7 +45,7 @@ public static class Format
         var day = local.Date == DateTime.Today ? "today"
                 : local.Date == DateTime.Today.AddDays(-1) ? "yesterday"
                 : local.ToString("d", CultureInfo.CurrentCulture);
-        return $"last seen {day} at {local:H:mm}";
+        return $"last seen {day} at {Clock(local)}";
     }
 
     /// <summary>Divider between days in a conversation.</summary>
@@ -210,7 +217,7 @@ public static class Format
             IsOutgoing = dto.FromMe,
             Timestamp = when,
             UnixTs = dto.Ts,
-            Time = when.ToString("H:mm"),
+            Time = Clock(when),
             Delivery = dto.FromMe ? ToDelivery(dto.Status) : Delivery.None,
             SenderName = isGroup && !dto.FromMe ? dto.SenderName : "",
             Text = text,

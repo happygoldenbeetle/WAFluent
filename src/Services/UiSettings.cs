@@ -26,8 +26,8 @@ public sealed class UiSettings
     /// <summary>The Windows accent colour instead of WhatsApp green (Helpers/AppColors).</summary>
     public bool UseSystemAccent { get; set; }
 
-    /// <summary>WhatsApp's classic bubbles (off: the rounder iMessage-style ones, in WhatsApp's colours).</summary>
-    public bool ClassicBubbles { get; set; }
+    /// <summary>Times as "18:27" (off: "6:27 pm").</summary>
+    public bool Use24Hour { get; set; } = true;
 
     /// <summary>Photos and videos go in HD by default (when they're bigger than standard).</summary>
     public bool HdMedia { get; set; }

@@ -76,8 +76,10 @@ public sealed partial class MainWindow
         {
             // 1:1: when it was read and when it arrived.
             var person = receipts.FirstOrDefault();
-            AddStatus("Read", Delivery.Read, person is { Status: >= 3 } ? person.Ts : null, m.Delivery == Delivery.Read);
-            AddStatus("Delivered", Delivery.Delivered, person is { Status: 2 } ? person.Ts : null, m.Delivery >= Delivery.Delivered);
+            long? readAt = person is { Status: >= 3 } ? person.Ts : null;
+            long? deliveredAt = person is null ? null : person.DeliveredTs > 0 ? person.DeliveredTs : person.Status == 2 ? person.Ts : null;
+            AddStatus("Read", Delivery.Read, readAt, m.Delivery == Delivery.Read);
+            AddStatus("Delivered", Delivery.Delivered, deliveredAt ?? readAt, m.Delivery >= Delivery.Delivered);
         }
     }
 
@@ -155,7 +157,7 @@ public sealed partial class MainWindow
         MessageInfoRows.Children.Add(SectionHeader(title, ticks));
         MessageInfoRows.Children.Add(new TextBlock
         {
-            Text = ts is { } t ? When(t) : happened ? "Time not known on this PC" : "—",
+            Text = ts is { } t ? When(t) : happened ? "Before WAFluent was linked" : "—",
             Margin = new Thickness(50, 0, 24, 8),
             FontSize = 14,
             Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
@@ -186,7 +188,7 @@ public sealed partial class MainWindow
     private static string When(long unix)
     {
         var at = Format.FromUnix(unix);
-        var time = at.ToString("h:mm tt").ToLowerInvariant();
+        var time = Format.Clock(at);
         if (at.Date == DateTime.Today) return $"Today at {time}";
         if (at.Date == DateTime.Today.AddDays(-1)) return $"Yesterday at {time}";
         return $"{at:d MMMM yyyy} at {time}";
