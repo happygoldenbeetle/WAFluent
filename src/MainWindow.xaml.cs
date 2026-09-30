@@ -233,6 +233,19 @@ public sealed partial class MainWindow : Window
                     SendCurrent();
                 }
             };
+        // WAFLUENT_SELFTEST=link: types WAFLUENT_TEST_TEXT into the composer (the link card should appear).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "link")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                ComposerBox.Text = Environment.GetEnvironmentVariable("WAFLUENT_TEST_TEXT") ?? "";
+                ComposerBox.SelectionStart = ComposerBox.Text.Length;
+                if (Environment.GetEnvironmentVariable("WAFLUENT_TEST_SEND") == "1")
+                {
+                    await Task.Delay(6000);
+                    SendCurrent();
+                }
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")
@@ -453,6 +466,7 @@ public sealed partial class MainWindow : Window
     {
         UpdateShortcodes();
         UpdateMentions();
+        UpdateLinkCard();
         var hasText = ComposerBox.Text.Trim().Length > 0;
         ViewModel.ComposerEdited(hasText);
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
@@ -503,8 +517,9 @@ public sealed partial class MainWindow : Window
             SaveEdit();
             return;
         }
-        if (!ViewModel.Send(ComposerBox.Text, _mentions)) return;
+        if (!ViewModel.Send(ComposerBox.Text, _mentions, ReadyLinkCard())) return;
         _mentions.Clear();
+        ResetLinkCard();
         ViewModel.StopTyping();
         ComposerBox.Text = "";
         ComposerBox.Focus(FocusState.Programmatic);

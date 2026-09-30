@@ -295,6 +295,9 @@ pub enum Command {
         /// People @mentioned (their JIDs; the text holds "@<number>" for each).
         #[serde(default)]
         mentions: Vec<String>,
+        /// The link card the app made for the first link in the text.
+        #[serde(default)]
+        link: Option<LinkPreview>,
     },
     /// A group's members, for @mentions; answered by `groupMembers`.
     GroupMembers { chat_id: String },
@@ -376,4 +379,17 @@ pub struct MemberDto {
     pub name: String,
     pub chat_id: String,
     pub phone: String,
+}
+
+/// A link card to send with a message: the link, the page's title and description, and a
+/// small JPEG of its picture (a file).
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkPreview {
+    pub url: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    pub thumb: Option<String>,
 }

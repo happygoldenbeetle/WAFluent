@@ -721,7 +721,7 @@ public sealed partial class MainViewModel : Observable
     /// Adds the message to the open chat right away (clock icon) and hands it to the core;
     /// <see cref="OnSent"/> swaps in the real id and a tick. Sample mode just shows it as sent.
     /// </summary>
-    public bool Send(string text, IReadOnlyList<(string Name, string Jid)>? mentions = null)
+    public bool Send(string text, IReadOnlyList<(string Name, string Jid)>? mentions = null, LinkPreviews.Card? link = null)
     {
         text = text.Trim();
         if (_selectedChat is not { } chat || text.Length == 0) return false;
@@ -760,7 +760,15 @@ public sealed partial class MainViewModel : Observable
         RemoveUnreadDivider(chat);   // you've read up to here
         Append(chat, message);
         CancelReply();
-        _core?.SendText(chat.Id, wire, message.HasReply ? message.ReplyId : null, message.Id, mentioned);
+        if (link is not null)
+        {
+            // The card shows on your bubble right away.
+            message.LinkUrl = link.Url;
+            message.LinkTitle = link.Title;
+            message.LinkDescription = link.Description;
+            if (link.Thumb is { } t && File.Exists(t)) message.Thumb = Convert.ToBase64String(File.ReadAllBytes(t));
+        }
+        _core?.SendText(chat.Id, wire, message.HasReply ? message.ReplyId : null, message.Id, mentioned, link);
 
         chat.Preview = text;
         chat.PreviewSender = "";

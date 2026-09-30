@@ -394,10 +394,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { group_members(&ctx, &client, chat_id).await });
         }
-        Command::SendText { chat_id, text, reply_to, temp_id, mentions } => {
+        Command::SendText { chat_id, text, reply_to, temp_id, mentions, link } => {
             // Sending waits on the server; keep reading commands meanwhile.
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id, mentions).await });
+            tokio::spawn(async move { send_text(&ctx, &client, chat_id, text, reply_to, temp_id, mentions, link).await });
         }
         Command::ChatAction { chat_id, action, until_ms } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -496,7 +496,17 @@ async fn group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
     ctx.send(Out::GroupMembers { chat_id, members });
 }
 
-async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: String, reply_to: Option<String>, temp_id: String, mentions: Vec<String>) {
+#[allow(clippy::too_many_arguments)]
+async fn send_text(
+    ctx: &Ctx,
+    client: &Arc<Client>,
+    chat_id: String,
+    text: String,
+    reply_to: Option<String>,
+    temp_id: String,
+    mentions: Vec<String>,
+    link: Option<protocol::LinkPreview>,
+) {
     let jid = match chat_id.parse::<Jid>() {
         Ok(jid) => jid,
         Err(e) => {
@@ -533,7 +543,7 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
         None => (wa::Message::text(text.clone()), None),
     };
     // @mentions ride in the context (a plain text message becomes an extended one).
-    let message = if mentions.is_empty() {
+    let message = if mentions.is_empty() && link.is_none() {
         message
     } else {
         let mut message = message;
@@ -541,14 +551,25 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
             text: Some(text.clone()),
             ..Default::default()
         });
-        let mut context = ext.context_info.as_option().cloned().unwrap_or_default();
-        context.mentioned_jid = mentions.clone();
-        ext.context_info = MessageField::some(context);
+        if !mentions.is_empty() {
+            let mut context = ext.context_info.as_option().cloned().unwrap_or_default();
+            context.mentioned_jid = mentions.clone();
+            ext.context_info = MessageField::some(context);
+        }
+        // The link card: WhatsApp shows it from these fields.
+        if let Some(link) = &link {
+            ext.matched_text = Some(link.url.clone());
+            ext.title = (!link.title.is_empty()).then(|| link.title.clone());
+            ext.description = (!link.description.is_empty()).then(|| link.description.clone());
+            ext.jpeg_thumbnail = link.thumb.as_deref().and_then(|p| std::fs::read(p).ok()).filter(|t| !t.is_empty());
+        }
         message.conversation = None;
         message.extended_text_message = MessageField::some(ext);
         message
     };
 
+    // The card is kept like a received one (thumb and link details), so the bubble shows it.
+    let card = link.is_some().then(|| extract::content(&message)).flatten();
     let sent = match client.send_message(jid, message).await {
         Ok(sent) => sent,
         Err(e) => {
@@ -573,6 +594,9 @@ async fn send_text(ctx: &Ctx, client: &Arc<Client>, chat_id: String, text: Strin
         };
         db.ensure_chat(&chat_id, chat_id.ends_with("@g.us"));
         db.insert_message(&chat_id, &stored);
+        if let Some(card) = &card {
+            db.insert_extra(&chat_id, &stored.id, &card.thumb, card.extra.as_ref());
+        }
         if let Some(quote) = &quote {
             db.insert_quote(&chat_id, &stored.id, quote);
         }

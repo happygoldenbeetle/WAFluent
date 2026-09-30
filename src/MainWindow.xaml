@@ -1274,6 +1274,39 @@
                             </Button>
                         </Grid>
                         <!-- Editing one of your messages (MainWindow.Edit.cs): the composer holds its text. -->
+                        <!-- The link card that will go with the message (MainWindow.LinkPreview.cs); ✕ sends it without. -->
+                        <Grid x:Name="LinkCard" Grid.ColumnSpan="4" Margin="4,2,0,6" ColumnSpacing="6" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border CornerRadius="6" Background="{ThemeResource QuoteBrush}" BorderBrush="{ThemeResource ChatAccentBrush}"
+                                    BorderThickness="4,0,0,0" Height="76">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="LinkCardPicture" Width="76" Height="76" CornerRadius="0">
+                                        <Border.Background>
+                                            <ImageBrush x:Name="LinkCardImage" Stretch="UniformToFill" />
+                                        </Border.Background>
+                                    </Border>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1" Padding="0,0,10,0">
+                                        <TextBlock x:Name="LinkCardTitle" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        <TextBlock x:Name="LinkCardDescription" FontSize="12.5" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <TextBlock x:Name="LinkCardSite" FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                                   Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                    </StackPanel>
+                                    <ProgressRing x:Name="LinkCardRing" Grid.ColumnSpan="2" Width="20" Height="20" IsActive="False" />
+                                </Grid>
+                            </Border>
+                            <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Remove the preview" AutomationProperties.Name="Remove link preview" Click="LinkCardClose_Click">
+                                <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            </Button>
+                        </Grid>
                         <Grid x:Name="EditBanner" Grid.ColumnSpan="4" Margin="4,2,0,6" ColumnSpacing="6" Visibility="Collapsed">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />

@@ -186,8 +186,12 @@ public sealed class CoreClient : IDisposable
     public void BackfillMedia(string chatId, string? beforeId) => Send(new { cmd = "backfillMedia", chatId, beforeId });
 
     /// <summary>Sends text, quoting <paramref name="replyTo"/> when set. Answered by Sent / SendFailed with <paramref name="tempId"/>.</summary>
-    public void SendText(string chatId, string text, string? replyTo, string tempId, IReadOnlyList<string>? mentions = null) =>
-        Send(new { cmd = "sendText", chatId, text, replyTo, tempId, mentions = mentions ?? [] });
+    public void SendText(string chatId, string text, string? replyTo, string tempId, IReadOnlyList<string>? mentions = null, LinkPreviews.Card? link = null) =>
+        Send(new
+        {
+            cmd = "sendText", chatId, text, replyTo, tempId, mentions = mentions ?? [],
+            link = link is null ? null : new { url = link.Url, title = link.Title, description = link.Description, thumb = link.Thumb },
+        });
 
     /// <summary>A group's members, for @mentions (answered by GroupMembersReceived).</summary>
     public void GroupMembers(string chatId) => Send(new { cmd = "groupMembers", chatId });
