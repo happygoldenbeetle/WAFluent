@@ -48,7 +48,7 @@ public static partial class LinkText
             block.ActualThemeChanged += (s, _) => Build((TextBlock)s);
         }
 
-        var text = m.Text;
+        var text = m.TextWithoutSpotify;   // a Spotify link shows as the player above, not as text
         var at = 0;
         if (!m.IsDeleted)
         {
