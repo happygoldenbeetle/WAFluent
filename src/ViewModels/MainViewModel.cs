@@ -28,6 +28,9 @@ public sealed partial class MainViewModel : Observable
     /// <summary>A new message landed in the open chat (the window follows it only if you're at the bottom).</summary>
     public event Action<Message>? MessageArrived;
 
+    /// <summary>A message someone sent you arrived (the window decides whether to notify).</summary>
+    public event Action<Chat, Message>? IncomingMessage;
+
     /// <summary>Sample data (no core) when <paramref name="core"/> is null.</summary>
     public MainViewModel(CoreClient? core)
     {
@@ -584,6 +587,10 @@ public sealed partial class MainViewModel : Observable
             _typingVersion[sender] = _typingVersion.GetValueOrDefault(sender) + 1;
             sender.TypingText = "";
         }
+        // Notify even for chats that aren't loaded (the core already stored the message).
+        if (!dto.FromMe && _byId.TryGetValue(chatId, out var incoming) && !Everything(incoming).Any(m => m.Id == dto.Id)
+            && DateTimeOffset.Now.ToUnixTimeSeconds() - dto.Ts < 300)   // not old ones arriving late
+            IncomingMessage?.Invoke(incoming, Format.ToMessage(dto, incoming.IsGroup));
         if (!_byId.TryGetValue(chatId, out var chat) || !chat.MessagesLoaded) return;
         if (chat.Messages.Any(m => m.Id == dto.Id)) return;
         var message = Format.ToMessage(dto, chat.IsGroup);
@@ -787,6 +794,43 @@ public sealed partial class MainViewModel : Observable
     /// standard); then the core uploads it. <see cref="OnSent"/> makes it a normal sent message.
     /// </summary>
     private readonly Dictionary<string, int> _gifSeconds = [];
+
+    /// <summary>A reply typed in a notification: sent to that chat (without opening it), which is then read.</summary>
+    public void QuickReply(string chatId, string text)
+    {
+        if (!_byId.TryGetValue(chatId, out var chat) || text.Trim().Length == 0) return;
+        var now = DateTime.Now;
+        var message = new Message
+        {
+            Id = "pending-" + Guid.NewGuid().ToString("N"),
+            Text = text.Trim(),
+            Time = now.ToString("H:mm"),
+            Timestamp = now,
+            UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds(),
+            IsOutgoing = true,
+            Delivery = _core is null ? Delivery.Sent : Delivery.Pending,
+        };
+        if (chat.MessagesLoaded) Append(chat, message);
+        _core?.SendText(chat.Id, message.Text, null, message.Id);
+        if (chat.Unread > 0) _core?.MarkRead(chat.Id);
+        chat.Unread = 0;
+        chat.Preview = message.Text;
+        chat.PreviewSender = "";
+        chat.PreviewGlyph = "";
+        chat.Time = message.Time;
+        chat.LastActivity = now;
+        chat.LastDelivery = message.Delivery;
+        Reorder();
+        SyncVisible();
+    }
+
+    /// <summary>Opens a chat by id (a notification was clicked).</summary>
+    public void OpenChat(string chatId)
+    {
+        if (!_byId.TryGetValue(chatId, out var chat)) return;
+        SelectedChat = chat;
+        ChatOpened?.Invoke(chat);
+    }
 
     /// <summary>A recorded voice note (OGG Opus): its bubble shows at once, then the core uploads it.</summary>
     public void SendVoice(string path, int seconds, byte[] waveform)

@@ -1025,6 +1025,12 @@
                                            Text="WhatsApp's classic bubble corners, with the tail on the first bubble of a run. Off: rounder bubbles with a curled tail on the last one." />
                             </StackPanel>
                             <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="NotificationsSwitch" Header="Notifications" OffContent="Off" OnContent="On"
+                                              Toggled="Notifications_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="New messages show a Windows notification when WAFluent isn't in front or the chat isn't open, with a box to reply from it. Muted chats stay quiet." />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="HdMediaSwitch" Header="Send photos and videos in HD" OffContent="Off" OnContent="On"
                                               Toggled="HdMedia_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"

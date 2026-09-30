@@ -4,6 +4,8 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using WhatsAppNative.Models;
+using WhatsAppNative.Services;
 
 namespace WhatsAppNative;
 
@@ -190,5 +192,50 @@ public sealed partial class MainWindow
         public event EventHandler? CanExecuteChanged { add { } remove { } }
         public bool CanExecute(object? parameter) => true;
         public void Execute(object? parameter) => run();
+    }
+
+    // ───────────── Notifications (Services/Notifications.cs) ─────────────
+
+    private bool _windowActive = true;
+
+    private void SetupNotifications()
+    {
+        Notifications.Register();
+        Notifications.Opened += chatId => DispatcherQueue.TryEnqueue(() =>
+        {
+            ShowFromTray();
+            ViewModel.OpenChat(chatId);
+        });
+        Notifications.Replied += (chatId, text) => DispatcherQueue.TryEnqueue(() => ViewModel.QuickReply(chatId, text));
+        ViewModel.IncomingMessage += Notify;
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ViewModel.SelectedChat) && ViewModel.SelectedChat is { } chat) Notifications.Clear(chat.Id);
+        };
+        Closed += (_, _) => Notifications.Unregister();
+        DispatcherQueue.TryEnqueue(Notifications.HandleLaunch);
+    }
+
+    /// <summary>
+    /// Like WhatsApp Desktop: a notification unless you're looking at that chat right now, and
+    /// never for muted chats (or with notifications off in Settings).
+    /// </summary>
+    private void Notify(Chat chat, Message m)
+    {
+        if (!_ui.Notifications || chat.IsMuted) return;
+        if (_windowActive && !_hiddenToTray && ViewModel.SelectedChat == chat) return;
+        var body = Helpers.Format.QuotePreview(m);
+        if (chat.IsGroup && m.SenderName.Length > 0) body = $"{m.SenderName}: {body}";
+        // Names and pictures stay hidden in developer mode (screen sharing).
+        var title = Controls.Redact.Enabled ? "New message" : chat.Name;
+        if (Controls.Redact.Enabled) body = "You have a new message";
+        Notifications.Show(chat.Id, m.Id, title, body, Controls.Redact.Enabled ? null : chat.AvatarPath);
+    }
+
+    private void Notifications_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.Notifications == NotificationsSwitch.IsOn) return;
+        _ui.Notifications = NotificationsSwitch.IsOn;
+        _ui.Save();
     }
 }

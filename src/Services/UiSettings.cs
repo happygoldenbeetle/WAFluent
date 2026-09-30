@@ -32,6 +32,9 @@ public sealed class UiSettings
     /// <summary>Photos and videos go in HD by default (when they're bigger than standard).</summary>
     public bool HdMedia { get; set; }
 
+    /// <summary>Windows notifications for new messages (not for muted chats).</summary>
+    public bool Notifications { get; set; } = true;
+
     /// <summary>A GIPHY API key to use instead of the built-in one (no UI; empty: built-in).</summary>
     public string GiphyKey { get; set; } = "";
 

@@ -65,6 +65,7 @@ public sealed partial class MainWindow
     {
         SetupJumpDownMotion();
         ClassicBubblesSwitch.IsOn = _ui.ClassicBubbles;
+        NotificationsSwitch.IsOn = _ui.Notifications;
         HdMediaSwitch.IsOn = _ui.HdMedia;
         Messages.ElementPrepared += Messages_ElementPrepared;
         SetupTypingBubbleMotion();

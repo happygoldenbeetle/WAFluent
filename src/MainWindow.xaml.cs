@@ -89,7 +89,13 @@ public sealed partial class MainWindow : Window
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => ComposerBox.Focus(FocusState.Programmatic));
         };
         // Online while the window is in front, like WhatsApp Desktop.
-        Activated += (_, e) => ViewModel.SetPresence(e.WindowActivationState != WindowActivationState.Deactivated);
+        Activated += (_, e) =>
+        {
+            _windowActive = e.WindowActivationState != WindowActivationState.Deactivated;
+            ViewModel.SetPresence(_windowActive);
+            if (_windowActive && ViewModel.SelectedChat is { } open) Notifications.Clear(open.Id);
+        };
+        SetupNotifications();
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
@@ -257,6 +263,19 @@ public sealed partial class MainWindow : Window
                     result is var (p, s, w) ? $"{p}\n{s}\n{string.Join(",", w)}" : "none");
                 RecordingTime.Text = "0:07";
                 RecordingBar.Visibility = Visibility.Visible;
+            };
+        // WAFLUENT_SELFTEST=notify: notifies for a sample chat, counts WAFluent's notifications, removes them.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "notify")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var chat = ViewModel.Chats.First(c => c.Name == "Maya Kasuma");
+                chat.IsMuted = false;
+                _windowActive = false;
+                Notify(chat, new Message { Id = "selftest-1", Text = "Test notification from WAFluent", Kind = MessageKind.Text });
+                await Task.Delay(1500);
+                File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), $"shown={Notifications.Count()}");
+                Notifications.ClearAll();
             };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
