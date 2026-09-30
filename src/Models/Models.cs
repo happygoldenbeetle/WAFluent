@@ -165,7 +165,8 @@ public sealed class Message : Observable
     /// <summary>Videos: a looping GIF, or a round video message.</summary>
     public bool IsGif { get; set; }
     public bool IsVideoNote { get; set; }
-    public string DurationLabel => Seconds > 0 ? Helpers.Format.Duration(TimeSpan.FromSeconds(Seconds)) : "";
+    /// <summary>Length on the video pill; none for GIFs (they just loop, like WhatsApp).</summary>
+    public string DurationLabel => Seconds > 0 && !IsGif ? Helpers.Format.Duration(TimeSpan.FromSeconds(Seconds)) : "";
 
     /// <summary>Locations (the map snapshot is <see cref="Thumb"/>).</summary>
     public double Latitude { get; set; }
