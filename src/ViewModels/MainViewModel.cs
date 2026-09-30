@@ -350,6 +350,10 @@ public sealed partial class MainViewModel : Observable
 
     private void Open(Chat chat)
     {
+        // Only the open chat has an "unread messages" band.
+        foreach (var other in _allChats.Where(c => c != chat && c.MessagesLoaded)) RemoveUnreadDivider(other);
+        chat.UnreadMark = chat.Unread;
+        if (chat.MessagesLoaded || _core is null) PlaceUnreadDivider(chat);
         if (_core is not null && chat.Id.Length > 0)
         {
             if (!chat.MessagesLoaded) _core.LoadMessages(chat.Id);
@@ -461,6 +465,7 @@ public sealed partial class MainViewModel : Observable
         chat.Messages.Clear();
         foreach (var dto in messages) Append(chat, Format.ToMessage(dto, chat.IsGroup));
         chat.MessagesLoaded = true;
+        if (chat == _selectedChat) PlaceUnreadDivider(chat);
         UpdateRuns(chat);
         if (chat == _selectedChat) ConversationChanged?.Invoke();
         RequestMedia(chat, chat.Messages);
@@ -678,6 +683,7 @@ public sealed partial class MainViewModel : Observable
             ReplyFromMe = quote?.IsOutgoing ?? false,
         };
         message.AnimateIn = true;
+        RemoveUnreadDivider(chat);   // you've read up to here
         Append(chat, message);
         CancelReply();
         _core?.SendText(chat.Id, text, message.HasReply ? message.ReplyId : null, message.Id);
@@ -804,6 +810,46 @@ public sealed partial class MainViewModel : Observable
         if (_selectedChat is not { } chat || text.Trim().Length == 0 || text.Trim() == message.Text) return;
         _core?.EditMessage(chat.Id, message.Id, text.Trim());
     }
+
+    /// <summary>
+    /// "N unread messages" above the first of them (counting back over incoming messages),
+    /// once, when the chat opens with unread messages.
+    /// </summary>
+    private static void PlaceUnreadDivider(Chat chat)
+    {
+        RemoveUnreadDivider(chat);
+        var unread = chat.UnreadMark;
+        chat.UnreadMark = 0;
+        if (unread <= 0) return;
+        var list = chat.Messages;
+        int index = -1, seen = 0;
+        for (var i = list.Count - 1; i >= 0 && seen < unread; i--)
+        {
+            if (list[i].Kind == MessageKind.DateDivider || list[i].IsOutgoing) continue;
+            seen++;
+            index = i;
+        }
+        if (index < 0) return;
+        // Above the day's divider when the first unread message starts a day.
+        if (index > 0 && list[index - 1].Kind == MessageKind.DateDivider) index--;
+        list.Insert(index, new Message
+        {
+            Id = "unread-divider",
+            Kind = MessageKind.DateDivider,
+            IsUnreadDivider = true,
+            Text = unread == 1 ? "1 unread message" : $"{unread} unread messages",
+            Timestamp = list[index].Timestamp,
+            UnixTs = list[index].UnixTs,
+        });
+    }
+
+    private static void RemoveUnreadDivider(Chat chat)
+    {
+        if (chat.Messages.FirstOrDefault(m => m.IsUnreadDivider) is { } band) chat.Messages.Remove(band);
+    }
+
+    /// <summary>Where the open chat's "unread messages" band is (-1: none).</summary>
+    public int UnreadDividerIndex => _selectedChat is null ? -1 : _selectedChat.Messages.ToList().FindIndex(m => m.IsUnreadDivider);
 
     /// <summary>Sends a message that failed again (same pending bubble).</summary>
     public void RetrySend(Message message)

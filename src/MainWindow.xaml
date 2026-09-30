@@ -791,6 +791,16 @@
                         </Border>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.DateDivider>
+                <!-- Opening a chat: a band above the first unread message (the chat opens there). -->
+                <helpers:MessageTemplateSelector.UnreadDivider>
+                    <DataTemplate x:DataType="models:Message">
+                        <Border Margin="-28,12" Padding="0,5" Background="{ThemeResource UnreadBandBrush}">
+                            <Border HorizontalAlignment="Center" Padding="14,4" CornerRadius="12" Background="{ThemeResource DatePillBrush}">
+                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" Foreground="{ThemeResource ChatAccentTextBrush}" FontWeight="SemiBold" />
+                            </Border>
+                        </Border>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.UnreadDivider>
             </helpers:MessageTemplateSelector>
         </Grid.Resources>
 

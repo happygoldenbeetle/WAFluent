@@ -63,8 +63,8 @@ public sealed partial class MainWindow : Window
 
         // x:Bind fills the list on Loading, so the initial selection has to wait until then.
         ChatList.Loaded += (_, _) => ChatList.SelectedItem = ViewModel.SelectedChat;
-        Messages.Loaded += (_, _) => ScrollToBottom();
-        ViewModel.ConversationChanged += ScrollToBottom;
+        Messages.Loaded += (_, _) => ScrollToStart();
+        ViewModel.ConversationChanged += ScrollToStart;
         ViewModel.MessageArrived += m =>
         {
             // Follow new messages only when you're already at the bottom, not while reading older ones.
@@ -197,6 +197,14 @@ public sealed partial class MainWindow : Window
                     mine.UnixTs = DateTimeOffset.Now.ToUnixTimeSeconds();   // sample messages are old
                     BeginEdit(mine);
                 }
+            };
+        // WAFLUENT_SELFTEST=open: opens the chat named WAFLUENT_TEST_CHAT.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "open")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                if (ViewModel.Chats.FirstOrDefault(c => c.Name == Environment.GetEnvironmentVariable("WAFLUENT_TEST_CHAT")) is { } target)
+                    ChatList.SelectedItem = target;
             };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
@@ -365,7 +373,32 @@ public sealed partial class MainWindow : Window
         // Filtering can clear the ListView selection; keep the open conversation in that case.
         if (ChatList.SelectedItem is not Chat chat || chat == ViewModel.SelectedChat) return;
         ViewModel.SelectedChat = chat;
-        ScrollToBottom();
+        ScrollToStart();
+    }
+
+    /// <summary>A chat opens at its "unread messages" band when it has one, else at the bottom.</summary>
+    private void ScrollToStart()
+    {
+        if (ViewModel.UnreadDividerIndex < 0)
+        {
+            ScrollToBottom();
+            return;
+        }
+        _ignoreScrollUntil = DateTime.Now.AddMilliseconds(800);
+        void Jump(int triesLeft)
+        {
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                var index = ViewModel.UnreadDividerIndex;
+                if (index < 0) return;
+                MessagesScroller.UpdateLayout();
+                var band = Messages.GetOrCreateElement(index);
+                band.UpdateLayout();
+                band.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.1, AnimationDesired = false });
+                if (triesLeft > 0) Jump(triesLeft - 1);   // rows measured on the way settle the position
+            });
+        }
+        Jump(2);
     }
 
     // ───────────── Calls ─────────────

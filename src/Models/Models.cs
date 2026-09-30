@@ -245,6 +245,9 @@ public sealed class Message : Observable
 
     /// <summary>Deleted for everyone: shows "This message was deleted" in italics.</summary>
     public bool IsDeleted { get; init; }
+
+    /// <summary>The "N unread messages" band (a DateDivider, so everything that skips dividers skips it).</summary>
+    public bool IsUnreadDivider { get; init; }
     public bool Starred { get; init; }
     public bool Edited { get; init; }
 
@@ -353,6 +356,9 @@ public sealed class Chat : Observable
 
     /// <summary>True once this chat's history has been fetched from the core.</summary>
     public bool MessagesLoaded { get; set; }
+
+    /// <summary>Unread count when the chat was opened: where the "unread messages" band goes.</summary>
+    public int UnreadMark { get; set; }
 
     /// <summary>Nothing older exists on this device or the phone.</summary>
     public bool HistoryComplete { get; set; }
