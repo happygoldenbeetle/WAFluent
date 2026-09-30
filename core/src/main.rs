@@ -267,10 +267,20 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             };
             ctx.send(Out::Stickers { favorites, stickers, gifs });
         }
-        Command::SendMedia { chat_id, path, kind, caption, mime, width, height, seconds, thumb } => {
+        Command::SendMedia { chat_id, path, kind, caption, mime, width, height, seconds, thumb, temp_id } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             let media = actions::Outgoing { path, kind, caption, mime, width, height, seconds, thumb };
-            tokio::spawn(async move { actions::send_media(&ctx, &client, chat_id, media).await });
+            let id = temp_id.clone();
+            let task = tokio::spawn(async move {
+                actions::send_media(&ctx, &client, chat_id, media, temp_id.clone()).await;
+                actions::uploads().remove(&temp_id);
+            });
+            actions::uploads().insert(id, task.abort_handle());
+        }
+        Command::CancelSend { temp_id } => {
+            if let Some(task) = actions::uploads().remove(&temp_id) {
+                task.abort();
+            }
         }
         Command::SendContacts { chat_id, contacts } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));

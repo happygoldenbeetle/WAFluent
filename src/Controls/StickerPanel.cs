@@ -17,6 +17,9 @@ namespace WhatsAppNative.Controls;
 public sealed partial class StickerPanel : Grid
 {
     private const double Cell = 92;
+    private const int Columns = 4;
+    /// <summary>Titles line up with the first tile: the centred grid's gap plus the tile's 3 px margin.</summary>
+    private const double Inset = (420 - Columns * Cell) / 2 + 3;
 
     /// <summary>A sticker or GIF was picked (sent by the window, then the panel closes).</summary>
     public event Action<StickerDto>? Picked;
@@ -202,7 +205,7 @@ public sealed partial class StickerPanel : Grid
     /// <summary>Search results (or trending) with GIPHY's attribution.</summary>
     private void Results(string title)
     {
-        var header = new Grid { Margin = new Thickness(14, 10, 14, 6) };
+        var header = new Grid { Margin = new Thickness(Inset, 10, Inset, 6) };
         header.Children.Add(new TextBlock { Text = title, FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 110, 0) });
         header.Children.Add(new TextBlock
         {
@@ -228,7 +231,7 @@ public sealed partial class StickerPanel : Grid
             Hint("No GIFs found.");
             return;
         }
-        var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = Cell, ItemHeight = Cell, Margin = new Thickness(8, 0, 8, 4) };
+        var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = Cell, ItemHeight = Cell, Width = Columns * Cell, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
         foreach (var gif in _results) grid.Children.Add(ResultButton(gif));
         _sections.Children.Add(grid);
     }
@@ -264,7 +267,7 @@ public sealed partial class StickerPanel : Grid
         TextWrapping = TextWrapping.Wrap,
         FontSize = 13,
         Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
-        Margin = new Thickness(14, 8, 14, 8),
+        Margin = new Thickness(Inset, 8, Inset, 8),
     });
 
     /// <summary>A titled grid; nothing when there are no items.</summary>
@@ -276,14 +279,16 @@ public sealed partial class StickerPanel : Grid
             Text = title,
             FontSize = 13,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Margin = new Thickness(14, 10, 14, 6),
+            Margin = new Thickness(Inset, 10, Inset, 6),
         });
         var grid = new VariableSizedWrapGrid
         {
             Orientation = Orientation.Horizontal,
             ItemWidth = Cell,
             ItemHeight = Cell,
-            Margin = new Thickness(8, 0, 8, 4),
+            Width = Columns * Cell,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 4),
         };
         foreach (var item in items) grid.Children.Add(ItemButton(item, gif));
         _sections.Children.Add(grid);
@@ -298,16 +303,6 @@ public sealed partial class StickerPanel : Grid
                 cell.Children.Add(new Border { CornerRadius = new CornerRadius(8), Background = new ImageBrush { ImageSource = thumb, Stretch = Stretch.UniformToFill } });
             else
                 cell.Children.Add(new Border { CornerRadius = new CornerRadius(8), Background = Themed.Brush("FileCardBrush") });
-            cell.Children.Add(new Border
-            {
-                CornerRadius = new CornerRadius(6),
-                Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0, 0, 0)),
-                Padding = new Thickness(5, 1, 5, 2),
-                Margin = new Thickness(4),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                Child = new TextBlock { Text = "GIF", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) },
-            });
         }
         else if (item.Path is { } path)
         {

@@ -103,6 +103,20 @@ public sealed partial class MainWindow : Window
                         break;
                 }
             };
+        // WAFLUENT_SELFTEST=uploading: "sends" a photo and a document and holds them uploading.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "uploading")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                var files = new List<Windows.Storage.StorageFile>
+                {
+                    await Windows.Storage.StorageFile.GetFileFromPathAsync(Directory.GetFiles(@"C:\Windows\Web\Screen", "*.jpg")[0]),
+                    await Windows.Storage.StorageFile.GetFileFromPathAsync(@"C:\Windows\win.ini"),
+                };
+                await OpenComposerAsync(files, documents: false);
+                SendComposer();
+                foreach (var m in ViewModel.SelectedChat!.Messages.TakeLast(2)) { m.IsUploading = true; m.Delivery = Delivery.Pending; }
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

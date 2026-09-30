@@ -57,7 +57,7 @@ public sealed partial class MainViewModel : Observable
         core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
         core.Sent += OnSent;
-        core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) m.Delivery = Delivery.Failed; };
+        core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) { m.IsUploading = false; m.Delivery = Delivery.Failed; } };
         core.ReceiptReceived += OnReceipt;
         HookActions(core);
         core.ReactionsReceived += (chatId, messageId, all, mine) =>
@@ -659,6 +659,45 @@ public sealed partial class MainViewModel : Observable
         return true;
     }
 
+    /// <summary>
+    /// A file from the send preview: its bubble shows at once, uploading (ring and ✕), from
+    /// the local file; <see cref="OnSent"/> makes it a normal sent message.
+    /// </summary>
+    public void SendFile(OutgoingFile file)
+    {
+        if (_selectedChat is not { } chat) return;
+        var thumb = file.Thumb is { } t && File.Exists(t) ? Convert.ToBase64String(File.ReadAllBytes(t)) : null;
+        var dto = new MessageDto(
+            "pending-" + Guid.NewGuid().ToString("N"), true, "", "", DateTimeOffset.Now.ToUnixTimeSeconds(), file.Kind,
+            file.Caption.Trim(), file.Kind == "document" ? file.FileName : null, 0,
+            new MediaDto(file.Mime, file.Width, file.Height, file.Seconds, null, file.Path),
+            null, null, null, false, false, thumb);
+        var message = Format.ToMessage(dto, chat.IsGroup);
+        message.Delivery = _core is null ? Delivery.Sent : Delivery.Pending;
+        message.IsUploading = _core is not null;
+        message.AnimateIn = true;
+        Append(chat, message);
+        _core?.SendMedia(chat.Id, file.Path, file.Kind, file.Caption.Trim(), file.Mime, file.Width, file.Height, file.Seconds, file.Thumb, message.Id);
+
+        chat.Preview = Format.QuotePreview(message);
+        chat.PreviewSender = "";
+        chat.PreviewGlyph = Format.QuoteGlyph(message);
+        chat.Time = message.Time;
+        chat.LastActivity = DateTime.Now;
+        chat.LastDelivery = message.Delivery;
+        Reorder();
+        SyncVisible();
+    }
+
+    /// <summary>The uploading bubble's ✕: stops the upload and removes the bubble.</summary>
+    public void CancelUpload(Message message)
+    {
+        if (_selectedChat is not { } chat || !message.IsUploading) return;
+        _core?.CancelSend(message.Id);
+        chat.Messages.Remove(message);
+        RefreshRuns();
+    }
+
     /// <summary>Sends a message that failed again (same pending bubble).</summary>
     public void RetrySend(Message message)
     {
@@ -671,6 +710,7 @@ public sealed partial class MainViewModel : Observable
     {
         if (Find(chatId, tempId) is not { } message) return;
         message.Id = dto.Id;
+        message.IsUploading = false;
         if (message.Delivery is Delivery.Pending or Delivery.Failed) message.Delivery = Format.ToDelivery(dto.Status);
     }
 

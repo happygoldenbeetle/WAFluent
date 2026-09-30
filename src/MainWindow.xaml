@@ -213,6 +213,17 @@
                                                 <ImageBrush ImageSource="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="UniformToFill" />
                                             </Border.Background>
                                         </Border>
+                                        <!-- Uploading: a spinning ring around ✕ (cancels), like WhatsApp. -->
+                                        <Grid Width="54" Height="54" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{x:Bind IsUploading, Mode=OneWay}">
+                                            <Ellipse Fill="#99000000" />
+                                            <ProgressRing Width="54" Height="54" Foreground="White" IsActive="{x:Bind IsUploading, Mode=OneWay}" />
+                                            <Button Width="40" Height="40" Padding="0" CornerRadius="20" Background="Transparent" BorderThickness="0"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center" Tag="{x:Bind}" Click="CancelUpload_Click"
+                                                    ToolTipService.ToolTip="Cancel" AutomationProperties.Name="Cancel upload">
+                                                <FontIcon Glyph="&#xE711;" FontSize="16" Foreground="White" />
+                                            </Button>
+                                        </Grid>
                                         <!-- Without a caption the time sits on the picture. -->
                                         <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
                                                 CornerRadius="9" Background="#66000000" Visibility="{x:Bind helpers:Ui.Collapsed(HasText)}">
@@ -302,7 +313,7 @@
                                 <Image Source="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="Uniform" />
                             </Grid>
                             <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
-                                    Background="{ThemeResource IncomingBubbleBrush}">
+                                    Background="{x:Bind helpers:Ui.BubbleBrush(IsOutgoing)}">
                                 <StackPanel Orientation="Horizontal" Spacing="3">
                                     <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -337,7 +348,7 @@
                                        HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" TextWrapping="Wrap" MaxWidth="420"
                                        IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
                             <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
-                                    Background="{ThemeResource IncomingBubbleBrush}">
+                                    Background="{x:Bind helpers:Ui.BubbleBrush(IsOutgoing)}">
                                 <StackPanel Orientation="Horizontal" Spacing="3">
                                     <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" />
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
@@ -380,7 +391,17 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
+                                                <!-- Uploading: a spinning ring around ✕ (cancels), like WhatsApp. -->
+                                                <Grid Grid.Column="2" Width="44" Height="44" VerticalAlignment="Center" Visibility="{x:Bind IsUploading, Mode=OneWay}">
+                                                    <ProgressRing Width="44" Height="44" Foreground="{ThemeResource ChatAccentBrush}" IsActive="{x:Bind IsUploading, Mode=OneWay}" />
+                                                    <Button Width="34" Height="34" Padding="0" CornerRadius="17" Background="Transparent" BorderThickness="0"
+                                                            HorizontalAlignment="Center" VerticalAlignment="Center" Tag="{x:Bind}" Click="CancelUpload_Click"
+                                                            ToolTipService.ToolTip="Cancel" AutomationProperties.Name="Cancel upload">
+                                                        <FontIcon Glyph="&#xE711;" FontSize="14" />
+                                                    </Button>
+                                                </Grid>
                                                 <Grid>
                                                     <!-- The icon Windows shows for this type: its default app's (Helpers/FileIcons.cs). -->
                                                     <Image Source="{x:Bind helpers:FileIcons.For(FileName)}" Width="40" Height="40" VerticalAlignment="Center" />
@@ -393,7 +414,7 @@
                                                 </StackPanel>
                                             </Grid>
                                             <Rectangle Height="1" Margin="-10,0" Fill="{ThemeResource FileCardDividerBrush}" />
-                                            <Grid ColumnSpacing="8">
+                                            <Grid ColumnSpacing="8" Visibility="{x:Bind helpers:Ui.Collapsed(IsUploading), Mode=OneWay}">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="*" />
@@ -401,6 +422,8 @@
                                                 <Button Content="Open" Style="{StaticResource BubbleActionButtonStyle}" Tag="{x:Bind}" Click="FileOpen_Click" />
                                                 <Button Grid.Column="1" Content="Save As…" Style="{StaticResource BubbleActionButtonStyle}" Tag="{x:Bind}" Click="FileSave_Click" />
                                             </Grid>
+                                            <TextBlock Text="Uploading..." HorizontalAlignment="Center" Margin="0,4,0,6" FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource MetaTextBrush}" Visibility="{x:Bind IsUploading, Mode=OneWay}" />
                                         </StackPanel>
                                     </Border>
                                     <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" Spacing="3" Margin="0,0,3,0">
@@ -458,6 +481,17 @@
                                         </Grid>
                                         <!-- GIFs play by themselves while on screen, over the preview and its badge. -->
                                         <controls:GifPlayer Source="{x:Bind MediaPath, Mode=OneWay}" Visibility="{x:Bind IsGif}" />
+                                        <!-- Uploading: a spinning ring around ✕ (cancels), like WhatsApp. -->
+                                        <Grid Width="54" Height="54" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{x:Bind IsUploading, Mode=OneWay}">
+                                            <Ellipse Fill="#99000000" />
+                                            <ProgressRing Width="54" Height="54" Foreground="White" IsActive="{x:Bind IsUploading, Mode=OneWay}" />
+                                            <Button Width="40" Height="40" Padding="0" CornerRadius="20" Background="Transparent" BorderThickness="0"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center" Tag="{x:Bind}" Click="CancelUpload_Click"
+                                                    ToolTipService.ToolTip="Cancel" AutomationProperties.Name="Cancel upload">
+                                                <FontIcon Glyph="&#xE711;" FontSize="16" Foreground="White" />
+                                            </Button>
+                                        </Grid>
                                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
                                                     Visibility="{x:Bind MediaFailed, Mode=OneWay}">
                                             <FontIcon Glyph="&#xE714;" FontSize="28" Foreground="White" Opacity="0.8" />
@@ -1438,14 +1472,11 @@
                                         <ToggleSwitch x:Name="PollEnds" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"
                                                       Toggled="PollEnds_Toggled" />
                                     </Grid>
-                                    <Grid x:Name="PollEndRow" ColumnSpacing="16" Visibility="Collapsed">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    <!-- Date, then time, each full width: side by side the time's AM/PM didn't fit. -->
+                                    <StackPanel x:Name="PollEndRow" Spacing="8" Visibility="Collapsed">
                                         <CalendarDatePicker x:Name="PollEndDate" HorizontalAlignment="Stretch" DateFormat="{}{day.integer} {month.full} {year.full}" />
-                                        <TimePicker x:Name="PollEndTime" Grid.Column="1" MinWidth="0" HorizontalAlignment="Stretch" />
-                                    </Grid>
+                                        <TimePicker x:Name="PollEndTime" HorizontalAlignment="Stretch" MinWidth="0" />
+                                    </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>
                             <Button x:Name="PollSend" Grid.Row="2" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" Margin="0,4,20,20"

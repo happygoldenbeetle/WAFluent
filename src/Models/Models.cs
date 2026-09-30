@@ -146,6 +146,11 @@ public sealed class Message : Observable
         get => _downloadRequested;
         set { if (Set(ref _downloadRequested, value)) Raise(nameof(IsMediaLoading)); }
     }
+    private bool _isUploading;
+
+    /// <summary>Yours, still uploading: a ring with ✕ over it, "Uploading..." under documents.</summary>
+    public bool IsUploading { get => _isUploading; set => Set(ref _isUploading, value); }
+
     public bool AutoDownloads => Kind is MessageKind.Image or MessageKind.Sticker or MessageKind.Voice || IsGif;
 
     // ───── Previews and per-kind details ─────

@@ -457,8 +457,17 @@ pub struct Outgoing {
     pub thumb: Option<String>,
 }
 
-/// Uploads a picture, video or document and sends it; the chat shows it once it's sent.
-pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: Outgoing) {
+/// Uploads in progress, by their bubble's id, so ✕ can stop one.
+pub fn uploads() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, tokio::task::AbortHandle>> {
+    static UPLOADS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, tokio::task::AbortHandle>>> =
+        std::sync::LazyLock::new(Default::default);
+    UPLOADS.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Uploads a picture, video or document and sends it; the uploading bubble (`temp_id`)
+/// becomes the sent message, or shows it failed.
+pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: Outgoing, temp_id: String) {
+    let fail = |reason: String| ctx.send(Out::SendFailed { chat_id: chat_id.clone(), temp_id: temp_id.clone(), reason });
     use whatsapp_rust::download::MediaType;
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
     let what = match file.kind.as_str() {
@@ -471,6 +480,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
         Err(e) => {
             warn!("send {}: {e}", file.path);
             notice(ctx, false, format!("The {what} couldn't be read."));
+            fail(e.to_string());
             return;
         }
     };
@@ -484,6 +494,7 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
         Err(e) => {
             warn!("upload of {} failed: {e}", file.path);
             notice(ctx, false, format!("The {what} couldn't be uploaded."));
+            fail(e.to_string());
             return;
         }
     };
@@ -551,10 +562,11 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
         Err(e) => {
             warn!("send to {chat_id} failed: {e}");
             notice(ctx, false, format!("The {what} couldn't be sent."));
+            fail(e.to_string());
             return;
         }
     };
-    store_sent(ctx, &chat_id, sent.message_id, &message, Some(&file.path), None);
+    store_sent_as(ctx, &chat_id, sent.message_id, &message, Some(&file.path), None, Some(temp_id.clone()));
 }
 
 /// Shares contact cards: one as a contact message, several as one "N contacts" message.
@@ -663,6 +675,11 @@ pub async fn send_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, poll: N
 /// Stores a message you just sent the way received ones are stored, and shows it.
 /// `local`: the file it came from (opens without downloading). `poll`: secret and creator.
 fn store_sent(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, local: Option<&str>, poll: Option<(&[u8], &str)>) {
+    store_sent_as(ctx, chat_id, id, message, local, poll, None);
+}
+
+/// `temp_id`: the uploading bubble this replaces (answered with `sent`, not a new message).
+fn store_sent_as(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, local: Option<&str>, poll: Option<(&[u8], &str)>, temp_id: Option<String>) {
     let Some(content) = extract::content(message) else { return };
     let stored = StoredMessage {
         id,
@@ -691,6 +708,9 @@ fn store_sent(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, local
         }
         db.to_dto(chat_id, stored)
     };
-    ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto });
+    match temp_id {
+        Some(temp_id) => ctx.send(Out::Sent { chat_id: chat_id.to_string(), temp_id, message: dto }),
+        None => ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto }),
+    }
     send_chat(ctx, chat_id);
 }

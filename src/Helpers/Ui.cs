@@ -54,6 +54,9 @@ public static class Ui
     public static Brush SelectionTint(bool selected) =>
         new SolidColorBrush(selected ? Windows.UI.Color.FromArgb(0x33, 0x00, 0xA8, 0x84) : Microsoft.UI.Colors.Transparent);
 
+    /// <summary>The bubble colour: green for yours (time pills under stickers and big emoji match).</summary>
+    public static Brush BubbleBrush(bool isOutgoing) => Themed.Brush(isOutgoing ? "OutgoingBubbleBrush" : "IncomingBubbleBrush");
+
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 

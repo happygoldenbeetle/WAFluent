@@ -69,6 +69,11 @@ public sealed partial class MainWindow
         menu.ShowAt(AttachButton);
     }
 
+    private void CancelUpload_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: Message m }) ViewModel.CancelUpload(m);
+    }
+
     private Chat? SendTarget => ViewModel.SelectedChat is { } chat && ViewModel.CanSend ? chat : null;
 
     // ───────────── Send preview (documents, photos and videos, camera) ─────────────
@@ -312,10 +317,9 @@ public sealed partial class MainWindow
     private void SendComposer()
     {
         if (SendTarget is not { } chat || _outgoing.Count == 0) return;
-        foreach (var item in _outgoing)
-            _core?.SendMedia(chat.Id, item.Path, item.Kind, item.Caption.Trim(), item.Mime, item.Width, item.Height, item.Seconds, item.Thumb);
-        ShowToast(true, _outgoing.Count == 1 ? "Sending…" : $"Sending {_outgoing.Count} files…");
+        foreach (var item in _outgoing) ViewModel.SendFile(item);
         CloseComposer();
+        ScrollToBottom();
     }
 
     private void MediaComposerClose_Click(object sender, RoutedEventArgs e) => _ = DiscardComposerAsync();

@@ -35,6 +35,10 @@ pub(crate) fn dispatch(m: &crate::appstate_sync::Mutation, full_sync: bool) -> b
     if let (Ok(mut kinds), Some(kind)) = (KINDS.lock(), m.index.first()) {
         *kinds.entry(kind.clone()).or_default() += 1;
     }
+    // Live changes from the phone, one line each (diagnoses what a phone action sends).
+    if !full_sync && let Some(kind) = m.index.first() {
+        log::info!(target: "wafluent_core", "app state change from the phone: {kind} ({:?})", m.operation);
+    }
     let action = m.action_value.as_ref().and_then(|v| v.sticker_action.as_option().cloned());
     if m.index.first().map(String::as_str) != Some("favoriteSticker") && action.is_none() {
         return false;

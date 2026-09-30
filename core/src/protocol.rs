@@ -248,7 +248,11 @@ pub enum Command {
         height: u32,
         seconds: u32,
         thumb: Option<String>,
+        /// The uploading bubble's id: answered by `sent` (or `sendFailed`) with it.
+        temp_id: String,
     },
+    /// Stop an upload that hasn't been sent yet.
+    CancelSend { temp_id: String },
     /// Share contact cards (one, or several in one message).
     SendContacts { chat_id: String, contacts: Vec<ContactCard> },
     /// Start a poll. `multiple`: people may pick several options; `hide_voters`: votes are
