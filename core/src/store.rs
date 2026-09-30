@@ -145,6 +145,15 @@ CREATE TABLE IF NOT EXISTS poll_votes(
     PRIMARY KEY(chat_id, message_id, voter)
 );
 
+-- Who got / read your messages (Message info): one row per person, the furthest status.
+CREATE TABLE IF NOT EXISTS receipts(
+    chat_id    TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    user       TEXT NOT NULL,
+    status     INTEGER NOT NULL,
+    ts         INTEGER NOT NULL,
+    PRIMARY KEY(chat_id, message_id, user)
+);
 -- Favourite stickers, synced from the phone. Their files live in media under
 -- chat_id FAVORITES, message_id = key.
 CREATE TABLE IF NOT EXISTS favorite_stickers(
@@ -1324,6 +1333,34 @@ impl Store {
 
     /// Best available name: your address book, then the phone number ("+92 333 1234567"),
     /// then the name they gave themselves (only when WhatsApp hides the number).
+    /// One person's receipt: kept when it moves forward (delivered, then read).
+    pub fn set_receipt(&self, chat_id: &str, message_id: &str, user: &str, status: u8, ts: i64) {
+        let _ = self.db.execute(
+            "INSERT INTO receipts(chat_id, message_id, user, status, ts) VALUES(?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(chat_id, message_id, user) DO UPDATE SET status = excluded.status, ts = excluded.ts
+             WHERE excluded.status > receipts.status",
+            params![chat_id, message_id, user, status, ts],
+        );
+    }
+
+    /// Everyone who got or read a message: (person, name, status, when).
+    pub fn receipts(&self, chat_id: &str, message_id: &str) -> Vec<crate::protocol::ReceiptDto> {
+        let rows: Vec<(String, u8, i64)> = self
+            .db
+            .prepare("SELECT user, status, ts FROM receipts WHERE chat_id = ?1 AND message_id = ?2 ORDER BY ts DESC")
+            .and_then(|mut stmt| stmt.query_map([chat_id, message_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect())
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|(user, status, ts)| crate::protocol::ReceiptDto {
+                name: self.person_name(&user, ""),
+                chat_id: self.canonical(&user),
+                user,
+                status,
+                ts,
+            })
+            .collect()
+    }
+
     pub fn person_name(&self, jid: &str, fallback_push: &str) -> String {
         let found: Option<(String, String)> = self
             .db

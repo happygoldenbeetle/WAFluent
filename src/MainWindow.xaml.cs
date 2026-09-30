@@ -182,6 +182,12 @@ public sealed partial class MainWindow : Window
                 OpenSearch();
                 MessageSearchBox.Text = Environment.GetEnvironmentVariable("WAFLUENT_TEST_QUERY") ?? "the";
             };
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "info")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                if (ViewModel.SelectedChat?.Messages.LastOrDefault(m => m.IsOutgoing && m.Kind == MessageKind.Text) is { } mine) OpenMessageInfo(mine);
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

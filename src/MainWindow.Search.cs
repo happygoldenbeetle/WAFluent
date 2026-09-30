@@ -28,6 +28,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Collapsed;
         SearchView.Visibility = Visibility.Visible;
+        MessageInfoView.Visibility = Visibility.Collapsed;
         InfoTitle.Text = "Search messages";
         MessageSearchBox.Text = "";
         ShowSearchIdle(chat);

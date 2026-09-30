@@ -196,7 +196,7 @@ public sealed partial class MainWindow
         }
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(Item("Select", Glyphs.Select, () => ViewModel.BeginSelect(m)));
-        menu.Items.Add(Item("Message info", Glyphs.Info, () => ShowMessageInfo(m, bubble)));
+        if (m.IsOutgoing) menu.Items.Add(Item("Message info", Glyphs.Info, () => OpenMessageInfo(m)));
         menu.Items.Add(new MenuFlyoutSeparator());
         if (!m.IsOutgoing && !m.IsDeleted)
             menu.Items.Add(Item("Report", Glyphs.Report, () => _ = ConfirmAsync("Report this message?",
@@ -309,56 +309,4 @@ public sealed partial class MainWindow
         return null;
     }
 
-    /// <summary>Who/when/status (and media details) in a small flyout next to the bubble.</summary>
-    private void ShowMessageInfo(Message m, FrameworkElement bubble)
-    {
-        var chat = ViewModel.SelectedChat;
-        var from = m.IsOutgoing ? "You" : m.SenderName.Length > 0 ? m.SenderName : chat?.Name ?? "";
-        var lines = new List<(string Label, string Value)>
-        {
-            (m.IsOutgoing ? "Sent by" : "From", from),
-            (m.IsOutgoing ? "Sent" : "Received", m.Timestamp.ToString("dddd, d MMMM yyyy 'at' H:mm")),
-        };
-        if (m.IsOutgoing)
-            lines.Add(("Status", m.Delivery switch { Delivery.Read => "Read", Delivery.Delivered => "Delivered", _ => "Sent" }));
-        switch (m.Kind)
-        {
-            case MessageKind.Voice:
-                lines.Add(("Voice message", Format.Duration(TimeSpan.FromSeconds(m.Seconds))));
-                break;
-            case MessageKind.Image or MessageKind.Sticker:
-                lines.Add((m.Kind == MessageKind.Image ? "Photo" : "Sticker",
-                           MediaActions.Exists(m) ? "Downloaded" : m.MediaFailed ? "Unavailable" : "Downloading…"));
-                break;
-            case MessageKind.File:
-                lines.Add(("File", m.FileName));
-                break;
-            case MessageKind.Video:
-                lines.Add((m.IsGif ? "GIF" : "Video", MediaActions.Exists(m) ? "Downloaded" : m.MediaFailed ? "Unavailable" : "Not downloaded"));
-                break;
-            case MessageKind.Location:
-                lines.Add(("Location", Coordinates(m)));
-                break;
-        }
-
-        var grid = new Grid { ColumnSpacing = 16, RowSpacing = 6, MaxWidth = 360 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < lines.Count; i++)
-        {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var label = new TextBlock { Text = lines[i].Label, Opacity = 0.7 };
-            var value = new TextBlock { Text = lines[i].Value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-            Grid.SetRow(label, i);
-            Grid.SetRow(value, i);
-            Grid.SetColumn(value, 1);
-            grid.Children.Add(label);
-            grid.Children.Add(value);
-        }
-
-        var panel = new StackPanel { Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = "Message info", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 16 });
-        panel.Children.Add(grid);
-        new Flyout { Content = panel, Placement = FlyoutPlacementMode.Auto }.ShowAt(bubble);
-    }
 }

@@ -260,6 +260,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             };
             ctx.send(Out::OlderMessages { chat_id, messages, complete: false });
         }
+        Command::MessageInfo { chat_id, message_id } => {
+            let receipts = ctx.db().receipts(&chat_id, &message_id);
+            ctx.send(Out::MessageInfo { chat_id, message_id, receipts });
+        }
         Command::SearchMessages { chat_id, query } => {
             let (results, oldest_ts) = {
                 let db = ctx.db();
@@ -923,6 +927,11 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             let chat_id = ctx.db().canonical(&receipt.source.chat.to_non_ad_string());
             let (changed, chat) = {
                 let db = ctx.db();
+                // Per person, for Message info (in 1:1 chats the sender is the chat).
+                let who = if receipt.source.is_group { receipt.source.sender.to_non_ad_string() } else { chat_id.clone() };
+                for id in &receipt.message_ids {
+                    db.set_receipt(&chat_id, id, &who, status, receipt.timestamp.timestamp());
+                }
                 let changed = db.upgrade_status(&chat_id, &receipt.message_ids, status);
                 let chat = if changed.is_empty() { None } else { db.chat(&chat_id) };
                 (changed, chat)

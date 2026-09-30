@@ -43,6 +43,8 @@ pub enum Event {
     /// Search results; `oldest_ts`: the oldest message this PC has for the chat (older ones
     /// are only on the phone).
     SearchResults { chat_id: String, query: String, results: Vec<MessageDto>, oldest_ts: Option<i64> },
+    /// Receipts for one of your messages (Message info).
+    MessageInfo { chat_id: String, message_id: String, receipts: Vec<ReceiptDto> },
     /// The message a date points at (none: nothing on or after it).
     FoundMessage { chat_id: String, message_id: Option<String>, ts: i64 },
     /// A profile picture was downloaded, changed or removed (`path` = None).
@@ -220,6 +222,8 @@ pub enum Command {
     /// Everything older than (before_ts, before_id) back to `until_ts`, plus a little before
     /// it: to show a search result or a date that isn't loaded yet. Answered by `olderMessages`.
     LoadOlderUntil { chat_id: String, before_ts: i64, before_id: String, until_ts: i64 },
+    /// Who got and read one of your messages; answered by `messageInfo`.
+    MessageInfo { chat_id: String, message_id: String },
     /// Messages in a chat containing `query` (text, captions, file names), newest first.
     SearchMessages { chat_id: String, query: String },
     /// The first message on or after `ts` (the search calendar); answered by `foundMessage`.
@@ -336,4 +340,16 @@ pub struct StickerDto {
 pub struct ContactCard {
     pub name: String,
     pub phone: String,
+}
+
+/// One person's receipt for a message: delivered (2) or read/played (3), and when.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReceiptDto {
+    pub user: String,
+    /// Their 1:1 chat, when there is one (for the picture).
+    pub chat_id: String,
+    pub name: String,
+    pub status: u8,
+    pub ts: i64,
 }

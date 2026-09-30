@@ -24,6 +24,9 @@ public sealed record MessageDto(
 /// <summary>A sticker or GIF for the sticker panel: the message it came in.</summary>
 public sealed record StickerDto(string ChatId, string MessageId, int Width, int Height, string? Path, string? Thumb);
 
+/// <summary>One person's receipt for your message: delivered (2) or read (3), when (Unix seconds).</summary>
+public sealed record ReceiptDto(string User, string ChatId, string Name, int Status, long Ts);
+
 /// <summary>The message a reply quotes.</summary>
 public sealed record ReplyDto(string Id, bool FromMe, string SenderName, string Kind, string Preview);
 
@@ -53,7 +56,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, MessageDto>? MessageReceived;
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
     public event Action<string, string, IReadOnlyList<MessageDto>, long?>? SearchResults;  // chat, query, results, oldest time
-    public event Action<string, string?, long>? FoundMessage;                // chat, message (none: nothing there), its time
+    public event Action<string, string?, long>? FoundMessage;
+    public event Action<string, string, IReadOnlyList<ReceiptDto>>? MessageInfoReceived;   // chat, message, receipts                // chat, message (none: nothing there), its time
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
     public event Action<string, string, string>? MediaReceived;      // chat, message, file path
     public event Action<string, string, string>? MediaFailed;        // chat, message, reason
@@ -209,6 +213,9 @@ public sealed class CoreClient : IDisposable
 
     public void Report(string chatId, string messageId) => Send(new { cmd = "report", chatId, messageId });
 
+    /// <summary>Who got and read one of your messages (answered by MessageInfoReceived).</summary>
+    public void MessageInfo(string chatId, string messageId) => Send(new { cmd = "messageInfo", chatId, messageId });
+
     public void LoadStarred() => Send(new { cmd = "loadStarred" });
 
     public void Logout() => Send(new { cmd = "logout" });
@@ -220,6 +227,7 @@ public sealed class CoreClient : IDisposable
         {
             try { _stdin?.WriteLine(line); }
             catch (IOException) { /* core exited; StatusChanged already reported it */ }
+            catch (ObjectDisposedException) { /* shutting down */ }
         }
     }
 
@@ -269,6 +277,12 @@ public sealed class CoreClient : IDisposable
                 var hits = root.GetProperty("results").Deserialize<List<MessageDto>>(Json) ?? [];
                 long? oldestTs = root.TryGetProperty("oldestTs", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt64() : null;
                 Post(() => SearchResults?.Invoke(searchChat, searchQuery, hits, oldestTs));
+                break;
+            case "messageInfo":
+                var infoChat = root.GetProperty("chatId").GetString() ?? "";
+                var infoId = root.GetProperty("messageId").GetString() ?? "";
+                var receipts = root.GetProperty("receipts").Deserialize<List<ReceiptDto>>(Json) ?? [];
+                Post(() => MessageInfoReceived?.Invoke(infoChat, infoId, receipts));
                 break;
             case "foundMessage":
                 var foundChat = root.GetProperty("chatId").GetString() ?? "";

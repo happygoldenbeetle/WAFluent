@@ -1539,6 +1539,11 @@
                         </StackPanel>
                     </ScrollViewer>
 
+                    <!-- Message info (MainWindow.MessageInfo.cs) -->
+                    <ScrollViewer x:Name="MessageInfoView" Grid.Row="1" Visibility="Collapsed">
+                        <StackPanel x:Name="MessageInfoRows" Padding="0,0,0,16" />
+                    </ScrollViewer>
+
                     <!-- Search messages (MainWindow.Search.cs) -->
                     <Grid x:Name="SearchView" Grid.Row="1" Visibility="Collapsed">
                         <Grid.RowDefinitions>

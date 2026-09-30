@@ -32,6 +32,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Visible;
         NewContactView.Visibility = Visibility.Collapsed;
         SearchView.Visibility = Visibility.Collapsed;
+        MessageInfoView.Visibility = Visibility.Collapsed;
         InfoTitle.Text = chat.IsGroup ? "Group info" : "Contact info";
         RebuildInfo();
         InfoPanel.Visibility = Visibility.Visible;
@@ -278,6 +279,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Visible;
         SearchView.Visibility = Visibility.Collapsed;
+        MessageInfoView.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Visible;
         PlaceInfoPanel();
         FirstNameBox.Focus(FocusState.Programmatic);
