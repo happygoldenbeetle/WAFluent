@@ -41,7 +41,7 @@ public sealed partial class MainWindow
     {
         // Photos: every downloaded photo in this chat, in order, so ←/→ can walk through them.
         // A sticker opens on its own (no arrows); stickers never show up while stepping photos.
-        _viewerItems = message.Kind == MessageKind.Sticker ? [message] : ViewModel.SelectedChat?.Messages
+        _viewerItems = message.Kind == MessageKind.Sticker ? [message] : (ViewModel.SelectedChat is { } open ? ViewModels.MainViewModel.Everything(open) : [])
             .Where(m => m.Kind == MessageKind.Image && m.MediaPath is { } p && File.Exists(p))
             .ToList() ?? [];
         if (!_viewerItems.Contains(message)) _viewerItems = [message];

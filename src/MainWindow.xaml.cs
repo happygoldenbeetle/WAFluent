@@ -72,6 +72,14 @@ public sealed partial class MainWindow : Window
             else if (!m.IsOutgoing) { _missedWhileUp++; UpdateJumpDown(); }   // count it on the jump button
         };
         Controls.VoicePlayer.PictureFor = ViewModel.VoicePicture;
+        // Album tiles open their item like a single photo or video, and have its menu.
+        Controls.AlbumGrid.Open = (item, tile) =>
+        {
+            if (ViewModel.IsSelecting) return;
+            if (item.Kind == MessageKind.Video) WhenDownloaded(item, _ => OpenVideo(item, tile));
+            else if (item.MediaPath is { } path && File.Exists(path)) OpenViewer(item, tile);
+        };
+        Controls.AlbumGrid.Menu = (item, tile, e) => Message_ContextRequested(tile, e);
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
         // Open a chat and start typing: the composer takes focus (after the chat has drawn).
         ViewModel.PropertyChanged += (_, e) =>

@@ -32,6 +32,12 @@ public static class SampleData
         return poll;
     }
 
+    private static Message AlbumPhoto(string path) => new()
+    {
+        Id = NewId(), Kind = MessageKind.Image, Time = "11:22", IsOutgoing = true, Delivery = Delivery.Read,
+        HasMedia = true, MediaPath = LocalImage(path), MediaWidth = 300, MediaHeight = 200,
+    };
+
     private static Message Day(string label) => new() { Kind = MessageKind.DateDivider, Text = label };
 
     private static Chat With(this Chat chat, params Message[] messages)
@@ -99,7 +105,11 @@ public static class SampleData
             .With(Day("Today"), Out("Sorry, can't make it tonight 😞", "13:50"), In("Aww", "13:55"), In("Aww no problem.", "13:56")),
 
         new Chat { Name = "Family Foodies", IsGroup = true, Status = "Mom, Dad, Sam, You", Preview = "Dinner last night", PreviewGlyph = Glyphs.Photo, Time = "11:21", LastDelivery = Delivery.Read }
-            .With(Day("Today"), In("Who made the lasagna??", "11:02"), Out("📷 Dinner last night", "11:21")),
+            .With(Day("Today"), In("Who made the lasagna??", "11:02"), Out("📷 Dinner last night", "11:21"),
+                  // Photos sent together: one album bubble (2×2 with "+1").
+                  AlbumPhoto(@"C:\Windows\Web\Screen\img100.jpg"), AlbumPhoto(@"C:\Windows\Web\Screen\img101.jpg"),
+                  AlbumPhoto(@"C:\Windows\Web\Screen\img102.jpg"), AlbumPhoto(@"C:\Windows\Web\Screen\img103.jpg"),
+                  AlbumPhoto(@"C:\Windows\Web\Screen\img104.jpg")),
 
         new Chat { Name = "Mark Rogers", Status = "typing…", IsTyping = true, Preview = "typing…", Time = "10:56" }
             .With(Day("Today"), In("Are we still on for Friday?", "10:50"), Out("Yep!", "10:55")),

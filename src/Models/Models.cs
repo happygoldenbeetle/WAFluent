@@ -7,7 +7,7 @@ namespace WhatsAppNative.Models;
 /// <summary>Sent → Delivered → Read in that order; Pending/Failed are local states before "Sent".</summary>
 public enum Delivery { None, Sent, Delivered, Read, Pending, Failed }
 
-public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System }
+public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System, Album }
 
 /// <summary>One poll option: who picked it, and whether you did.</summary>
 public sealed class PollOption
@@ -245,6 +245,11 @@ public sealed class Message : Observable
 
     /// <summary>Deleted for everyone: shows "This message was deleted" in italics.</summary>
     public bool IsDeleted { get; init; }
+
+    private IReadOnlyList<Message>? _albumItems;
+
+    /// <summary>An album (photos and videos sent together): its items, oldest first. Null otherwise.</summary>
+    public IReadOnlyList<Message>? AlbumItems { get => _albumItems; set => Set(ref _albumItems, value); }
 
     /// <summary>The "N unread messages" band (a DateDivider, so everything that skips dividers skips it).</summary>
     public bool IsUnreadDivider { get; init; }

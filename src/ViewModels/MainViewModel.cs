@@ -71,7 +71,11 @@ public sealed partial class MainViewModel : Observable
     // ───────────── Attachments ─────────────
 
     private Message? Find(string chatId, string messageId) =>
-        _byId.TryGetValue(chatId, out var chat) ? chat.Messages.FirstOrDefault(m => m.Id == messageId) : null;
+        _byId.TryGetValue(chatId, out var chat) ? Everything(chat).FirstOrDefault(m => m.Id == messageId) : null;
+
+    /// <summary>A chat's messages with albums opened up into their items.</summary>
+    public static IEnumerable<Message> Everything(Chat chat) =>
+        chat.Messages.SelectMany(m => m.AlbumItems ?? (IEnumerable<Message>)[m]);
 
     /// <summary>
     /// Auto-downloads pictures, stickers and voice notes for messages now on screen, like
@@ -81,7 +85,7 @@ public sealed partial class MainViewModel : Observable
     private void RequestMedia(Chat chat, IEnumerable<Message> messages)
     {
         if (_core is null) return;
-        foreach (var m in messages)
+        foreach (var m in messages.SelectMany(m => m.AlbumItems ?? (IEnumerable<Message>)[m]))
             if (m.HasMedia && m.MediaPath is null && !m.MediaFailed && m.AutoDownloads)
                 _core.DownloadMedia(chat.Id, m.Id);
     }
@@ -600,11 +604,67 @@ public sealed partial class MainViewModel : Observable
     }
 
     /// <summary>
+    /// Photos and videos sent together (same person, each within 90 seconds of the one before,
+    /// no captions or replies) become one album bubble, like WhatsApp. Runs that grow (a new
+    /// photo arriving) join their album; an album down to one item goes back to a single bubble.
+    /// </summary>
+    private static void Albumize(Chat chat)
+    {
+        var list = chat.Messages;
+        static bool Candidate(Message m) =>
+            m.Kind is MessageKind.Image or MessageKind.Video && !m.IsGif && !m.IsVideoNote && !m.IsDeleted
+            && m.Text.Length == 0 && !m.HasReply && !m.Id.StartsWith("pending-");
+        static IEnumerable<Message> Items(Message m) => m.AlbumItems ?? (IEnumerable<Message>)[m];
+
+        for (var i = 0; i < list.Count; i++)
+        {
+            var first = list[i];
+            if (first.Kind != MessageKind.Album && !Candidate(first)) continue;
+            var end = i;
+            while (end + 1 < list.Count)
+            {
+                var next = list[end + 1];
+                if (next.Kind != MessageKind.Album && !Candidate(next)) break;
+                var last = Items(list[end]).Last();
+                var head = Items(next).First();
+                if (head.IsOutgoing != last.IsOutgoing || head.SenderName != last.SenderName
+                    || Math.Abs(head.UnixTs - last.UnixTs) > 90) break;
+                end++;
+            }
+            var items = list.Skip(i).Take(end - i + 1).SelectMany(Items).ToList();
+            if (items.Count < 2)
+            {
+                if (first.Kind == MessageKind.Album) list[i] = items[0];   // down to one: a normal bubble
+                continue;
+            }
+            if (end == i && first.Kind == MessageKind.Album && first.AlbumItems!.SequenceEqual(items)) continue;
+
+            // A fresh album each time it changes, so its bubble is drawn again with the new items and time.
+            var lastItem = items[^1];
+            var album = new Message
+            {
+                Id = "album-" + items[0].Id,
+                Kind = MessageKind.Album,
+                IsOutgoing = lastItem.IsOutgoing,
+                SenderName = items[0].SenderName,
+                Time = lastItem.Time,
+                Timestamp = lastItem.Timestamp,
+                UnixTs = lastItem.UnixTs,
+                Delivery = lastItem.Delivery,
+                AlbumItems = items,
+            };
+            for (var k = end; k > i; k--) list.RemoveAt(k);
+            list[i] = album;
+        }
+    }
+
+    /// <summary>
     /// Runs of bubbles from the same person (broken by someone else, a notice or a new day).
     /// Classic: the first bubble of a run gets the tail; round style: the last one.
     /// </summary>
     public static void UpdateRuns(Chat chat)
     {
+        Albumize(chat);
         var list = chat.Messages;
         static bool SameRun(Message a, Message b) =>
             a.Kind is not (MessageKind.DateDivider or MessageKind.System) && b.Kind is not (MessageKind.DateDivider or MessageKind.System)
@@ -646,6 +706,7 @@ public sealed partial class MainViewModel : Observable
 
     public void BeginReply(Message message)
     {
+        if (message.AlbumItems is { Count: > 0 } album) message = album[^1];   // an album: its last item
         if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
         ReplyingTo = message;
     }
@@ -886,6 +947,7 @@ public sealed partial class MainViewModel : Observable
     /// </summary>
     public bool React(Message message, string emoji)
     {
+        if (message.AlbumItems is { Count: > 0 } album) message = album[^1];
         if (_selectedChat is not { } chat || message.Kind == MessageKind.DateDivider) return false;
         var remove = message.MyReaction == emoji;
         var others = message.Reactions.ToList();
@@ -903,5 +965,8 @@ public sealed partial class MainViewModel : Observable
         foreach (var id in ids)
             if (Find(chatId, id) is { Delivery: Delivery.Sent or Delivery.Delivered } m && delivery > m.Delivery)
                 m.Delivery = delivery;
+        if (_byId.TryGetValue(chatId, out var chat))
+            foreach (var album in chat.Messages.Where(m => m.AlbumItems is { Count: > 0 }))
+                album.Delivery = album.AlbumItems![^1].Delivery;
     }
 }

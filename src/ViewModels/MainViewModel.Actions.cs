@@ -122,7 +122,20 @@ public sealed partial class MainViewModel
     private void ApplyUpdate(Chat chat, MessageDto dto)
     {
         var i = IndexOf(chat, dto.Id);
-        if (i < 0) return;
+        if (i < 0)
+        {
+            // Inside an album: the item is replaced there.
+            if (chat.Messages.FirstOrDefault(m => m.AlbumItems?.Any(x => x.Id == dto.Id) == true) is not { AlbumItems: { } items } album) return;
+            var before = items.First(x => x.Id == dto.Id);
+            var updated = Format.ToMessage(dto, chat.IsGroup);
+            updated.MediaPath ??= before.MediaPath;
+            var at = chat.Messages.IndexOf(album);
+            chat.Messages[at] = new Message { Id = album.Id, Kind = MessageKind.Album, IsOutgoing = album.IsOutgoing, SenderName = album.SenderName,
+                Time = album.Time, Timestamp = album.Timestamp, UnixTs = album.UnixTs, Delivery = album.Delivery,
+                AlbumItems = items.Select(x => x == before ? updated : x).ToList() };
+            UpdateRuns(chat);
+            return;
+        }
         var old = chat.Messages[i];
         var fresh = Format.ToMessage(dto, chat.IsGroup);
         fresh.MediaPath ??= old.MediaPath;
@@ -143,9 +156,18 @@ public sealed partial class MainViewModel
         };
         core.MessageRemoved += (chatId, messageId) =>
         {
-            if (_byId.TryGetValue(chatId, out var chat) && IndexOf(chat, messageId) is var i and >= 0)
+            if (!_byId.TryGetValue(chatId, out var chat)) return;
+            if (IndexOf(chat, messageId) is var i and >= 0)
             {
                 chat.Messages.RemoveAt(i);
+                UpdateRuns(chat);
+            }
+            else if (chat.Messages.FirstOrDefault(m => m.AlbumItems?.Any(x => x.Id == messageId) == true) is { AlbumItems: { } items } album)
+            {
+                // Put the rest back as single bubbles; UpdateRuns makes an album again if two or more remain.
+                var at = chat.Messages.IndexOf(album);
+                chat.Messages.RemoveAt(at);
+                foreach (var rest in items.Where(x => x.Id != messageId).Reverse()) chat.Messages.Insert(at, rest);
                 UpdateRuns(chat);
             }
         };

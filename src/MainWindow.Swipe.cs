@@ -257,7 +257,7 @@ public sealed partial class MainWindow
     private void ScrollToMessage(string messageId)
     {
         if (ViewModel.SelectedChat is not { } chat) return;
-        var index = chat.Messages.ToList().FindIndex(m => m.Id == messageId);
+        var index = chat.Messages.ToList().FindIndex(m => m.Id == messageId || m.AlbumItems?.Any(x => x.Id == messageId) == true);
         if (index < 0) return;
 
         var target = Messages.GetOrCreateElement(index);

@@ -791,6 +791,33 @@
                         </Border>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.DateDivider>
+                <!-- Photos and videos sent together (Controls/AlbumGrid.cs). -->
+                <helpers:MessageTemplateSelector.Album>
+                    <DataTemplate x:DataType="models:Message">
+                        <Grid Tag="{x:Bind}" Margin="-28,0,-28,0" Padding="28,1,28,1">
+                            <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                                <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="3">
+                                    <StackPanel>
+                                        <controls:Redact HorizontalAlignment="Left" Margin="7,3,6,5" Visibility="{x:Bind ShowSender}">
+                                            <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                                       Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
+                                        </controls:Redact>
+                                        <Grid>
+                                            <controls:AlbumGrid Album="{x:Bind}" />
+                                            <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
+                                                    CornerRadius="9" Background="#66000000" IsHitTestVisible="False">
+                                                <StackPanel Orientation="Horizontal" Spacing="3">
+                                                    <TextBlock Text="{x:Bind Time}" FontSize="11" Foreground="White" />
+                                                    <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </controls:Bubble>
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Album>
                 <!-- Opening a chat: a band above the first unread message (the chat opens there). -->
                 <helpers:MessageTemplateSelector.UnreadDivider>
                     <DataTemplate x:DataType="models:Message">
