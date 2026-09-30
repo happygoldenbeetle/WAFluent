@@ -30,6 +30,9 @@ public sealed partial class AlbumGrid : Grid
     /// <summary>Opens an item (the window's photo or video viewer), from its tile.</summary>
     public static Action<Message, FrameworkElement>? Open;
 
+    /// <summary>Shows every item of an album in a grid (the "+N" tile, or the expand button).</summary>
+    public static Action<Message>? Expand;
+
     /// <summary>An item's context menu, at its tile.</summary>
     public static Action<Message, FrameworkElement, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs>? Menu;
 
@@ -56,6 +59,12 @@ public sealed partial class AlbumGrid : Grid
         _watched = album;
         album.PropertyChanged += Album_PropertyChanged;
 
+        // Tiles along the bubble's edge follow its curve (its radius minus the 3 px around the
+        // grid); inside corners stay small. A sender's name above means the top isn't the edge.
+        _outer = Math.Max(4, (Ui.IMessage ? Ui.BubbleRadius : 8) - 3);
+        _topIsEdge = !album.ShowSender;
+        _rows = items.Count == 1 ? 1 : 2;
+        _columns = items.Count == 2 ? 1 : 2;
         double half = (Width2 - Gap) / 2;
         var shown = items.Count > 4 ? items.Take(4).ToList() : items.ToList();
         switch (shown.Count)
@@ -86,11 +95,24 @@ public sealed partial class AlbumGrid : Grid
         }
     }
 
+    private double _outer = 9;
+    private bool _topIsEdge = true;
+    private int _rows = 2, _columns = 2;
+
+    private CornerRadius Corners(int row, int column, int columnSpan)
+    {
+        const double inner = 3;
+        bool top = row == 0 && _topIsEdge, bottom = row == _rows - 1;
+        bool left = column == 0, right = column + columnSpan >= _columns;
+        return new CornerRadius(top && left ? _outer : inner, top && right ? _outer : inner,
+                                bottom && right ? _outer : inner, bottom && left ? _outer : inner);
+    }
+
     private void AddRow(double height) => RowDefinitions.Add(new RowDefinition { Height = new GridLength(height) });
 
     private void Place(Message item, int row, int column, int columnSpan = 1, int more = 0)
     {
-        var tile = new Grid { CornerRadius = new CornerRadius(6), Background = Themed.Brush("FileCardBrush"), Tag = item };
+        var tile = new Grid { CornerRadius = Corners(row, column, columnSpan), Background = Themed.Brush("FileCardBrush"), Tag = item };
         SetRow(tile, row);
         SetColumn(tile, column);
         SetColumnSpan(tile, columnSpan);
@@ -98,7 +120,9 @@ public sealed partial class AlbumGrid : Grid
         tile.Tapped += (_, e) =>
         {
             e.Handled = true;
-            Open?.Invoke(item, tile);
+            // The "+N" tile opens the whole album; the others open their photo or video.
+            if (more > 0 && Album is { } album) Expand?.Invoke(album);
+            else Open?.Invoke(item, tile);
         };
         tile.ContextRequested += (_, e) => Menu?.Invoke(item, tile, e);
         item.PropertyChanged += Item_PropertyChanged;

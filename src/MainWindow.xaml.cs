@@ -81,6 +81,7 @@ public sealed partial class MainWindow : Window
             else if (item.MediaPath is { } path && File.Exists(path)) OpenViewer(item, tile);
         };
         Controls.AlbumGrid.Menu = (item, tile, e) => Message_ContextRequested(tile, e);
+        Controls.AlbumGrid.Expand = OpenAlbum;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
         // Open a chat and start typing: the composer takes focus (after the chat has drawn).
         ViewModel.PropertyChanged += (_, e) =>
@@ -284,6 +285,16 @@ public sealed partial class MainWindow : Window
             {
                 await Task.Delay(2500);
                 if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Image) is { } photo) ViewModel.BeginReply(photo);
+            };
+        // WAFLUENT_SELFTEST=album: opens the album in WAFLUENT_TEST_CHAT in the album view.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "album")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                if (ViewModel.Chats.FirstOrDefault(c => c.Name == Environment.GetEnvironmentVariable("WAFLUENT_TEST_CHAT")) is { } target)
+                    ChatList.SelectedItem = target;
+                await Task.Delay(1500);
+                if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Album) is { } album) OpenAlbum(album);
             };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };

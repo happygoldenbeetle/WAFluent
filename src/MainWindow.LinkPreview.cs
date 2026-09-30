@@ -52,12 +52,12 @@ public sealed partial class MainWindow
         LinkCardSite.Text = "";
         LinkCardImage.ImageSource = null;
         LinkCardPicture.Visibility = Visibility.Collapsed;
-        LinkCardRing.IsActive = true;
+        SetLinkCardLoading(true);
         LinkCard.Visibility = Visibility.Visible;
 
         var card = await LinkPreviews.GetAsync(url);
         if (_linkUrl != url) return;   // the link changed meanwhile
-        LinkCardRing.IsActive = false;
+        SetLinkCardLoading(false);
         if (card is null)
         {
             LinkCard.Visibility = Visibility.Collapsed;   // nothing to show: the message goes as plain text
@@ -83,8 +83,14 @@ public sealed partial class MainWindow
     {
         _linkUrl = null;
         _linkReady = null;
-        LinkCardRing.IsActive = false;
+        SetLinkCardLoading(false);
         LinkCard.Visibility = Visibility.Collapsed;
+    }
+
+    private void SetLinkCardLoading(bool loading)
+    {
+        LinkCardSkeleton.Visibility = loading ? Visibility.Visible : Visibility.Collapsed;
+        LinkCardShimmer.IsActive = loading;
     }
 
     private void LinkCardClose_Click(object sender, RoutedEventArgs e)

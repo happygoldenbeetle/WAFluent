@@ -804,6 +804,12 @@
                                         </controls:Redact>
                                         <Grid>
                                             <controls:AlbumGrid Album="{x:Bind}" />
+                                            <!-- See every photo and video of the album in a grid. -->
+                                            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Width="30" Height="30" Padding="0"
+                                                    CornerRadius="15" Background="#88000000" BorderThickness="0" Tag="{x:Bind}" Click="AlbumExpand_Click"
+                                                    ToolTipService.ToolTip="View all" AutomationProperties.Name="View all photos and videos">
+                                                <FontIcon Glyph="&#xE740;" FontSize="12" Foreground="White" />
+                                            </Button>
                                             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
                                                     CornerRadius="9" Background="#66000000" IsHitTestVisible="False">
                                                 <StackPanel Orientation="Horizontal" Spacing="3">
@@ -1306,7 +1312,20 @@
                                         <TextBlock x:Name="LinkCardSite" FontSize="12" TextTrimming="CharacterEllipsis" MaxLines="1"
                                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                                     </StackPanel>
-                                    <ProgressRing x:Name="LinkCardRing" Grid.ColumnSpan="2" Width="20" Height="20" IsActive="False" />
+                                    <!-- Loading: a skeleton of the card with a sweep of light. -->
+                                    <Grid x:Name="LinkCardSkeleton" Grid.ColumnSpan="2" ColumnSpacing="12" Visibility="Collapsed">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="76" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8" Padding="0,0,10,0">
+                                            <Border Height="11" Width="220" HorizontalAlignment="Left" CornerRadius="5" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            <Border Height="9" Width="320" HorizontalAlignment="Left" CornerRadius="4" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            <Border Height="9" Width="90" HorizontalAlignment="Left" CornerRadius="4" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                        </StackPanel>
+                                        <controls:Shimmer x:Name="LinkCardShimmer" Grid.ColumnSpan="2" />
+                                    </Grid>
                                 </Grid>
                             </Border>
                             <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
@@ -1475,6 +1494,32 @@
                                 <FontIcon Glyph="&#xE725;" FontSize="20" />
                             </Button>
                         </Grid>
+                    </Grid>
+
+                    <!-- ───── An album's photos and videos, all of them (MainWindow.Album.cs) ───── -->
+                    <Grid x:Name="AlbumView" Grid.RowSpan="4" Visibility="Collapsed" Background="{ThemeResource ChatPaneBackgroundBrush}"
+                          KeyboardAcceleratorPlacementMode="Hidden">
+                        <Grid.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="Escape" Invoked="AlbumViewEscape_Invoked" />
+                        </Grid.KeyboardAccelerators>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="60" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="12" Padding="12,0,0,0" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconButtonStyle}" Click="AlbumViewClose_Click" ToolTipService.ToolTip="Close (Esc)"
+                                    AutomationProperties.Name="Close">
+                                <FontIcon Glyph="&#xE711;" FontSize="16" />
+                            </Button>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="AlbumViewTitle" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock x:Name="AlbumViewSubtitle" FontSize="12.5" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <ScrollViewer Grid.Row="1" Padding="16,4,16,16">
+                            <VariableSizedWrapGrid x:Name="AlbumViewGrid" Orientation="Horizontal" ItemWidth="190" ItemHeight="190"
+                                                   HorizontalAlignment="Center" />
+                        </ScrollViewer>
                     </Grid>
 
                     <!-- ───── Send contacts and Create poll: cards over a dimmed conversation ───── -->
