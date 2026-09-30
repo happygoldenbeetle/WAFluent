@@ -17,7 +17,7 @@ public sealed partial class MainWindow
 {
     private void Conversation_DragOver(object sender, DragEventArgs e)
     {
-        if (SendTarget is not { } chat || !HasFiles(e.DataView))
+        if (SendTarget is not { } chat || !HasFiles(e.DataView) || e.DataView.Properties.ContainsKey(OwnDrag))
         {
             e.AcceptedOperation = DataPackageOperation.None;
             return;

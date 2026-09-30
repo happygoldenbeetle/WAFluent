@@ -207,7 +207,8 @@
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click opens the picture in the viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind PictureCorners}" Background="{ThemeResource FileCardBrush}"
-                                          Tag="{x:Bind}" Tapped="Media_Tapped">
+                                          Tag="{x:Bind}" Tapped="Media_Tapped"
+                                          CanDrag="True" DragStarting="Media_DragStarting">
                                         <!-- The sender's tiny preview (blurry by nature) until the picture arrives. -->
                                         <Border>
                                             <Border.Background>
@@ -330,7 +331,8 @@
                                 <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                             </StackPanel>
                             <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent"
-                                  Tag="{x:Bind}" Tapped="Media_Tapped">
+                                  Tag="{x:Bind}" Tapped="Media_Tapped"
+                                          CanDrag="True" DragStarting="Media_DragStarting">
                                 <ProgressRing Width="28" Height="28" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
                                 <Image Source="{x:Bind helpers:Ui.Sticker(MediaPath), Mode=OneWay}" Stretch="Uniform" />
                             </Grid>
@@ -411,7 +413,8 @@
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
-                                    <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10">
+                                    <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10"
+                                            Tag="{x:Bind}" CanDrag="True" DragStarting="Media_DragStarting">
                                         <StackPanel Spacing="10">
                                             <!-- First page (PDFs), when the sender's app made a preview. -->
                                             <Border Height="140" Margin="-10,-12,-10,0" CornerRadius="{x:Bind FileThumbCorners}" Visibility="{x:Bind HasThumb}">
@@ -500,7 +503,8 @@
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
                                     <!-- Click: download (first time), then play in the video viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind VideoCorners}"
-                                          Background="#FF202020" Tag="{x:Bind}" Tapped="Video_Tapped">
+                                          Background="#FF202020" Tag="{x:Bind}" Tapped="Video_Tapped"
+                                          CanDrag="True" DragStarting="Media_DragStarting">
                                         <Border>
                                             <Border.Background>
                                                 <ImageBrush ImageSource="{x:Bind helpers:Ui.Thumb(Thumb)}" Stretch="UniformToFill" />
@@ -1335,7 +1339,7 @@
                                 <FontIcon Glyph="&#xE734;" FontSize="16" />
                             </Button>
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Forward" AutomationProperties.Name="Forward selected" Click="SelectForward_Click">
-                                <FontIcon Glyph="&#xE72D;" FontSize="16" />
+                                <FontIcon Glyph="&#xE97A;" FontSize="16" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                             </Button>
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Delete" AutomationProperties.Name="Delete selected" Click="SelectDelete_Click">
                                 <FontIcon Glyph="&#xE74D;" FontSize="16" />

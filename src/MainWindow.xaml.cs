@@ -82,6 +82,7 @@ public sealed partial class MainWindow : Window
             else if (item.MediaPath is { } path && File.Exists(path)) OpenViewer(item, tile);
         };
         Controls.AlbumGrid.Menu = (item, tile, e) => Message_ContextRequested(tile, e);
+        Controls.AlbumGrid.DragOut = Media_DragStarting;
         Controls.AlbumGrid.Expand = OpenAlbum;
         ViewModel.ChatOpened += chat => ChatList.SelectedItem = chat;
         // Open a chat and start typing: the composer takes focus (after the chat has drawn).
@@ -300,6 +301,22 @@ public sealed partial class MainWindow : Window
                 AudioPlayback.Load(note);   // paused: nothing plays
                 AudioPlayback.Seek(note, 0.4);
                 ChatList.SelectedItem = ViewModel.Chats.First(c => c.Name == "Baking Club");
+            };
+        // WAFLUENT_SELFTEST=dragout: the named copies a drag out of the photo and the document would hand to Explorer
+        // (to %TEMP%\wafluent-selftest.txt), then the photo's menu.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "dragout")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var lines = new List<string>();
+                foreach (var m in ViewModel.SelectedChat!.Messages.Where(m => m.Kind is MessageKind.Image or MessageKind.File && m.MediaPath is not null))
+                {
+                    var copy = NamedCopy(m, m.MediaPath!);
+                    lines.Add($"{Path.GetFileName(copy)} | same={File.ReadAllBytes(copy).AsSpan().SequenceEqual(File.ReadAllBytes(m.MediaPath!))}");
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+                if (ViewModel.SelectedChat.Messages.LastOrDefault(m => m.Kind == MessageKind.Image) is { } photo)
+                    BuildMessageMenu(photo, Messages, null).ShowAt(Messages, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions { Position = new Windows.Foundation.Point(600, 300) });
             };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")

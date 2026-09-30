@@ -36,6 +36,9 @@ public sealed partial class AlbumGrid : Grid
     /// <summary>An item's context menu, at its tile.</summary>
     public static Action<Message, FrameworkElement, Microsoft.UI.Xaml.Input.ContextRequestedEventArgs>? Menu;
 
+    /// <summary>A tile dragged out of the window (to a folder): its photo or video goes with it.</summary>
+    public static Windows.Foundation.TypedEventHandler<UIElement, DragStartingEventArgs>? DragOut;
+
     private readonly List<(Message Item, Grid Tile)> _tiles = [];
     private Message? _watched;
 
@@ -125,6 +128,8 @@ public sealed partial class AlbumGrid : Grid
             else Open?.Invoke(item, tile);
         };
         tile.ContextRequested += (_, e) => Menu?.Invoke(item, tile, e);
+        tile.CanDrag = more == 0;
+        tile.DragStarting += (sender, e) => DragOut?.Invoke(sender, e);
         item.PropertyChanged += Item_PropertyChanged;
         _tiles.Add((item, tile));
         Children.Add(tile);

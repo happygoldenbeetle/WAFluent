@@ -44,7 +44,7 @@ public static class Glyphs
     public static readonly string Block = G(0xE733);
     public static readonly string Clear = G(0xE894);
     public static readonly string Delete = G(0xE74D);
-    public static readonly string Forward = G(0xE72D);
+    public static readonly string Forward = G(0xE97A);   // Reply's arrow; drawn mirrored so it points forward, like WhatsApp's
     public static readonly string StarFill = G(0xE735);
     public static readonly string Select = G(0xE762);
     public static readonly string Report = G(0xE8E0);

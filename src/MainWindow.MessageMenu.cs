@@ -189,7 +189,10 @@ public sealed partial class MainWindow
         if (sent && !m.IsDeleted)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(Item("Forward", Glyphs.Forward, () => _ = ForwardAsync([m])));
+            var forward = Item("Forward", Glyphs.Forward, () => _ = ForwardAsync([m]));
+            forward.Icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
+            forward.Icon.RenderTransform = new Microsoft.UI.Xaml.Media.ScaleTransform { ScaleX = -1 };   // Reply, pointing the other way
+            menu.Items.Add(forward);
             var pinned = ViewModel.SelectedChat?.PinnedMessageId == m.Id;
             menu.Items.Add(Item(pinned ? "Unpin" : "Pin", pinned ? Glyphs.Unpin : Glyphs.Pin, () => ViewModel.PinMessage(m, !pinned)));
             menu.Items.Add(Item(m.Starred ? "Unstar" : "Star", m.Starred ? Glyphs.StarFill : Glyphs.Star, () => ViewModel.Star([m], !m.Starred)));
@@ -222,6 +225,7 @@ public sealed partial class MainWindow
     private static FontIcon Icon(string glyph)
     {
         var icon = new FontIcon { Glyph = glyph };
+
         if (glyph == Glyphs.Pin || glyph == Glyphs.Unpin)
         {
             icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);

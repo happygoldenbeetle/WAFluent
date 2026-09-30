@@ -63,9 +63,10 @@ public sealed partial class MainWindow
             _swipeRow = null;
             return;
         }
-        // Dragging a voice note's playhead isn't a swipe to reply.
+        // Dragging a voice note's playhead isn't a swipe to reply, nor is dragging a photo,
+        // video or document out to a folder (MainWindow.DragOut.cs).
         for (var d = e.OriginalSource as DependencyObject; d is not null && d != _swipeRow; d = VisualTreeHelper.GetParent(d))
-            if (d is FrameworkElement { Name: "Wave" })
+            if (d is FrameworkElement { Name: "Wave" } or UIElement { CanDrag: true })
             {
                 _swipeRow = null;
                 return;

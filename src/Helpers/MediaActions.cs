@@ -28,18 +28,30 @@ public static class MediaActions
         Clipboard.SetContent(data);
     }
 
+    /// <summary>"Image", "Video"… as WhatsApp names saved files.</summary>
+    private static string KindName(Message message) => message.Kind switch
+    {
+        MessageKind.Voice => "Audio",
+        MessageKind.Sticker => "Sticker",
+        MessageKind.Video => "Video",
+        MessageKind.File => "Document",
+        _ => "Image",
+    };
+
+    /// <summary>
+    /// The name a saved or dragged-out copy gets, without extension: a document keeps the
+    /// name it was sent with; the rest are "WhatsApp Image 2026-10-01 at 15.32.08", like WhatsApp.
+    /// </summary>
+    public static string SuggestedName(Message message) =>
+        message.Kind == MessageKind.File && message.FileName.Length > 0
+            ? Path.GetFileNameWithoutExtension(message.FileName)
+            : $"WhatsApp {KindName(message)} {message.Timestamp:yyyy-MM-dd 'at' HH.mm.ss}";
+
     /// <summary>Save-as dialog with a WhatsApp-style name; returns true if a copy was saved.</summary>
     public static async Task<bool> SaveAsAsync(Window owner, string path, Message message)
     {
         var ext = Path.GetExtension(path);
-        var kind = message.Kind switch
-        {
-            MessageKind.Voice => "Audio",
-            MessageKind.Sticker => "Sticker",
-            MessageKind.Video => "Video",
-            MessageKind.File => "Document",
-            _ => "Image",
-        };
+        var kind = KindName(message);
         var picker = new FileSavePicker
         {
             SuggestedStartLocation = message.Kind switch
@@ -49,10 +61,7 @@ public static class MediaActions
                 MessageKind.File => PickerLocationId.DocumentsLibrary,
                 _ => PickerLocationId.PicturesLibrary,
             },
-            // Documents keep the name they were sent with.
-            SuggestedFileName = message.Kind == MessageKind.File && message.FileName.Length > 0
-                ? Path.GetFileNameWithoutExtension(message.FileName)
-                : $"WhatsApp {kind} {message.Timestamp:yyyy-MM-dd 'at' HH.mm.ss}",
+            SuggestedFileName = SuggestedName(message),
         };
         picker.FileTypeChoices.Add(kind, [ext.Length > 0 ? ext : ".bin"]);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
