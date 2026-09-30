@@ -155,8 +155,13 @@ public static class MediaCompression
                 (width, height) = (Convert.ToInt32(w.Value), Convert.ToInt32(h.Value));
         }
         catch (Exception) { /* no screen size: the first frame's */ }
+        // Tiny GIFs are scaled up (whole pixels, so they stay crisp) to at least 240 px on the
+        // short side: encoders refuse very small frames, and they'd be a speck in the chat.
+        var factor = Math.Max(1, (int)Math.Ceiling(240.0 / Math.Max(1, Math.Min(width, height))));
+        while (factor > 1 && Math.Max(width, height) * factor > 1280) factor--;
         // H.264 wants even sizes; the extra row/column stays white.
-        int outWidth = width + width % 2, outHeight = height + height % 2;
+        int scaledWidth = width * factor, scaledHeight = height * factor;
+        int outWidth = scaledWidth + scaledWidth % 2, outHeight = scaledHeight + scaledHeight % 2;
 
         var canvas = new byte[width * height * 4];
         var frames = new List<(byte[] Pixels, TimeSpan Duration)>();
@@ -202,16 +207,20 @@ public static class MediaCompression
             // (uncompressed RGB frames are read bottom-up by the encoder).
             var shown = new byte[outWidth * outHeight * 4];
             Array.Fill(shown, (byte)255);
-            for (var y = 0; y < height; y++)
-                for (var x = 0; x < width; x++)
+            for (var y = 0; y < scaledHeight; y++)
+            {
+                var row = ((outHeight - 1 - y) * outWidth) * 4;
+                var srcRow = (y / factor) * width;
+                for (var x = 0; x < scaledWidth; x++)
                 {
-                    var src = (y * width + x) * 4;
+                    var src = (srcRow + x / factor) * 4;
                     if (canvas[src + 3] == 0) continue;
-                    var dst = ((outHeight - 1 - y) * outWidth + x) * 4;
+                    var dst = row + x * 4;
                     shown[dst] = canvas[src];
                     shown[dst + 1] = canvas[src + 1];
                     shown[dst + 2] = canvas[src + 2];
                 }
+            }
             frames.Add((shown, TimeSpan.FromMilliseconds(delay * 10)));
 
             if (disposal == 2)   // clear this frame's area
@@ -232,12 +241,13 @@ public static class MediaCompression
         var loops = Math.Max(1, (int)Math.Ceiling(1.0 / Math.Max(0.05, total.TotalSeconds)));
         var sequence = Enumerable.Repeat(frames, loops).SelectMany(f => f).ToList();
 
-        var descriptor = new Windows.Media.Core.VideoStreamDescriptor(
-            VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)outWidth, (uint)outHeight));
-        var source = new Windows.Media.Core.MediaStreamSource(descriptor) { BufferTime = TimeSpan.Zero };
+        Windows.Media.Core.MediaStreamSource NewSource() => new(new Windows.Media.Core.VideoStreamDescriptor(
+            VideoEncodingProperties.CreateUncompressed(MediaEncodingSubtypes.Bgra8, (uint)outWidth, (uint)outHeight))) { BufferTime = TimeSpan.Zero };
+        var source = NewSource();
         var index = 0;
         var at = TimeSpan.Zero;
-        source.SampleRequested += (_, args) =>
+        void Rewind() => (index, at) = (0, TimeSpan.Zero);
+        void Feed(Windows.Media.Core.MediaStreamSource sender, Windows.Media.Core.MediaStreamSourceSampleRequestedEventArgs args)
         {
             if (index >= sequence.Count)
             {
@@ -250,7 +260,14 @@ public static class MediaCompression
             sample.KeyFrame = index == 1;
             at += duration;
             args.Request.Sample = sample;
-        };
+        }
+        source.SampleRequested += Feed;
+        Windows.Media.Core.MediaStreamSource Recreate()
+        {
+            var fresh = NewSource();
+            fresh.SampleRequested += Feed;
+            return fresh;
+        }
 
         var profile = MediaEncodingProfile.CreateMp4(VideoEncodingQuality.Vga);
         profile.Audio = null;
@@ -262,12 +279,24 @@ public static class MediaCompression
 
         Directory.CreateDirectory(Folder);
         var output = Path.Combine(Folder, Guid.NewGuid().ToString("N") + ".mp4");
-        using (var stream = File.Create(output).AsRandomAccessStream())
+        // The graphics card's encoder first; Windows' own if that one refuses.
+        foreach (var hardware in new[] { true, false })
         {
-            var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = true };
-            var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(source, stream, profile);
-            if (!prepared.CanTranscode) throw new InvalidOperationException($"can't encode the GIF: {prepared.FailureReason}");
-            await prepared.TranscodeAsync();
+            try
+            {
+                Rewind();
+                var frameSource = hardware ? source : Recreate();
+                using var stream = File.Create(output).AsRandomAccessStream();
+                var transcoder = new MediaTranscoder { HardwareAccelerationEnabled = hardware };
+                var prepared = await transcoder.PrepareMediaStreamSourceTranscodeAsync(frameSource, stream, profile);
+                if (!prepared.CanTranscode) throw new InvalidOperationException($"can't encode the GIF: {prepared.FailureReason}");
+                await prepared.TranscodeAsync();
+                break;
+            }
+            catch (Exception e) when (hardware)
+            {
+                Helpers.AppLog.Write($"GIF {path}: the hardware encoder refused ({outWidth}x{outHeight}), trying Windows' own", e);
+            }
         }
         return (output, outWidth, outHeight, Math.Max(1, (int)Math.Round(at.TotalSeconds)));
     }
