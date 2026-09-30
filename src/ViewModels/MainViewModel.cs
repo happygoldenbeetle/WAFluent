@@ -773,6 +773,8 @@ public sealed partial class MainViewModel : Observable
                 return;
             }
             if (!chat.Messages.Contains(message)) return;   // cancelled (✕) while it was being made smaller
+            // A GIF's bubble plays the video it became (the .gif itself can't play in the chat).
+            if (kind == "gif" && path != file.Path) message.MediaPath = path;
         }
         var seconds = _gifSeconds.Remove(message.Id, out var s) ? s : file.Seconds;
         _core?.SendMedia(chat.Id, path, kind, file.Caption.Trim(), mime, width, height, seconds, file.Thumb, message.Id);
