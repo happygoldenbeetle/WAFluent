@@ -126,36 +126,6 @@ public sealed partial class MainWindow
         WhenDownloaded(m, _ => OpenVideo(m));
     }
 
-    private void OpenVideo(Message m)
-    {
-        if (m.MediaPath is not { } path) return;
-        AudioPlayback.Stop();   // one thing playing at a time
-        VideoPlayer.Source = MediaSource.CreateFromUri(new Uri(path));
-        VideoPlayer.AreTransportControlsEnabled = !m.IsGif;
-        if (VideoPlayer.MediaPlayer is { } player)
-        {
-            player.IsLoopingEnabled = m.IsGif;
-            player.IsMuted = m.IsGif;
-        }
-        VideoViewer.Visibility = Visibility.Visible;
-        VideoPlayer.Focus(FocusState.Programmatic);
-    }
-
-    private void CloseVideo()
-    {
-        VideoPlayer.MediaPlayer?.Pause();
-        VideoPlayer.Source = null;
-        VideoViewer.Visibility = Visibility.Collapsed;
-    }
-
-    private void VideoClose_Click(object sender, RoutedEventArgs e) => CloseVideo();
-
-    private void VideoClose_Invoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs e)
-    {
-        e.Handled = true;
-        CloseVideo();
-    }
-
     // ───────────── Documents ─────────────
 
     private void FileOpen_Click(object sender, RoutedEventArgs e)

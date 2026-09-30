@@ -1665,14 +1665,49 @@
             </Border>
         </Grid>
 
-        <!-- ═════════════ Video viewer ═════════════
-             Videos and GIFs play here (GIFs loop, muted). Esc or ✕ closes. -->
+        <!-- ═════════════ Video viewer (MainWindow.Video.cs) ═════════════
+             A lightbox like the photos': the video at its own shape, a click outside closes it.
+             Controls: play on the left, seek, volume always shown on the right. GIFs loop, muted. -->
         <Grid x:Name="VideoViewer" Grid.Row="1" Visibility="Collapsed" Background="{ThemeResource LightboxBackgroundBrush}"
-              KeyboardAcceleratorPlacementMode="Hidden">
+              KeyboardAcceleratorPlacementMode="Hidden" Tapped="VideoViewer_Tapped" SizeChanged="VideoViewer_SizeChanged">
             <Grid.KeyboardAccelerators>
                 <KeyboardAccelerator Key="Escape" Invoked="VideoClose_Invoked" />
+                <KeyboardAccelerator Key="Space" Invoked="VideoPlayPause_Invoked" />
             </Grid.KeyboardAccelerators>
-            <MediaPlayerElement x:Name="VideoPlayer" Margin="32,56,32,32" AreTransportControlsEnabled="True" AutoPlay="True" Stretch="Uniform" />
+            <Grid x:Name="VideoFrame" HorizontalAlignment="Center" VerticalAlignment="Center" Tapped="VideoFrame_Tapped">
+                <MediaPlayerElement x:Name="VideoPlayer" AreTransportControlsEnabled="False" AutoPlay="True" Stretch="Uniform"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="8" />
+                <Grid x:Name="VideoBar" VerticalAlignment="Bottom" Margin="12" Padding="14,4,14,8" CornerRadius="8" RowSpacing="0"
+                      Background="{ThemeResource LightboxBarBrush}" Tapped="VideoBar_Tapped">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Slider x:Name="VideoSeek" Minimum="0" Maximum="1" StepFrequency="0.01" IsThumbToolTipEnabled="False"
+                            ValueChanged="VideoSeek_ValueChanged" AutomationProperties.Name="Seek" />
+                    <Grid Grid.Row="1" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="VideoPlayButton" Style="{StaticResource IconButtonStyle}" Click="VideoPlay_Click"
+                                ToolTipService.ToolTip="Play/Pause (Space)" AutomationProperties.Name="Play or pause">
+                            <FontIcon x:Name="VideoPlayIcon" Glyph="&#xE769;" FontSize="16" />
+                        </Button>
+                        <TextBlock x:Name="VideoTime" Grid.Column="1" VerticalAlignment="Center" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="0:00 / 0:00" />
+                        <Button x:Name="VideoMuteButton" Grid.Column="2" Style="{StaticResource IconButtonStyle}" Click="VideoMute_Click"
+                                ToolTipService.ToolTip="Mute" AutomationProperties.Name="Mute">
+                            <FontIcon x:Name="VideoVolumeIcon" Glyph="&#xE767;" FontSize="16" />
+                        </Button>
+                        <Slider x:Name="VideoVolume" Grid.Column="3" Width="96" Minimum="0" Maximum="100" Value="100"
+                                VerticalAlignment="Center" IsThumbToolTipEnabled="False" ValueChanged="VideoVolume_ValueChanged"
+                                AutomationProperties.Name="Volume" />
+                    </Grid>
+                </Grid>
+            </Grid>
             <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" Style="{StaticResource IconButtonStyle}"
                     Click="VideoClose_Click" ToolTipService.ToolTip="Close (Esc)" AutomationProperties.Name="Close video">
                 <FontIcon Glyph="&#xE711;" />

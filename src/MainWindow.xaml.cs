@@ -138,6 +138,22 @@ public sealed partial class MainWindow : Window
                 }
                 File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
             };
+        // WAFLUENT_SELFTEST=video: plays WAFLUENT_TEST_VIDEO in the video lightbox.
+        // WAFLUENT_SELFTEST=lightbox: opens the last photo on screen in the photo lightbox.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "video" or "lightbox")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(3000);
+                if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "video")
+                {
+                    OpenVideo(new Message { Kind = MessageKind.Video, HasMedia = true, MediaPath = Environment.GetEnvironmentVariable("WAFLUENT_TEST_VIDEO"), MediaWidth = 300, MediaHeight = 200 });
+                    return;
+                }
+                var picture = Descendants(Messages).OfType<FrameworkElement>()
+                    .Where(f => f.Tag is Message { Kind: MessageKind.Image, MediaPath: not null } && f.ActualWidth > 0)
+                    .OrderBy(f => f.ActualWidth).FirstOrDefault();
+                if (picture?.Tag is Message m) OpenViewer(m, picture);
+            };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "menu")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); SelfTestMenu(); };
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "links")

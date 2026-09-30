@@ -39,9 +39,10 @@ public sealed partial class MainWindow
 
     private void OpenViewer(Message message, FrameworkElement source)
     {
-        // Every downloaded picture in this chat, in order, so ←/→ can walk through them.
-        _viewerItems = ViewModel.SelectedChat?.Messages
-            .Where(m => m.Kind is MessageKind.Image or MessageKind.Sticker && m.MediaPath is { } p && File.Exists(p))
+        // Photos: every downloaded photo in this chat, in order, so ←/→ can walk through them.
+        // A sticker opens on its own (no arrows); stickers never show up while stepping photos.
+        _viewerItems = message.Kind == MessageKind.Sticker ? [message] : ViewModel.SelectedChat?.Messages
+            .Where(m => m.Kind == MessageKind.Image && m.MediaPath is { } p && File.Exists(p))
             .ToList() ?? [];
         if (!_viewerItems.Contains(message)) _viewerItems = [message];
         _viewerIndex = _viewerItems.IndexOf(message);
@@ -127,11 +128,14 @@ public sealed partial class MainWindow
         bitmap.UriSource = new Uri(m.MediaPath!);
     }
 
-    /// <summary>At zoom 1 the picture fits the space; zooming scales it past that.</summary>
+    /// <summary>
+    /// At zoom 1 the picture fits in the middle with room around it (like WhatsApp: at most
+    /// 75% of the height, well clear of the arrows); zooming scales it past that.
+    /// </summary>
     private void FitViewerImage()
     {
-        LightboxImage.MaxWidth = Math.Max(0, LightboxScroller.ViewportWidth - 96);   // room for the arrows
-        LightboxImage.MaxHeight = Math.Max(0, LightboxScroller.ViewportHeight - 24);
+        LightboxImage.MaxWidth = Math.Max(0, LightboxScroller.ViewportWidth - 280);
+        LightboxImage.MaxHeight = Math.Max(0, LightboxScroller.ViewportHeight * 0.75);
     }
 
     // ───────────── The Quick Look flight ─────────────
@@ -186,7 +190,7 @@ public sealed partial class MainWindow
             if (_viewerClosing) return;
             LightboxImage.Opacity = 1;          // hand over to the zoomable picture
             FlyImage.Visibility = Visibility.Collapsed;
-            from.Opacity = 1;
+            // The bubble stays empty while its picture is out; FinishClose puts it back.
         });
     }
 
@@ -360,9 +364,10 @@ public sealed partial class MainWindow
     {
         var next = _viewerIndex + delta;
         if (Lightbox.Visibility != Visibility.Visible || _viewerClosing || next < 0 || next >= _viewerItems.Count) return;
-        if (_viewerSource is not null) _viewerSource.Opacity = 1;
         FlyImage.Visibility = Visibility.Collapsed;
         _viewerIndex = next;
+        // Only the picture that's out of its bubble leaves a gap there.
+        if (_viewerSource is not null) _viewerSource.Opacity = _viewerItems[_viewerIndex] == _viewerOpenedFrom ? 0 : 1;
         ShowViewerItem();
     }
 
