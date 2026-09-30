@@ -289,6 +289,51 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(2500);
                 if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Image) is { } photo) ViewModel.BeginReply(photo);
             };
+        // WAFLUENT_SELFTEST=miniplayer: opens the open chat's voice note (WAFLUENT_TEST_WAV, paused at 40 %), then
+        // another chat, so the mini player shows. It never plays out loud.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "miniplayer")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                if (ViewModel.SelectedChat?.Messages.FirstOrDefault(m => m.Kind == MessageKind.Voice) is not { } note) return;
+                note.MediaPath = Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV");
+                AudioPlayback.Load(note);   // paused: nothing plays
+                AudioPlayback.Seek(note, 0.4);
+                ChatList.SelectedItem = ViewModel.Chats.First(c => c.Name == "Baking Club");
+            };
+        // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                DropDetail.Text = $"Send to {ViewModel.SelectedChat?.Name}";
+                DropOverlay.Visibility = Visibility.Visible;
+            };
+        // WAFLUENT_SELFTEST=paste: "pastes" WAFLUENT_TEST_PHOTO as a bare picture (a screenshot), without the clipboard.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "paste")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                var photo = await Windows.Storage.StorageFile.GetFileFromPathAsync(Environment.GetEnvironmentVariable("WAFLUENT_TEST_PHOTO"));
+                package.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromFile(photo));
+                await PasteFilesAsync(package.GetView());
+            };
+        // WAFLUENT_SELFTEST=recycle: opens other chats and comes back (rows are put aside and reused).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "recycle")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var home = ViewModel.SelectedChat;
+                foreach (var name in new[] { "Baking Club", "Jason Ballmer", "Family Foodies" })
+                {
+                    ChatList.SelectedItem = ViewModel.Chats.First(c => c.Name == name);
+                    await Task.Delay(700);
+                }
+                ChatList.SelectedItem = home;
+                await Task.Delay(700);
+                ScrollToBottom();
+            };
         // WAFLUENT_SELFTEST=album: opens the album in WAFLUENT_TEST_CHAT in the album view.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "album")
             Messages.Loaded += async (_, _) =>

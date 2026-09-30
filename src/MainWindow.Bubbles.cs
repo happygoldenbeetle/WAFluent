@@ -68,6 +68,8 @@ public sealed partial class MainWindow
         NotificationsSwitch.IsOn = _ui.Notifications;
         HdMediaSwitch.IsOn = _ui.HdMedia;
         Messages.ElementPrepared += Messages_ElementPrepared;
+        SetupMemory();
+        SetupMiniPlayer();
         SetupTypingBubbleMotion();
     }
 

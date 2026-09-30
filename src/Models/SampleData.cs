@@ -96,7 +96,10 @@ public static class SampleData
                 new Message { Id = NewId(), Kind = MessageKind.File, FileName = "Itinerary.pdf", FileDetails = "PDF", Pages = 3, Time = "15:28", Thumb = Preview(Picture2) },
                 In("😂", "15:29"),
                 Out("❤️🔥👍🏽", "15:29"),
-                In("🇵🇰🎉 ok see you", "15:30")),
+                In("🇵🇰🎉 ok see you", "15:30"),
+                new Message { Id = NewId(), Text = "Road closed near the bridge until 6 pm, take the ring road instead", Time = "15:31", Forwarded = 6 },
+                new Message { Id = NewId(), Kind = MessageKind.Image, Time = "15:32", IsOutgoing = true, Delivery = Delivery.Read, Forwarded = 1,
+                              HasMedia = true, MediaPath = Picture2, MediaWidth = 300, MediaHeight = 200 }),
 
         new Chat { Name = "Baking Club", IsGroup = true, Status = "Rebecca, Chris, Maya, You", PreviewSender = "Rebecca:", Preview = "@Chris R?", Time = "14:43", Unread = 1, HasMention = true }
             .With(Day("Today"), In("Who's bringing the sourdough starter?", "14:40"), In("@Chris R?", "14:43")),

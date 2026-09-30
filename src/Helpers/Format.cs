@@ -239,6 +239,7 @@ public static class Format
             MyReaction = dto.MyReaction ?? "",
             Starred = dto.Starred,
             Edited = dto.Edited,
+            Forwarded = dto.Forwarded,
             IsDeleted = dto.Kind == "deleted",
             Thumb = dto.Thumb,
             IsVoiceNote = dto.Kind != "audio",

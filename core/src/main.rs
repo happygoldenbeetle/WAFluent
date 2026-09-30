@@ -1079,6 +1079,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     }
     let Some(content) = extract::content(message) else { return };
     let quote = extract::quote(message);
+    let forwarded = extract::forwarding_score(message);
 
     let (chat_id, stored, (media, thumb, extra)) = {
         let db = ctx.db();
@@ -1132,6 +1133,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
         if let Some(quote) = &quote {
             db.insert_quote(&chat_id, &stored.id, quote);
         }
+        db.set_forwarded(&chat_id, &stored.id, forwarded);
         if !stored.from_me {
             db.increment_unread(&chat_id);
         }
@@ -1342,6 +1344,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
         if let Some(quote) = msg.and_then(extract::quote) {
             s.insert_quote(&chat_id, &id, &quote);
         }
+        let forwarded = msg.map_or(0, extract::forwarding_score);
         let inserted = s.insert_message(
             &chat_id,
             &StoredMessage {
@@ -1356,6 +1359,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
                 status: if from_me { delivery(wmi) } else { 0 },
             },
         );
+        s.set_forwarded(&chat_id, &id, forwarded);
         if (new_media || new_extra || new_votes) && !inserted {
             upgraded.push((chat_id.clone(), id));
         }

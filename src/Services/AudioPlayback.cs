@@ -20,7 +20,11 @@ public static class AudioPlayback
 
     public static Message? Current { get; private set; }
 
-    public static bool IsPlaying => _player?.PlaybackSession.PlaybackState == MediaPlaybackState.Playing;
+    /// <summary>Playing, or about to (still opening): pressing again pauses rather than plays twice.</summary>
+    public static bool IsPlaying => _player?.PlaybackSession.PlaybackState is MediaPlaybackState.Playing or MediaPlaybackState.Opening or MediaPlaybackState.Buffering
+                                    && !_paused;
+
+    private static bool _paused;
 
     public static TimeSpan Position => _player?.PlaybackSession.Position ?? TimeSpan.Zero;
 
@@ -35,11 +39,23 @@ public static class AudioPlayback
         if (message.MediaPath is null) return;
         if (Current == message && _player is not null)
         {
-            if (IsPlaying) _player.Pause(); else _player.Play();
+            var playing = IsPlaying;
+            if (playing) _player.Pause(); else _player.Play();
+            _paused = playing;
             Raise();
             return;
         }
+        Open(message, play: true);
+    }
 
+    /// <summary>Opens a note paused (the self-test's mini player, which mustn't make a sound).</summary>
+    internal static void Load(Message message)
+    {
+        if (message.MediaPath is not null) Open(message, play: false);
+    }
+
+    private static void Open(Message message, bool play)
+    {
         Stop();
         var ui = DispatcherQueue.GetForCurrentThread();
         _player = new MediaPlayer { Source = MediaSource.CreateFromUri(new Uri(message.MediaPath)) };
@@ -54,7 +70,8 @@ public static class AudioPlayback
             Raise();
         });
         Current = message;
-        _player.Play();
+        _paused = !play;
+        if (play) _player.Play();
 
         _timer ??= CreateTimer(ui);
         _timer.Start();

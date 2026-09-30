@@ -19,7 +19,7 @@ public sealed record StarredDto(string ChatId, string ChatName, MessageDto Messa
 public sealed record MessageDto(
     string Id, bool FromMe, string Sender, string SenderName, long Ts, string Kind, string Text,
     string? FileName, int Status, MediaDto? Media, ReplyDto? Reply, string[]? Reactions, string? MyReaction, bool Starred, bool Edited,
-    string? Thumb = null, System.Text.Json.JsonElement? Extra = null);
+    string? Thumb = null, System.Text.Json.JsonElement? Extra = null, int Forwarded = 0);
 
 /// <summary>A sticker or GIF for the sticker panel: the message it came in.</summary>
 public sealed record StickerDto(string ChatId, string MessageId, int Width, int Height, string? Path, string? Thumb);

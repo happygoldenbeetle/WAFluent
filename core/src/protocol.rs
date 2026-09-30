@@ -174,6 +174,9 @@ pub struct MessageDto {
     pub starred: bool,
     /// The sender changed the text after sending.
     pub edited: bool,
+    /// Times forwarded: 0 not forwarded, 1-4 "Forwarded", 5+ "Forwarded many times".
+    #[serde(skip_serializing_if = "is_zero")]
+    pub forwarded: u32,
     /// The sender's small JPEG preview, base64 (pictures, videos, maps, link cards).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thumb: Option<String>,
@@ -403,4 +406,8 @@ pub struct LinkPreview {
     #[serde(default)]
     pub description: String,
     pub thumb: Option<String>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }

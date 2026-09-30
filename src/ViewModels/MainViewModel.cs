@@ -654,6 +654,7 @@ public sealed partial class MainViewModel : Observable
                 Kind = MessageKind.Album,
                 IsOutgoing = lastItem.IsOutgoing,
                 SenderName = items[0].SenderName,
+                Forwarded = items[0].Forwarded,
                 Time = lastItem.Time,
                 Timestamp = lastItem.Timestamp,
                 UnixTs = lastItem.UnixTs,
@@ -855,6 +856,9 @@ public sealed partial class MainViewModel : Observable
                 if (m.Timestamp != default && m.Kind != MessageKind.DateDivider) m.Time = Format.Clock(m.Timestamp);
         }
     }
+
+    /// <summary>The chat a message is in (the voice note still playing after you've left it).</summary>
+    public Chat? ChatOf(Message message) => _allChats.FirstOrDefault(c => c.Messages.Contains(message));
 
     /// <summary>Opens a chat by id (a notification was clicked).</summary>
     public void OpenChat(string chatId)

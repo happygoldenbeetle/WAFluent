@@ -175,7 +175,10 @@ pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_i
         m
     };
     let media = ctx.db().media(&chat_id, &message_id);
-    let Some(message) = extract::forwarded(&m.kind, &m.text, &m.file_name, media.as_ref().map(|(x, _)| x), as_forward) else {
+    // Like WhatsApp: forwarding what you wrote yourself isn't labelled; anything else counts one more.
+    let before = ctx.db().forwarded(&chat_id, &message_id);
+    let score = if !as_forward || (m.from_me && before == 0) { 0 } else { before + 1 };
+    let Some(message) = extract::forwarded(&m.kind, &m.text, &m.file_name, media.as_ref().map(|(x, _)| x), score) else {
         notice(ctx, false, "This message can't be forwarded yet.");
         return;
     };
@@ -200,6 +203,7 @@ pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_i
                 let dto = {
                     let db = ctx.db();
                     db.insert_message(target, &stored);
+                    db.set_forwarded(target, &stored.id, score);
                     if let Some((x, path)) = &media {
                         db.insert_media(target, &stored.id, x);
                         if !path.is_empty() {

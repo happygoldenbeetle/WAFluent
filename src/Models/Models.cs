@@ -70,15 +70,15 @@ public sealed class Message : Observable
     // ───── Corners that follow the bubble (iMessage style) ─────
 
     /// <summary>A picture (4 px from the bubble's edge): its top touches unless a reply sits above, its bottom unless a caption follows.</summary>
-    public Microsoft.UI.Xaml.CornerRadius PictureCorners => Helpers.Ui.InsetCorners(!HasReply, !HasText, 4);
-    public Microsoft.UI.Xaml.CornerRadius VideoCorners => IsVideoNote ? new(MediaWidth / 2) : Helpers.Ui.InsetCorners(!HasReply && !ShowSender, !HasText, 4);
-    public Microsoft.UI.Xaml.CornerRadius MapCorners => Helpers.Ui.InsetCorners(!HasReply && !ShowSender, !HasPlaceText, 4);
+    public Microsoft.UI.Xaml.CornerRadius PictureCorners => Helpers.Ui.InsetCorners(!HasReply && !IsForwarded, !HasText, 4);
+    public Microsoft.UI.Xaml.CornerRadius VideoCorners => IsVideoNote ? new(MediaWidth / 2) : Helpers.Ui.InsetCorners(!HasReply && !HasHeader, !HasText, 4);
+    public Microsoft.UI.Xaml.CornerRadius MapCorners => Helpers.Ui.InsetCorners(!HasReply && !HasHeader, !HasPlaceText, 4);
     /// <summary>A document card sits 6 px in; nothing follows it in the iMessage style.</summary>
-    public Microsoft.UI.Xaml.CornerRadius FileCardCorners => Helpers.Ui.InsetCorners(!HasReply, true, 6);
+    public Microsoft.UI.Xaml.CornerRadius FileCardCorners => Helpers.Ui.InsetCorners(!HasReply && !IsForwarded, true, 6);
     /// <summary>A document's first-page preview: the card's top corners, square at the bottom.</summary>
     public Microsoft.UI.Xaml.CornerRadius FileThumbCorners => new(FileCardCorners.TopLeft, FileCardCorners.TopRight, 0, 0);
     /// <summary>A link preview sits 4 px in, above the text.</summary>
-    public Microsoft.UI.Xaml.CornerRadius LinkCardCorners => Helpers.Ui.InsetCorners(!HasReply && !ShowSender, false, 4);
+    public Microsoft.UI.Xaml.CornerRadius LinkCardCorners => Helpers.Ui.InsetCorners(!HasReply && !HasHeader, false, 4);
 
     private int _jumbo = -1;
 
@@ -260,6 +260,11 @@ public sealed class Message : Observable
     public bool Starred { get; init; }
     public bool Edited { get; init; }
 
+    /// <summary>Times forwarded (0: not forwarded). WhatsApp says "Forwarded many times" from 5 on.</summary>
+    public int Forwarded { get; init; }
+    public bool IsForwarded => Forwarded > 0;
+    public string ForwardedText => Forwarded >= 5 ? "Forwarded many times" : "Forwarded";
+
     private bool _isSelected;
     private bool _selecting;
     /// <summary>Picked in select mode (the row is tinted and its circle ticked).</summary>
@@ -267,6 +272,8 @@ public sealed class Message : Observable
     /// <summary>Select mode is on: every message shows its circle.</summary>
     public bool Selecting { get => _selecting; set => Set(ref _selecting, value); }
     public bool ShowSender => !IsOutgoing && SenderName.Length > 0;
+    /// <summary>Something above the content: the sender's name or "Forwarded".</summary>
+    public bool HasHeader => ShowSender || IsForwarded;
 
     /// <summary>
     /// Invisible run appended to the text so the last line leaves room for the time/ticks overlay.

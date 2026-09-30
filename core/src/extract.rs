@@ -376,17 +376,20 @@ pub struct Quote {
     pub file_name: String,
 }
 
+/// How many times it has been forwarded (0: not forwarded). WhatsApp shows "Forwarded",
+/// and "Forwarded many times" from 5 on.
+pub fn forwarding_score(message: &wa::Message) -> u32 {
+    let Some(info) = context_info(message) else { return 0 };
+    match info.forwarding_score {
+        Some(n) if n > 0 => n,
+        _ if info.is_forwarded == Some(true) => 1,
+        _ => 0,
+    }
+}
+
 /// `Some` when the message is a reply (swipe / "Reply" on another message).
 pub fn quote(message: &wa::Message) -> Option<Quote> {
-    let m = base(message);
-    let info = m.extended_text_message.as_option().and_then(|x| x.context_info.as_option())
-        .or_else(|| m.image_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.video_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.audio_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.document_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.sticker_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.location_message.as_option().and_then(|x| x.context_info.as_option()))
-        .or_else(|| m.contact_message.as_option().and_then(|x| x.context_info.as_option()))?;
+    let info = context_info(message)?;
     let id = info.stanza_id.clone().filter(|id| !id.is_empty())?;
     let quoted = info.quoted_message.as_option().and_then(content);
     Some(Quote {
@@ -398,12 +401,27 @@ pub fn quote(message: &wa::Message) -> Option<Quote> {
     })
 }
 
-/// A forwarded copy: text as-is, attachments re-sent from their CDN reference (no re-upload).
+/// The reply/forward details every kind of message can carry.
+fn context_info(message: &wa::Message) -> Option<&wa::ContextInfo> {
+    let m = base(message);
+    m.extended_text_message.as_option().and_then(|x| x.context_info.as_option())
+        .or_else(|| m.image_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.video_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.audio_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.document_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.sticker_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.location_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.contact_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.poll_creation_message.as_option().and_then(|x| x.context_info.as_option()))
+        .or_else(|| m.poll_creation_message_v3.as_option().and_then(|x| x.context_info.as_option()))
+}
+
 /// A stored message rebuilt for sending again from its CDN reference (no upload): marked
-/// "Forwarded" when `as_forward`, or plain (a sticker or GIF picked from the panel).
-pub fn forwarded(kind: &str, text: &str, file_name: &str, media: Option<&Media>, as_forward: bool) -> Option<wa::Message> {
-    let context = if as_forward {
-        MessageField::some(wa::ContextInfo { is_forwarded: Some(true), forwarding_score: Some(1), ..Default::default() })
+/// forwarded when `score` > 0 (how many times it has been forwarded, this time included),
+/// or plain (your own message forwarded, a sticker or GIF picked from the panel).
+pub fn forwarded(kind: &str, text: &str, file_name: &str, media: Option<&Media>, score: u32) -> Option<wa::Message> {
+    let context = if score > 0 {
+        MessageField::some(wa::ContextInfo { is_forwarded: Some(true), forwarding_score: Some(score), ..Default::default() })
     } else {
         MessageField::none()
     };

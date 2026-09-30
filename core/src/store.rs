@@ -194,6 +194,7 @@ impl Store {
             "ALTER TABLE messages ADD COLUMN starred INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE receipts ADD COLUMN delivered_ts INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN forwarded INTEGER NOT NULL DEFAULT 0",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -473,6 +474,22 @@ impl Store {
             )
             .unwrap_or(0)
             > 0
+    }
+
+    /// How many times the message had been forwarded (from its context info).
+    pub fn set_forwarded(&self, chat_id: &str, message_id: &str, score: u32) {
+        if score > 0 {
+            let _ = self.db.execute(
+                "UPDATE messages SET forwarded = ?3 WHERE chat_id = ?1 AND id = ?2",
+                params![chat_id, message_id, score],
+            );
+        }
+    }
+
+    pub fn forwarded(&self, chat_id: &str, message_id: &str) -> u32 {
+        self.db
+            .query_row("SELECT forwarded FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, message_id], |r| r.get(0))
+            .unwrap_or(0)
     }
 
     pub fn set_edited(&self, chat_id: &str, message_id: &str, text: &str) -> bool {
@@ -983,16 +1000,19 @@ impl Store {
         let media = self.media_dto(chat_id, &m.id);
         let reply = self.reply_dto(chat_id, &m.id);
         let (reactions, my_reaction) = self.reactions(chat_id, &m.id);
-        let (starred, edited): (bool, bool) = self
+        let (starred, edited, forwarded): (bool, bool, u32) = self
             .db
-            .query_row("SELECT starred, edited FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, &m.id], |r| Ok((r.get(0)?, r.get(1)?)))
-            .unwrap_or((false, false));
+            .query_row("SELECT starred, edited, forwarded FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, &m.id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap_or((false, false, 0));
         let (thumb, extra) = self.extra(chat_id, &m.id);
         MessageDto {
             thumb,
             extra,
             starred,
             edited,
+            forwarded,
             media,
             reply,
             reactions,

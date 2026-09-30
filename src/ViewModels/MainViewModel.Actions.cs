@@ -130,7 +130,7 @@ public sealed partial class MainViewModel
             var updated = Format.ToMessage(dto, chat.IsGroup);
             updated.MediaPath ??= before.MediaPath;
             var at = chat.Messages.IndexOf(album);
-            chat.Messages[at] = new Message { Id = album.Id, Kind = MessageKind.Album, IsOutgoing = album.IsOutgoing, SenderName = album.SenderName,
+            chat.Messages[at] = new Message { Id = album.Id, Kind = MessageKind.Album, IsOutgoing = album.IsOutgoing, SenderName = album.SenderName, Forwarded = album.Forwarded,
                 Time = album.Time, Timestamp = album.Timestamp, UnixTs = album.UnixTs, Delivery = album.Delivery,
                 AlbumItems = items.Select(x => x == before ? updated : x).ToList() };
             UpdateRuns(chat);

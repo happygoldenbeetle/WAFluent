@@ -63,6 +63,10 @@ public static class Ui
     public static ImageSource? Image(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 640 };
 
+    /// <summary>A sticker: shown at 150 px, so decoded at 320 (sharp at 200 % scaling) rather than 640.</summary>
+    public static ImageSource? Sticker(string? path) =>
+        path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 320 };
+
     /// <summary>The sender's base64 JPEG preview (a few KB) as an image.</summary>
     public static ImageSource? Thumb(string? base64)
     {

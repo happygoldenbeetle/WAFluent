@@ -62,7 +62,7 @@ public sealed partial class AlbumGrid : Grid
         // Tiles along the bubble's edge follow its curve (its radius minus the 3 px around the
         // grid); inside corners stay small. A sender's name above means the top isn't the edge.
         _outer = Math.Max(4, (Ui.IMessage ? Ui.BubbleRadius : 8) - 3);
-        _topIsEdge = !album.ShowSender;
+        _topIsEdge = !album.HasHeader;
         _rows = items.Count == 1 ? 1 : 2;
         _columns = items.Count == 2 ? 1 : 2;
         double half = (Width2 - Gap) / 2;
@@ -182,6 +182,20 @@ public sealed partial class AlbumGrid : Grid
     private void Album_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Message.AlbumItems)) DispatcherQueue.TryEnqueue(Rebuild);
+    }
+
+    /// <summary>Put aside off screen: the pictures are let go of until <see cref="Restore"/>.</summary>
+    public void Release()
+    {
+        Unwatch();
+        Children.Clear();
+        _tiles.Clear();
+    }
+
+    /// <summary>Back on screen: the tiles are made again (only if they were let go of).</summary>
+    public void Restore()
+    {
+        if (_watched is null) Rebuild();
     }
 
     private void Unwatch()

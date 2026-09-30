@@ -117,11 +117,18 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <!-- Group chats: who wrote it. -->
-                                    <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="{x:Bind ShowSender}">
-                                        <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
-                                                   TextLineBounds="Tight" Foreground="{ThemeResource ChatAccentTextBrush}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </controls:Redact>
+                                    <StackPanel>
+                                        <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="{x:Bind ShowSender}">
+                                            <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
+                                                       TextLineBounds="Tight" Foreground="{ThemeResource ChatAccentTextBrush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </controls:Redact>
+                                        <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-2,0,8" Visibility="{x:Bind IsForwarded}">
+                                            <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                            <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
                                     <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
                                     <controls:QuoteBlock Grid.Row="1" Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
@@ -190,6 +197,11 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,4,6,6" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -276,6 +288,11 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" />
                                     </controls:Redact>
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,2" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -307,10 +324,15 @@
                                 <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                            Foreground="{ThemeResource ChatAccentTextBrush}" />
                             </controls:Redact>
+                            <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" Visibility="{x:Bind IsForwarded}">
+                                <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                            </StackPanel>
                             <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent"
                                   Tag="{x:Bind}" Tapped="Media_Tapped">
                                 <ProgressRing Width="28" Height="28" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
-                                <Image Source="{x:Bind helpers:Ui.Image(MediaPath), Mode=OneWay}" Stretch="Uniform" />
+                                <Image Source="{x:Bind helpers:Ui.Sticker(MediaPath), Mode=OneWay}" Stretch="Uniform" />
                             </Grid>
                             <Border HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" Padding="6,1,6,2" CornerRadius="9"
                                     Background="{x:Bind helpers:Ui.BubbleBrush(IsOutgoing)}">
@@ -344,6 +366,11 @@
                                 <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                            Foreground="{ThemeResource ChatAccentTextBrush}" />
                             </controls:Redact>
+                            <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" Visibility="{x:Bind IsForwarded}">
+                                <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                            </StackPanel>
                             <TextBlock Text="{x:Bind Text}" FontFamily="{StaticResource EmojiFontFamily}" FontSize="{x:Bind JumboSize}"
                                        HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}" TextWrapping="Wrap" MaxWidth="420"
                                        IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
@@ -376,6 +403,11 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,2,4,2" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -458,6 +490,11 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -553,6 +590,11 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -635,6 +677,11 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,0,4,6" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -703,6 +750,11 @@
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
+                                    <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,-2" Visibility="{x:Bind IsForwarded}">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                    </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" />
@@ -802,6 +854,11 @@
                                             <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                        Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                         </controls:Redact>
+                                        <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
+                                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="7,2,6,5" Visibility="{x:Bind IsForwarded}">
+                                            <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                            <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
+                                        </StackPanel>
                                         <Grid>
                                             <controls:AlbumGrid Album="{x:Bind}" />
                                             <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="6" Padding="6,1,6,2"
@@ -937,6 +994,43 @@
                                         TextChanged="Search_TextChanged" />
                         <!-- All · Unread · Favourites · ⌄ (Groups), like WhatsApp for Windows (MainWindow.ChatMenu.cs). -->
                         <StackPanel x:Name="FilterChips" Orientation="Horizontal" Spacing="8" Margin="16,0,16,8" />
+                        <!-- A voice note still playing after you've left its chat (MainWindow.MiniPlayer.cs). -->
+                        <Grid x:Name="MiniPlayer" Margin="16,0,16,8" Padding="6,6,4,6" ColumnSpacing="8" CornerRadius="8"
+                              Background="{ThemeResource LayerFillColorAltBrush}" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Width="34" Height="34" Padding="0" CornerRadius="17" BorderThickness="0" VerticalAlignment="Center"
+                                    Background="{ThemeResource ChatAccentBrush}" Click="MiniPlay_Click" AutomationProperties.Name="Play or pause">
+                                <FontIcon x:Name="MiniPlayIcon" Glyph="&#xE769;" FontSize="14" Foreground="White" />
+                            </Button>
+                            <Grid Grid.Column="1" Background="Transparent" Tapped="MiniOpen_Tapped" VerticalAlignment="Center" RowSpacing="3"
+                                  ToolTipService.ToolTip="Go to message">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <controls:Redact HorizontalAlignment="Left">
+                                    <TextBlock x:Name="MiniName" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                </controls:Redact>
+                                <TextBlock x:Name="MiniDetail" Grid.Row="1" FontSize="12" TextTrimming="CharacterEllipsis"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <ProgressBar x:Name="MiniProgress" Grid.Row="2" Maximum="1" MinHeight="2" Margin="0,2,0,0"
+                                             Foreground="{ThemeResource ChatAccentBrush}" />
+                            </Grid>
+                            <Button Grid.Column="2" Style="{StaticResource IconButtonStyle}" Click="MiniRate_Click" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Playback speed" AutomationProperties.Name="Playback speed">
+                                <TextBlock x:Name="MiniRate" Text="1×" FontSize="12" FontWeight="SemiBold" />
+                            </Button>
+                            <Button Grid.Column="3" Style="{StaticResource IconButtonStyle}" Click="MiniClose_Click" VerticalAlignment="Center"
+                                    ToolTipService.ToolTip="Stop" AutomationProperties.Name="Stop voice message">
+                                <FontIcon Glyph="&#xE711;" FontSize="12" />
+                            </Button>
+                        </Grid>
                     </StackPanel>
 
                     <!-- Reconnecting / syncing while chats are already on screen. -->
@@ -1055,7 +1149,8 @@
 
                 <!-- ───────────── Conversation pane ───────────── -->
                 <Grid x:Name="ConversationPane" Grid.Column="1" Background="{ThemeResource ChatPaneBackgroundBrush}"
-                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0"
+                      AllowDrop="True" DragOver="Conversation_DragOver" DragLeave="Conversation_DragLeave" Drop="Conversation_Drop">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -1401,7 +1496,8 @@
                                  BorderThickness="0" Background="Transparent" Padding="6"
                                  TextChanged="ComposerBox_TextChanged"
                                  SelectionChanged="ComposerBox_SelectionChanged"
-                                 PreviewKeyDown="ComposerBox_PreviewKeyDown">
+                                 PreviewKeyDown="ComposerBox_PreviewKeyDown"
+                                 Paste="ComposerBox_Paste">
                             <TextBox.Resources>
                                 <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
                                 <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
@@ -1682,6 +1778,21 @@
                                 <FontIcon Glyph="&#xE725;" FontSize="20" />
                             </Button>
                         </Grid>
+                    </Grid>
+                    <!-- Files dragged over the conversation (MainWindow.Drop.cs): drop to open the send preview. -->
+                    <Grid x:Name="DropOverlay" Grid.RowSpan="4" Visibility="Collapsed" IsHitTestVisible="False" Padding="16">
+                        <Rectangle Fill="{ThemeResource ChatPaneBackgroundBrush}" Opacity="0.92" Margin="-16" />
+                        <Rectangle RadiusX="16" RadiusY="16" StrokeThickness="2" StrokeDashArray="5,4"
+                                   Stroke="{ThemeResource ChatAccentBrush}" />
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                            <Grid Width="64" Height="64" HorizontalAlignment="Center">
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" />
+                                <FontIcon Glyph="&#xE898;" FontSize="26" Foreground="White" />
+                            </Grid>
+                            <TextBlock x:Name="DropTitle" Text="Drop files here" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="DropDetail" FontSize="13" HorizontalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
                     </Grid>
                 </Grid>
 
