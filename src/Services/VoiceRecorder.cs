@@ -37,8 +37,12 @@ public sealed class VoiceRecorder : IAsyncDisposable
     /// <summary>The loudness right now, 0-1 (for the live waveform).</summary>
     public float Level => IsPaused ? 0 : _level;
 
-    /// <summary>Starts recording. Throws <see cref="UnauthorizedAccessException"/> when microphone access is off.</summary>
-    public async Task StartAsync()
+    /// <summary>
+    /// Starts recording from <paramref name="deviceId"/> (null or empty: Windows' default
+    /// microphone; one that's been unplugged falls back to the default).
+    /// Throws <see cref="UnauthorizedAccessException"/> when microphone access is off.
+    /// </summary>
+    public async Task StartAsync(string? deviceId = null)
     {
         if (_graph is not null) return;
         var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Speech));
@@ -52,7 +56,15 @@ public sealed class VoiceRecorder : IAsyncDisposable
             Begin(graph, source.FileInputNode);
             return;
         }
-        var input = await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech);
+        Windows.Devices.Enumeration.DeviceInformation? device = null;
+        if (!string.IsNullOrEmpty(deviceId))
+        {
+            try { device = await Windows.Devices.Enumeration.DeviceInformation.CreateFromIdAsync(deviceId); }
+            catch (Exception) { }   // gone: the default one
+        }
+        var input = device is { IsEnabled: true }
+            ? await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech, graph.EncodingProperties, device)
+            : await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech);
         if (input.Status == AudioDeviceNodeCreationStatus.AccessDenied)
         {
             graph.Dispose();
@@ -64,6 +76,13 @@ public sealed class VoiceRecorder : IAsyncDisposable
             throw new InvalidOperationException($"microphone: {input.Status}");
         }
         Begin(graph, input.DeviceInputNode);
+    }
+
+    /// <summary>The microphones Windows has: (device id, name), for the picker beside the mic button.</summary>
+    public static async Task<IReadOnlyList<(string Id, string Name)>> MicrophonesAsync()
+    {
+        var found = await Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(Windows.Media.Devices.MediaDevice.GetAudioCaptureSelector());
+        return found.Where(d => d.IsEnabled).Select(d => (d.Id, d.Name)).ToList();
     }
 
     /// <summary>The self-test's stand-in for the microphone.</summary>

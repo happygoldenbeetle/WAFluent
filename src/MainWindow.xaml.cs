@@ -471,6 +471,13 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(300);
                 OpenNewContact(ViewModel.SelectedChat!, edit: true);
             };
+        // WAFLUENT_SELFTEST=micmenu: opens the microphone list beside the mic button.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "micmenu")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                MicDevice_Click(MicDeviceButton, new RoutedEventArgs());
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>
@@ -740,7 +747,7 @@ public sealed partial class MainWindow : Window
         if (_restoredDraft is { } restored && ComposerBox.Text == restored) _restoredDraft = null;
         else ViewModel.ComposerEdited(hasText);
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
-        MicButton.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
+        MicGroup.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void ComposerBox_PreviewKeyDown(object sender, KeyRoutedEventArgs e)

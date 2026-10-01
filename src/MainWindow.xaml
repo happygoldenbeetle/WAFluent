@@ -1570,10 +1570,17 @@
                             </TextBox.Resources>
                         </TextBox>
                         <Grid Grid.Row="1" Grid.Column="3">
-                            <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}" Click="Mic_Click"
-                                    ToolTipService.ToolTip="Record a voice message" AutomationProperties.Name="Record a voice message">
-                                <FontIcon Glyph="&#xE720;" FontSize="17" />
-                            </Button>
+                            <StackPanel x:Name="MicGroup" Orientation="Horizontal">
+                                <Button x:Name="MicButton" Style="{StaticResource IconButtonStyle}" Click="Mic_Click"
+                                        ToolTipService.ToolTip="Record a voice message" AutomationProperties.Name="Record a voice message">
+                                    <FontIcon Glyph="&#xE720;" FontSize="17" />
+                                </Button>
+                                <!-- Which microphone records (MainWindow.Voice.cs): opens upwards. -->
+                                <Button x:Name="MicDeviceButton" Style="{StaticResource IconButtonStyle}" Width="22" MinWidth="22" Padding="0" Margin="-4,0,0,0"
+                                        Click="MicDevice_Click" ToolTipService.ToolTip="Choose microphone" AutomationProperties.Name="Choose microphone">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </Button>
+                            </StackPanel>
                             <Button x:Name="SendButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed"
                                     ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="Send_Click">
                                 <FontIcon Glyph="&#xE724;" FontSize="17" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
@@ -1746,9 +1753,11 @@
                             </ListView>
                             <Grid Grid.Row="3" Height="72" Padding="20,0,12,0" Background="{ThemeResource SheetFooterBrush}" CornerRadius="0,0,8,8">
                                 <TextBlock x:Name="ContactsPicked" VerticalAlignment="Center" Margin="0,0,80,0" TextTrimming="CharacterEllipsis" FontSize="15" />
-                                <Button x:Name="ContactsSend" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" IsEnabled="False"
+                                <!-- No green disc: the arrow itself is green (dimmed until someone is ticked). -->
+                                <Button x:Name="ContactsSend" Style="{StaticResource IconButtonStyle}" CornerRadius="8" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" IsEnabled="False" Opacity="0.4"
                                         ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click">
-                                    <FontIcon Glyph="&#xE725;" FontSize="20" />
+                                    <FontIcon Glyph="&#xE725;" FontSize="20" Foreground="{ThemeResource ChatAccentBrush}" />
                                 </Button>
                             </Grid>
                         </Grid>

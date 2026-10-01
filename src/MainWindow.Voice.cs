@@ -29,7 +29,7 @@ public sealed partial class MainWindow
         var recorder = new VoiceRecorder();
         try
         {
-            await recorder.StartAsync();
+            await recorder.StartAsync(_ui.MicrophoneId);
         }
         catch (UnauthorizedAccessException)
         {
@@ -52,6 +52,39 @@ public sealed partial class MainWindow
         RecordingBar.Visibility = Visibility.Visible;
         _recordingTimer!.Start();
         RecordingSend.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// The chevron beside the mic: a list of microphones, opening upwards, the one in use
+    /// ticked. "Default" follows whatever Windows uses. The choice is kept.
+    /// </summary>
+    private async void MicDevice_Click(object sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<(string Id, string Name)> devices;
+        try { devices = await VoiceRecorder.MicrophonesAsync(); }
+        catch (Exception ex)
+        {
+            Helpers.AppLog.Write("listing microphones failed", ex);
+            devices = [];
+        }
+        var menu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedRight };
+        var known = devices.Any(d => d.Id == _ui.MicrophoneId);
+        void Add(string id, string name)
+        {
+            var item = new RadioMenuFlyoutItem { Text = name, GroupName = "microphone", IsChecked = id == (known ? _ui.MicrophoneId : "") };
+            item.Click += (_, _) =>
+            {
+                _ui.MicrophoneId = id;
+                _ui.Save();
+            };
+            menu.Items.Add(item);
+        }
+        Add("", "Default microphone");
+        if (devices.Count > 0) menu.Items.Add(new MenuFlyoutSeparator());
+        foreach (var (id, name) in devices) Add(id, name);
+        if (devices.Count == 0)
+            menu.Items.Add(new MenuFlyoutItem { Text = "No microphones found", IsEnabled = false });
+        menu.ShowAt(MicDeviceButton);
     }
 
     private void WireRecording()
