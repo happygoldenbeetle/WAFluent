@@ -413,21 +413,6 @@ public sealed partial class MainWindow : Window
                 }
                 File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
             };
-        // WAFLUENT_SELFTEST=pull | pull-open: Message info halfway out of the right edge, as a swipe left holds it;
-        // "pull-open" then lets go (it slides the rest of the way and settles).
-        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "pull" or "pull-open")
-            Messages.Loaded += async (_, _) =>
-            {
-                await Task.Delay(2500);
-                var mine = ViewModel.SelectedChat!.Messages.Last(m => m.IsOutgoing && m.Kind == MessageKind.Text);
-                StartPanelPull(mine);
-                foreach (var travel in new[] { 30.0, 60, 90, 120 })
-                {
-                    PullPanel(travel);
-                    await Task.Delay(60);
-                }
-                if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "pull-open") FinishPanelPull(open: true);
-            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>
