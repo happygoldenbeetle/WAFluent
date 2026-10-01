@@ -564,7 +564,6 @@ public sealed partial class MainWindow
         var picked = PickedContacts.ToList();
         ContactsPicked.Text = string.Join(", ", picked.Select(r => r.Name));
         ContactsSend.IsEnabled = picked.Count > 0;
-        ContactsSend.Opacity = picked.Count > 0 ? 1 : 0.4;
     }
 
     private void ContactsSend_Click(object sender, RoutedEventArgs e)

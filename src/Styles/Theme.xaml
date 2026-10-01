@@ -258,28 +258,29 @@
     <Style x:Key="AttachMenuPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
         <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
     </Style>
-    <!-- The attach screens' round Send (WhatsApp Web's): always WhatsApp green, like the badges. -->
+    <!-- Send, everywhere it stands on its own (send preview, poll, forward, voice recording): the
+         arrow itself in the accent green, no disc; a softly rounded highlight on hover; dimmed
+         while there's nothing to send. -->
     <Style x:Key="SendFabStyle" TargetType="Button">
-        <Setter Property="Width" Value="56" />
-        <Setter Property="Height" Value="56" />
-        <Setter Property="Foreground" Value="#0B141A" />
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="44" />
+        <Setter Property="Foreground" Value="{ThemeResource ChatAccentBrush}" />
         <Setter Property="UseSystemFocusVisuals" Value="True" />
-        <Setter Property="FocusVisualMargin" Value="-3" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Grid x:Name="Root">
+                    <Grid x:Name="Root" Background="Transparent">
                         <VisualStateManager.VisualStateGroups>
                             <VisualStateGroup x:Name="CommonStates">
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="Circle.Opacity" Value="0.88" />
+                                        <Setter Target="Highlight.Opacity" Value="1" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="Circle.Opacity" Value="0.75" />
+                                        <Setter Target="Highlight.Opacity" Value="0.6" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
@@ -289,8 +290,8 @@
                                 </VisualState>
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
-                        <Ellipse x:Name="Circle" Fill="{ThemeResource ChatAccentBrush}" />
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="3,0,0,0"
+                        <Border x:Name="Highlight" CornerRadius="8" Opacity="0" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                           Foreground="{TemplateBinding Foreground}" />
                     </Grid>
                 </ControlTemplate>

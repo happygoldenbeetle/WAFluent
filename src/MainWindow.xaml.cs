@@ -478,6 +478,22 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(2500);
                 MicDevice_Click(MicDeviceButton, new RoutedEventArgs());
             };
+        // WAFLUENT_SELFTEST=micdevices: opens each microphone the way the recorder would (without recording) and
+        // writes whether it opened, and which device it was, to %TEMP%\\wafluent-selftest.txt.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "micdevices")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2000);
+                var lines = new List<string>();
+                foreach (var (id, name) in await VoiceRecorder.MicrophonesAsync())
+                {
+                    string result;
+                    try { result = await VoiceRecorder.ProbeAsync(id); }
+                    catch (Exception ex) { result = "failed: " + ex.Message; }
+                    lines.Add($"{name} -> {result}");
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

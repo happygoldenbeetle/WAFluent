@@ -85,6 +85,21 @@ public sealed class VoiceRecorder : IAsyncDisposable
         return found.Where(d => d.IsEnabled).Select(d => (d.Id, d.Name)).ToList();
     }
 
+    /// <summary>
+    /// Self-test: whether a microphone opens as the recorder would open it (nothing is recorded:
+    /// the graph is never started, and it's closed straight away).
+    /// </summary>
+    internal static async Task<string> ProbeAsync(string deviceId)
+    {
+        var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Speech));
+        if (created.Status != AudioGraphCreationStatus.Success) return $"graph {created.Status}";
+        using var graph = created.Graph;
+        var device = await Windows.Devices.Enumeration.DeviceInformation.CreateFromIdAsync(deviceId);
+        var input = await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech, graph.EncodingProperties, device);
+        var opened = input.Status == AudioDeviceNodeCreationStatus.Success ? input.DeviceInputNode.Device?.Name ?? "?" : "";
+        return input.Status == AudioDeviceNodeCreationStatus.Success ? $"Success (opened: {opened})" : input.Status.ToString();
+    }
+
     /// <summary>The self-test's stand-in for the microphone.</summary>
     internal static string? TestInput { get; set; }
 

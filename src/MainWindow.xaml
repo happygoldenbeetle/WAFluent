@@ -1544,11 +1544,10 @@
                                     VerticalAlignment="Center" ToolTipService.ToolTip="Pause" AutomationProperties.Name="Pause recording">
                                 <FontIcon x:Name="RecordingPauseIcon" Glyph="&#xE769;" FontSize="16" Foreground="#F15C6D" />
                             </Button>
-                            <!-- No green disc: the arrow itself is green, on the usual icon button (softly rounded on hover). -->
-                            <Button x:Name="RecordingSend" Grid.Column="5" Style="{StaticResource IconButtonStyle}" CornerRadius="8" Margin="2,0,2,0"
+                            <Button x:Name="RecordingSend" Grid.Column="5" Style="{StaticResource SendFabStyle}" Margin="2,0,2,0"
                                     Click="RecordingSend_Click" VerticalAlignment="Center" ToolTipService.ToolTip="Send (Enter)"
                                     AutomationProperties.Name="Send voice message">
-                                <FontIcon Glyph="&#xE725;" FontSize="18" Foreground="{ThemeResource ChatAccentBrush}" />
+                                <FontIcon Glyph="&#xE725;" FontSize="18" />
                             </Button>
                         </Grid>
                         <TextBox x:Name="ComposerBox" Grid.Row="1" Grid.Column="2"
@@ -1753,11 +1752,10 @@
                             </ListView>
                             <Grid Grid.Row="3" Height="72" Padding="20,0,12,0" Background="{ThemeResource SheetFooterBrush}" CornerRadius="0,0,8,8">
                                 <TextBlock x:Name="ContactsPicked" VerticalAlignment="Center" Margin="0,0,80,0" TextTrimming="CharacterEllipsis" FontSize="15" />
-                                <!-- No green disc: the arrow itself is green (dimmed until someone is ticked). -->
-                                <Button x:Name="ContactsSend" Style="{StaticResource IconButtonStyle}" CornerRadius="8" HorizontalAlignment="Right"
-                                        VerticalAlignment="Center" IsEnabled="False" Opacity="0.4"
+                                <Button x:Name="ContactsSend" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" IsEnabled="False"
                                         ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click">
-                                    <FontIcon Glyph="&#xE725;" FontSize="20" Foreground="{ThemeResource ChatAccentBrush}" />
+                                    <FontIcon Glyph="&#xE725;" FontSize="20" />
                                 </Button>
                             </Grid>
                         </Grid>
