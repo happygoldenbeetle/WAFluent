@@ -8,6 +8,12 @@ namespace WhatsAppNative.ViewModels;
 public enum ChatFilter { All, Unread, Favourites, Groups }
 
 /// <summary>A starred message in the Starred view.</summary>
+/// <summary>A chat's Media, links and docs, each newest first.</summary>
+public sealed record ChatMediaSet(Chat Chat, IReadOnlyList<Message> Media, IReadOnlyList<Message> Docs, IReadOnlyList<Message> Links)
+{
+    public int Count => Media.Count + Docs.Count + Links.Count;
+}
+
 public sealed class StarredItem
 {
     public required string ChatId { get; init; }
@@ -81,6 +87,14 @@ public sealed partial class MainViewModel
         }
         await Task.Delay(TimeSpan.FromSeconds(4));
         if (edit == _typingEdits && _selectedChat == chat) StopTyping();
+    }
+
+    /// <summary>Recording a voice note: the chat sees "recording audio…" (sent again every 10 s), or that you stopped.</summary>
+    public void SetRecording(Chat chat, bool recording)
+    {
+        if (_core is null || chat.Id.Length == 0) return;
+        _typingSentAt = default;
+        _core.SendTyping(chat.Id, recording ? "recording" : "paused");
     }
 
     public void StopTyping()
@@ -455,6 +469,53 @@ public sealed partial class MainViewModel
     {
         Raise(nameof(SelectionCount));
         Raise(nameof(SelectionText));
+    }
+
+    // ───────────── Media, links and docs ─────────────
+
+    /// <summary>Raised with a chat's media, documents and links (newest first) once they're read.</summary>
+    public event Action<ChatMediaSet>? ChatMediaLoaded;
+
+    /// <summary>Gallery messages that aren't loaded in their chat (older ones): downloads still find them.</summary>
+    private readonly Dictionary<(string ChatId, string Id), Message> _gallery = new();
+
+    private static readonly System.Text.RegularExpressions.Regex UrlPattern =
+        new(@"(https?://|www\.)\S+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>The first web address in a message (its link card's, or one in the text).</summary>
+    public static string FirstUrl(Message m) =>
+        m.LinkUrl.Length > 0 ? m.LinkUrl : UrlPattern.Match(m.Text) is { Success: true } x ? x.Value.TrimEnd('.', ',', ')', '!', '?') : "";
+
+    public void LoadChatMedia(Chat chat)
+    {
+        if (_core is not null)
+        {
+            _core.LoadChatMedia(chat.Id);
+            return;
+        }
+        var all = Everything(chat).Where(m => !m.IsDeleted && m.Kind != MessageKind.DateDivider).Reverse().ToList();
+        ChatMediaLoaded?.Invoke(new ChatMediaSet(chat,
+            all.Where(m => m.Kind is MessageKind.Image or MessageKind.Video).ToList(),
+            all.Where(m => m.Kind == MessageKind.File).ToList(),
+            all.Where(m => m.Kind == MessageKind.Text && FirstUrl(m).Length > 0).ToList()));
+    }
+
+    private void OnChatMedia(string chatId, IReadOnlyList<MessageDto> media, IReadOnlyList<MessageDto> docs, IReadOnlyList<MessageDto> links)
+    {
+        if (!_byId.TryGetValue(chatId, out var chat)) return;
+        var loaded = Everything(chat).GroupBy(m => m.Id).ToDictionary(g => g.Key, g => g.First());
+        Message Adopt(MessageDto dto)
+        {
+            if (loaded.TryGetValue(dto.Id, out var shown)) return shown;
+            if (_gallery.TryGetValue((chatId, dto.Id), out var known)) return known;
+            var m = Format.ToMessage(dto, chat.IsGroup);
+            _gallery[(chatId, dto.Id)] = m;
+            return m;
+        }
+        ChatMediaLoaded?.Invoke(new ChatMediaSet(chat,
+            media.Select(Adopt).ToList(),
+            docs.Select(Adopt).ToList(),
+            links.Select(Adopt).Where(m => FirstUrl(m).Length > 0).ToList()));
     }
 
     // ───────────── Starred view ─────────────

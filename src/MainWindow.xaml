@@ -11,6 +11,37 @@
 
     <Grid x:Name="Root">
         <Grid.Resources>
+            <!-- ───────────── Media, links and docs: a photo or video tile (MainWindow.Gallery.cs) ───────────── -->
+            <DataTemplate x:Key="GalleryTileTemplate" x:DataType="models:Message">
+                <Grid CornerRadius="4" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="GalleryTile_Tapped"
+                      CanDrag="True" DragStarting="Media_DragStarting">
+                    <Border>
+                        <Border.Background>
+                            <ImageBrush ImageSource="{x:Bind helpers:Ui.Thumb(Thumb)}" Stretch="UniformToFill" />
+                        </Border.Background>
+                    </Border>
+                    <Border>
+                        <Border.Background>
+                            <ImageBrush ImageSource="{x:Bind helpers:Ui.GalleryImage(MediaPath, Kind), Mode=OneWay}" Stretch="UniformToFill" />
+                        </Border.Background>
+                    </Border>
+                    <Border VerticalAlignment="Bottom" Height="30" Visibility="{x:Bind helpers:Ui.IsVideoTile(Kind)}">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#00000000" Offset="0" />
+                                <GradientStop Color="#99000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="6,0,0,5"
+                                Visibility="{x:Bind helpers:Ui.IsVideoTile(Kind)}">
+                        <FontIcon Glyph="{x:Bind helpers:Ui.VideoTileGlyph(IsGif)}" FontSize="12" Foreground="White" />
+                        <TextBlock Text="{x:Bind helpers:Ui.VideoTileText(IsGif, Seconds)}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                    </StackPanel>
+                    <ProgressRing Width="24" Height="24" Foreground="White" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
+                </Grid>
+            </DataTemplate>
+
             <!-- ───────────── Chat list item ───────────── -->
             <DataTemplate x:Key="ChatItemTemplate" x:DataType="models:Chat">
                 <Grid Padding="0,9" ColumnSpacing="12" Background="Transparent"
@@ -38,23 +69,29 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <!-- Groups: who sent the last message ("Maya: "), blurred in developer mode. -->
-                            <controls:Redact Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewSender, IsTyping), Mode=OneWay}" Margin="0,0,3,0">
+                            <controls:Redact Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewSender, PreviewHidden), Mode=OneWay}" Margin="0,0,3,0">
                                 <TextBlock Text="{x:Bind PreviewSender, Mode=OneWay}" FontSize="13" MaxLines="1"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </controls:Redact>
                             <!-- Nudged down so the ticks sit on the text's baseline, not above it. -->
                             <controls:DeliveryTicks Grid.Column="1" Delivery="{x:Bind LastDelivery, Mode=OneWay}" Margin="0,5,4,0"
-                                                    Visibility="{x:Bind helpers:Ui.DeliveryUnlessTyping(LastDelivery, IsTyping), Mode=OneWay}" />
+                                                    Visibility="{x:Bind helpers:Ui.DeliveryUnlessTyping(LastDelivery, PreviewHidden), Mode=OneWay}" />
                             <FontIcon Grid.Column="2" Glyph="{x:Bind PreviewGlyph, Mode=OneWay}" FontSize="13" Margin="0,0,5,0"
                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                      Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewGlyph, IsTyping), Mode=OneWay}" />
+                                      Visibility="{x:Bind helpers:Ui.TextUnlessTyping(PreviewGlyph, PreviewHidden), Mode=OneWay}" />
                             <TextBlock Grid.Column="3" Text="{x:Bind Preview, Mode=OneWay}" FontSize="13"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1"
-                                       Visibility="{x:Bind helpers:Ui.Collapsed(IsTyping), Mode=OneWay}" />
+                                       Visibility="{x:Bind helpers:Ui.Collapsed(PreviewHidden), Mode=OneWay}" />
                             <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="{x:Bind TypingText, Mode=OneWay}" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" MaxLines="1"
                                        Visibility="{x:Bind helpers:Ui.Visible(IsTyping), Mode=OneWay}" />
+                            <!-- Unsent text from when you last had this chat open, like WhatsApp. -->
+                            <TextBlock Grid.Column="0" Grid.ColumnSpan="4" FontSize="13" TextTrimming="CharacterEllipsis" MaxLines="1"
+                                       Visibility="{x:Bind ShowDraft, Mode=OneWay}">
+                                <Run Text="Draft:" FontWeight="SemiBold" Foreground="{ThemeResource ChatAccentTextBrush}" />
+                                <Run Text="{x:Bind DraftLine, Mode=OneWay}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </TextBlock>
                         </Grid>
                     </StackPanel>
 
@@ -1810,7 +1847,7 @@
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Spacing="12" Padding="10,0,0,0" VerticalAlignment="Center">
                         <Button Style="{StaticResource IconButtonStyle}" AutomationProperties.Name="Close" Click="InfoClose_Click">
-                            <FontIcon Glyph="&#xE711;" FontSize="14" />
+                            <FontIcon x:Name="InfoCloseIcon" Glyph="&#xE711;" FontSize="14" />
                         </Button>
                         <TextBlock x:Name="InfoTitle" Text="Contact info" FontSize="16" VerticalAlignment="Center" />
                     </StackPanel>
@@ -1841,6 +1878,23 @@
                     <ScrollViewer x:Name="MessageInfoView" Grid.Row="1" Visibility="Collapsed">
                         <StackPanel x:Name="MessageInfoRows" Padding="0,0,0,16" />
                     </ScrollViewer>
+
+                    <!-- Media, links and docs (MainWindow.Gallery.cs) -->
+                    <Grid x:Name="GalleryView" Grid.Row="1" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <SelectorBar x:Name="GalleryTabs" Margin="8,0,8,4" SelectionChanged="GalleryTabs_SelectionChanged">
+                            <SelectorBarItem Text="Media" IsSelected="True" />
+                            <SelectorBarItem Text="Docs" />
+                            <SelectorBarItem Text="Links" />
+                        </SelectorBar>
+                        <ScrollViewer x:Name="GalleryScroll" Grid.Row="1">
+                            <StackPanel x:Name="GalleryContent" Padding="12,4,12,16" />
+                        </ScrollViewer>
+                        <ProgressRing x:Name="GalleryLoading" Grid.Row="1" Width="32" Height="32" IsActive="False" />
+                    </Grid>
 
                     <!-- Search messages (MainWindow.Search.cs) -->
                     <Grid x:Name="SearchView" Grid.Row="1" Visibility="Collapsed">

@@ -525,6 +525,47 @@ impl Store {
     }
 
     /// Starred messages across all chats, newest first.
+    /// One chat's messages matching `condition` (SQL over the messages table), newest first.
+    fn chat_messages_where(&self, chat_id: &str, condition: &str, limit: u32) -> Vec<MessageDto> {
+        let sql = format!(
+            "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status
+             FROM messages WHERE chat_id = ?1 AND ({condition}) ORDER BY ts DESC LIMIT {limit}"
+        );
+        let Ok(mut stmt) = self.db.prepare(&sql) else {
+            return Vec::new();
+        };
+        let rows: Vec<StoredMessage> = stmt
+            .query_map([chat_id], |r| {
+                Ok(StoredMessage {
+                    id: r.get(0)?,
+                    from_me: r.get(1)?,
+                    sender: r.get(2)?,
+                    push_name: r.get(3)?,
+                    ts: r.get(4)?,
+                    kind: r.get(5)?,
+                    text: r.get(6)?,
+                    file_name: r.get(7)?,
+                    status: r.get(8)?,
+                })
+            })
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+        rows.into_iter().map(|m| self.to_dto(chat_id, m)).collect()
+    }
+
+    /// Media, links and docs: (photos/videos/GIFs, documents, messages with links).
+    pub fn chat_media(&self, chat_id: &str) -> (Vec<MessageDto>, Vec<MessageDto>, Vec<MessageDto>) {
+        (
+            self.chat_messages_where(chat_id, "kind IN ('image', 'video', 'gif')", 1000),
+            self.chat_messages_where(chat_id, "kind = 'document'", 500),
+            self.chat_messages_where(
+                chat_id,
+                "kind != 'deleted' AND (text LIKE '%http://%' OR text LIKE '%https://%' OR text LIKE '%www.%')",
+                500,
+            ),
+        )
+    }
+
     pub fn starred(&self) -> Vec<StarredDto> {
         let Ok(mut stmt) = self.db.prepare(
             "SELECT chat_id, id, from_me, sender, push_name, ts, kind, text, file_name, status

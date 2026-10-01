@@ -59,6 +59,7 @@ public sealed partial class MainViewModel : Observable
         core.AvatarReceived += OnAvatar;
         core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
+        core.ChatMediaReceived += OnChatMedia;
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) { m.IsUploading = false; m.Delivery = Delivery.Failed; } };
         core.ReceiptReceived += OnReceipt;
@@ -74,7 +75,8 @@ public sealed partial class MainViewModel : Observable
     // ───────────── Attachments ─────────────
 
     private Message? Find(string chatId, string messageId) =>
-        _byId.TryGetValue(chatId, out var chat) ? Everything(chat).FirstOrDefault(m => m.Id == messageId) : null;
+        (_byId.TryGetValue(chatId, out var chat) ? Everything(chat).FirstOrDefault(m => m.Id == messageId) : null)
+        ?? _gallery.GetValueOrDefault((chatId, messageId));
 
     /// <summary>A chat's messages with albums opened up into their items.</summary>
     public static IEnumerable<Message> Everything(Chat chat) =>
@@ -325,6 +327,7 @@ public sealed partial class MainViewModel : Observable
         {
             if (value == _selectedChat) return;
             if (_isSelecting) EndSelect();   // selections belong to the chat they were made in
+            StopTyping();   // "typing…" ends in the chat you leave
             Set(ref _selectedChat, value);
             CancelReply();   // a quote belongs to its chat
             if (value is not null) Open(value);
@@ -856,6 +859,9 @@ public sealed partial class MainViewModel : Observable
                 if (m.Timestamp != default && m.Kind != MessageKind.DateDivider) m.Time = Format.Clock(m.Timestamp);
         }
     }
+
+    /// <summary>Still in the list (not deleted since): back/forward skip ones that are gone.</summary>
+    public bool Exists(Chat chat) => _allChats.Contains(chat);
 
     /// <summary>The chat a message is in (the voice note still playing after you've left it).</summary>
     public Chat? ChatOf(Message message) => _allChats.FirstOrDefault(c => c.Messages.Contains(message));

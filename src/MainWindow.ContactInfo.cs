@@ -31,10 +31,13 @@ public sealed partial class MainWindow
         Track(chat);
         ContactInfoView.Visibility = Visibility.Visible;
         NewContactView.Visibility = Visibility.Collapsed;
+        GalleryView.Visibility = Visibility.Collapsed;
+        InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
         InfoTitle.Text = chat.IsGroup ? "Group info" : "Contact info";
         RebuildInfo();
+        if (_galleryData?.Chat != chat) ViewModel.LoadChatMedia(chat);   // the count and the strip
         InfoPanel.Visibility = Visibility.Visible;
         PlaceInfoPanel();
         ScrollInfoToTop();
@@ -72,8 +75,9 @@ public sealed partial class MainWindow
 
     private void InfoClose_Click(object sender, RoutedEventArgs e)
     {
-        // Leaving New contact goes back to Contact info when that's where it came from.
+        // Leaving New contact or Media, links and docs goes back to Contact info when that's where it came from.
         if (NewContactView.Visibility == Visibility.Visible && _newContactFromInfo) OpenInfo();
+        else if (GalleryView.Visibility == Visibility.Visible) OpenInfo();
         else CloseInfo();
     }
 
@@ -132,7 +136,10 @@ public sealed partial class MainWindow
 
         InfoRows.Children.Clear();
         InfoRows.Children.Add(Divider());
-        InfoRows.Children.Add(Row(Glyphs.Media, "Media, links and docs", trailing: ViewModel.MediaCount(chat).ToString()));
+        var gallery = _galleryData?.Chat == chat ? _galleryData : null;
+        InfoRows.Children.Add(Row(Glyphs.Media, "Media, links and docs", trailing: gallery?.Count.ToString() ?? ViewModel.MediaCount(chat).ToString(),
+                                  action: OpenGallery));
+        if (gallery is { Media.Count: > 0 }) InfoRows.Children.Add(GalleryStrip(gallery));
         InfoRows.Children.Add(Divider());
         InfoRows.Children.Add(Row(Glyphs.Star, "Starred messages", action: () => Nav.SelectedItem = Nav.FooterMenuItems[0]));
         InfoRows.Children.Add(Row(chat.IsMuted ? Glyphs.RingerSilent : Glyphs.Ringer, "Notification settings",
@@ -278,6 +285,8 @@ public sealed partial class MainWindow
         InfoTitle.Text = "New contact";
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Visible;
+        GalleryView.Visibility = Visibility.Collapsed;
+        InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Visible;

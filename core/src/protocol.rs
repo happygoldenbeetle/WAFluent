@@ -70,6 +70,9 @@ pub enum Event {
     ChatRemoved { chat_id: String },
     /// Reply to `loadStarred`, newest first.
     Starred { items: Vec<StarredDto> },
+    /// Reply to `loadChatMedia`, each newest first: photos, videos and GIFs; documents;
+    /// messages with links.
+    ChatMedia { chat_id: String, media: Vec<MessageDto>, docs: Vec<MessageDto>, links: Vec<MessageDto> },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -338,6 +341,8 @@ pub enum Command {
     /// Report a message to WhatsApp as spam.
     Report { chat_id: String, message_id: String },
     LoadStarred,
+    /// A chat's Media, links and docs (contact info); answered by `chatMedia`.
+    LoadChatMedia { chat_id: String },
     /// Pin or unpin a chat. Synced with the phone (WhatsApp allows three pins).
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.

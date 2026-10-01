@@ -70,6 +70,9 @@ public sealed partial class MainWindow
         Messages.ElementPrepared += Messages_ElementPrepared;
         SetupMemory();
         SetupMiniPlayer();
+        SetupGallery();
+        SetupDrafts();
+        SetupNavigation();
         SetupTypingBubbleMotion();
     }
 

@@ -319,6 +319,8 @@ public sealed class Chat : Observable
             if (!Set(ref _typing, value)) return;
             Raise(nameof(IsTyping));
             Raise(nameof(HeaderStatus));
+            Raise(nameof(PreviewHidden));
+            Raise(nameof(ShowDraft));
         }
     }
 
@@ -327,6 +329,28 @@ public sealed class Chat : Observable
         get => _typing.Length > 0;
         init => _typing = value ? "typing…" : "";
     }
+
+    private string _draft = "";
+
+    /// <summary>Text left unsent in the composer when you opened another chat (cleared when you come back).</summary>
+    public string Draft
+    {
+        get => _draft;
+        set
+        {
+            if (!Set(ref _draft, value)) return;
+            Raise(nameof(HasDraft));
+            Raise(nameof(DraftLine));
+            Raise(nameof(PreviewHidden));
+            Raise(nameof(ShowDraft));
+        }
+    }
+
+    public bool HasDraft => _draft.Trim().Length > 0;
+    public string DraftLine => _draft.Trim().ReplaceLineEndings(" ");
+    /// <summary>The chat list's last-message line gives way to "typing…" or "Draft: …".</summary>
+    public bool PreviewHidden => IsTyping || HasDraft;
+    public bool ShowDraft => HasDraft && !IsTyping;
 
     /// <summary>Under the name in the chat header: typing beats online / last seen.</summary>
     public string HeaderStatus => IsTyping ? _typing : _status;

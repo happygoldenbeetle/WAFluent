@@ -27,6 +27,8 @@ public sealed partial class MainWindow
         WireSearch();
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Collapsed;
+        GalleryView.Visibility = Visibility.Collapsed;
+        InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Visible;
         MessageInfoView.Visibility = Visibility.Collapsed;
         InfoTitle.Text = "Search messages";

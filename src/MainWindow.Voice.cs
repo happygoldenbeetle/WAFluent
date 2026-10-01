@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
+using WhatsAppNative.Models;
 using WhatsAppNative.Services;
 
 namespace WhatsAppNative;
@@ -18,6 +19,8 @@ public sealed partial class MainWindow
     private VoiceRecorder? _recorder;
     private DispatcherTimer? _recordingTimer;
     private bool _recordingWired;
+    private Chat? _recordingChat;
+    private DateTime _recordingPresenceAt;
 
     private async void Mic_Click(object sender, RoutedEventArgs e)
     {
@@ -40,6 +43,8 @@ public sealed partial class MainWindow
             return;
         }
         _recorder = recorder;
+        _recordingChat = ViewModel.SelectedChat;
+        SendRecordingPresence(true);
         AudioPlayback.Stop();   // don't record a playing voice note
         RecordingTime.Text = "0:00";
         RecordingWave.Clear();
@@ -61,6 +66,7 @@ public sealed partial class MainWindow
             RecordingTime.Text = $"{(int)t.TotalMinutes}:{t.Seconds:00}";
             RecordingDot.Opacity = r.IsPaused || DateTime.Now.Millisecond < 500 ? 1 : 0.35;   // blinks while recording
             if (!r.IsPaused) RecordingWave.Push(r.Level);
+            if (!r.IsPaused && DateTime.Now - _recordingPresenceAt > TimeSpan.FromSeconds(10)) SendRecordingPresence(true);
             if (t >= MaxRecording) _ = FinishRecordingAsync(send: true);
         };
         RecordingBar.KeyDown += (_, e) =>
@@ -78,8 +84,17 @@ public sealed partial class MainWindow
     {
         if (_recorder is not { } r) return;
         r.TogglePause();
+        SendRecordingPresence(!r.IsPaused);
         RecordingPauseIcon.Glyph = r.IsPaused ? "\uE720" : "\uE769";   // mic to carry on, pause to stop for a moment
         ToolTipService.SetToolTip(RecordingPause, r.IsPaused ? "Resume" : "Pause");
+    }
+
+    /// <summary>"recording audio…" in the chat you're recording for (even after you've switched away).</summary>
+    private void SendRecordingPresence(bool recording)
+    {
+        if (_recordingChat is not { } chat) return;
+        _recordingPresenceAt = recording ? DateTime.Now : default;
+        ViewModel.SetRecording(chat, recording);
     }
 
     private void RecordingSend_Click(object sender, RoutedEventArgs e) => _ = FinishRecordingAsync(send: true);
@@ -90,6 +105,8 @@ public sealed partial class MainWindow
     {
         if (_recorder is not { } recorder) return;
         _recorder = null;
+        SendRecordingPresence(false);
+        _recordingChat = null;
         _recordingTimer?.Stop();
         RecordingBar.Visibility = Visibility.Collapsed;
         ComposerBox.Focus(FocusState.Programmatic);

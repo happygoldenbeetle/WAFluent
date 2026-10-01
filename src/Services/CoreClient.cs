@@ -60,7 +60,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, IReadOnlyList<MessageDto>, bool>? OlderMessagesReceived;   // chat, messages, complete
     public event Action<string, string, IReadOnlyList<MessageDto>, long?>? SearchResults;  // chat, query, results, oldest time
     public event Action<string, string?, long>? FoundMessage;
-    public event Action<string, string, IReadOnlyList<ReceiptDto>>? MessageInfoReceived;   // chat, message, receipts
+    public event Action<string, string, IReadOnlyList<ReceiptDto>>? MessageInfoReceived;
+    public event Action<string, IReadOnlyList<MessageDto>, IReadOnlyList<MessageDto>, IReadOnlyList<MessageDto>>? ChatMediaReceived;   // chat, media, docs, links   // chat, message, receipts
     public event Action<string, IReadOnlyList<MemberDto>>? GroupMembersReceived;            // group, members (not you)                // chat, message (none: nothing there), its time
     public event Action<string, string?>? AvatarReceived;            // chat id ("self" = you), JPEG path or null
     public event Action<string, string, string>? MediaReceived;      // chat, message, file path
@@ -235,6 +236,9 @@ public sealed class CoreClient : IDisposable
 
     public void LoadStarred() => Send(new { cmd = "loadStarred" });
 
+    /// <summary>A chat's Media, links and docs; answered by <see cref="ChatMediaReceived"/>.</summary>
+    public void LoadChatMedia(string chatId) => Send(new { cmd = "loadChatMedia", chatId });
+
     public void Logout() => Send(new { cmd = "logout" });
 
     private void Send(object command)
@@ -365,6 +369,12 @@ public sealed class CoreClient : IDisposable
             case "chatRemoved":
                 var goneChat = root.GetProperty("chatId").GetString() ?? "";
                 Post(() => ChatRemoved?.Invoke(goneChat));
+                break;
+            case "chatMedia":
+                var galleryChat = root.GetProperty("chatId").GetString() ?? "";
+                Func<string, List<MessageDto>> list = name => root.GetProperty(name).Deserialize<List<MessageDto>>(Json) ?? [];
+                var (galleryMedia, galleryDocs, galleryLinks) = (list("media"), list("docs"), list("links"));
+                Post(() => ChatMediaReceived?.Invoke(galleryChat, galleryMedia, galleryDocs, galleryLinks));
                 break;
             case "starred":
                 var items = root.GetProperty("items").Deserialize<List<StarredDto>>(Json) ?? [];

@@ -63,6 +63,16 @@ public static class Ui
     public static ImageSource? Image(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 640 };
 
+    /// <summary>Media, links and docs: a photo's tile (videos show their preview only).</summary>
+    public static ImageSource? GalleryImage(string? path, Models.MessageKind kind) =>
+        kind == Models.MessageKind.Image && path is not null && File.Exists(path) ? new BitmapImage(new Uri(path)) { DecodePixelWidth = 240 } : null;
+
+    public static Visibility IsVideoTile(Models.MessageKind kind) => kind == Models.MessageKind.Video ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>A video tile's corner: a camera and its length, or GIF.</summary>
+    public static string VideoTileGlyph(bool gif) => gif ? "" : "\uE714";
+    public static string VideoTileText(bool gif, int seconds) => gif ? "GIF" : $"{seconds / 60}:{seconds % 60:00}";
+
     /// <summary>A sticker: shown at 150 px, so decoded at 320 (sharp at 200 % scaling) rather than 640.</summary>
     public static ImageSource? Sticker(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 320 };

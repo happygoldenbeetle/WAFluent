@@ -327,6 +327,29 @@ public sealed partial class MainWindow : Window
                 foreach (var row in _contacts.Skip(1).Take(2)) row.Picked = true;
                 UpdatePickedContacts();
             };
+        // WAFLUENT_SELFTEST=drafts | back: types a draft in the open chat and opens another ("Draft: …" in the list);
+        // "back" then goes back (the mouse's back button), and the draft is in the composer again.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "drafts" or "back")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                ComposerBox.Text = "See you at 6, can you bring the";
+                await Task.Delay(300);
+                ViewModel.SelectedChat = ViewModel.Chats.First(c => c.Name == "Baking Club");
+                if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") != "back") return;
+                await Task.Delay(800);
+                GoBack();
+            };
+        // WAFLUENT_SELFTEST=gallery | gallery-docs | gallery-links: Contact info › Media, links and docs on that tab.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is { } galleryTest && galleryTest.StartsWith("gallery"))
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                OpenInfo();
+                await Task.Delay(500);
+                OpenGallery();
+                GalleryTabs.Items[galleryTest switch { "gallery-docs" => 1, "gallery-links" => 2, _ => 0 }].IsSelected = true;
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>
@@ -592,7 +615,9 @@ public sealed partial class MainWindow : Window
         UpdateMentions();
         UpdateLinkCard();
         var hasText = ComposerBox.Text.Trim().Length > 0;
-        ViewModel.ComposerEdited(hasText);
+        // A draft put back on opening its chat isn't typing.
+        if (_restoredDraft is { } restored && ComposerBox.Text == restored) _restoredDraft = null;
+        else ViewModel.ComposerEdited(hasText);
         SendButton.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
         MicButton.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
     }

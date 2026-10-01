@@ -440,6 +440,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let items = ctx.db().starred();
             ctx.send(Out::Starred { items });
         }
+        Command::LoadChatMedia { chat_id } => {
+            let (media, docs, links) = ctx.db().chat_media(&chat_id);
+            ctx.send(Out::ChatMedia { chat_id, media, docs, links });
+        }
         Command::SetPinned { chat_id, pinned } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { set_pinned(&ctx, &client, chat_id, pinned).await });
