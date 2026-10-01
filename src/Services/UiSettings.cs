@@ -17,6 +17,13 @@ public sealed class UiSettings
     /// <summary>The chat list was dragged shut (or double-clicked closed).</summary>
     public bool ChatListCollapsed { get; set; }
 
+    /// <summary>The window's last size and place (physical pixels, restored bounds) and whether it was maximized.</summary>
+    public int WindowX { get; set; }
+    public int WindowY { get; set; }
+    public int WindowWidth { get; set; }
+    public int WindowHeight { get; set; }
+    public bool WindowMaximized { get; set; }
+
     /// <summary>System (follows Windows), Light or Dark.</summary>
     public string Theme { get; set; } = "System";
 

@@ -228,7 +228,8 @@ public sealed partial class MainWindow
     {
         if (ViewModel.SelectedChat is not { HasPinnedMessage: true } chat) return;
         var pin = chat.Pins[chat.PinIndex];
-        ViewModel.Reveal(pin.Id, pin.Ts);
+        if (pin.Ts > 0) ViewModel.Reveal(pin.Id, pin.Ts);
+        else ShowToast(false, "That message isn't on this PC. It's on your phone.");
         chat.PinIndex++;
     }
 

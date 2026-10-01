@@ -52,7 +52,6 @@ public sealed partial class MainWindow
             _searchDebounce.Stop();
             RunSearch();
         };
-        ViewModel.RevealMessage += ScrollToMessage;
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Another chat: its own search.

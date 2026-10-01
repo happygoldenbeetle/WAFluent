@@ -74,6 +74,8 @@ public sealed partial class MainWindow
         SetupDrafts();
         SetupNavigation();
         SetupPins();
+        // Going to a message (a pin, a quote, Starred, search) scrolls it into view once it's loaded.
+        ViewModel.RevealMessage += ScrollToMessage;
         SetupTypingBubbleMotion();
     }
 

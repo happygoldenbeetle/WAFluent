@@ -458,7 +458,7 @@ impl Store {
         }
     }
 
-    /// Pins a message until `expires_at`; a chat keeps its three newest pins, like WhatsApp.
+    /// Pins a message until `expires_at`; a chat keeps its four newest pins, like WhatsApp.
     pub fn add_pin(&self, chat_id: &str, message_id: &str, pinned_at: i64, expires_at: i64) {
         let _ = self.db.execute(
             "INSERT OR REPLACE INTO pins(chat_id, message_id, pinned_at, expires_at) VALUES(?1, ?2, ?3, ?4)",
@@ -466,7 +466,7 @@ impl Store {
         );
         let _ = self.db.execute(
             "DELETE FROM pins WHERE chat_id = ?1 AND message_id NOT IN
-                 (SELECT message_id FROM pins WHERE chat_id = ?1 ORDER BY pinned_at DESC LIMIT 3)",
+                 (SELECT message_id FROM pins WHERE chat_id = ?1 ORDER BY pinned_at DESC LIMIT 4)",
             [chat_id],
         );
     }
@@ -479,7 +479,7 @@ impl Store {
     pub fn pins(&self, chat_id: &str) -> Vec<PinnedDto> {
         let Ok(mut stmt) = self
             .db
-            .prepare("SELECT message_id, expires_at FROM pins WHERE chat_id = ?1 AND expires_at > ?2 ORDER BY pinned_at DESC LIMIT 3")
+            .prepare("SELECT message_id, expires_at FROM pins WHERE chat_id = ?1 AND expires_at > ?2 ORDER BY pinned_at DESC LIMIT 4")
         else {
             return Vec::new();
         };

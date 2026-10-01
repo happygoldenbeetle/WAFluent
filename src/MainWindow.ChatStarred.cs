@@ -9,7 +9,8 @@ namespace WhatsAppNative;
 
 /// <summary>
 /// Contact info › Starred messages, like WhatsApp: this chat's starred messages only (the rail's
-/// Starred view has every chat's), newest first, each as a bubble under who sent it and when,
+/// Starred view has every chat's), newest first, each as a bubble (yours green, theirs grey, all
+/// down the left) under who sent it and when,
 /// with a search box. Clicking one goes to it in the chat (loading back to it); right-click
 /// unstars it.
 /// </summary>
@@ -78,7 +79,6 @@ public sealed partial class MainWindow
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
-            HorizontalAlignment = m.IsOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left,
         });
         var meta = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right };
         meta.Children.Add(new FontIcon { Glyph = "\uE735", FontSize = 10, Foreground = Themed.Brush("MetaTextBrush") });
@@ -92,7 +92,7 @@ public sealed partial class MainWindow
             Padding = new Thickness(10, 7, 10, 6),
             CornerRadius = new CornerRadius(10),
             Background = Ui.BubbleBrush(m.IsOutgoing),
-            HorizontalAlignment = m.IsOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            HorizontalAlignment = HorizontalAlignment.Left,   // one column; yours are green
             MaxWidth = 300,
         });
 

@@ -383,7 +383,7 @@ public sealed class Chat : Observable
     public string PhoneCode { get; set; } = "";
     public string PhoneNational { get; set; } = "";
 
-    /// <summary>Pinned messages (up to three, newest pin first), shown one at a time in the banner.</summary>
+    /// <summary>Pinned messages (up to four, newest pin first), shown one at a time in the banner.</summary>
     public IReadOnlyList<Services.PinnedDto> Pins
     {
         get => _pins;

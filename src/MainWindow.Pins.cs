@@ -9,8 +9,8 @@ using WhatsAppNative.Models;
 namespace WhatsAppNative;
 
 /// <summary>
-/// Pinned messages, like WhatsApp: up to three per chat, each for 24 hours, 7 days or 30 days
-/// (picked when pinning; a fourth replaces the oldest). The banner under the header shows one
+/// Pinned messages, like WhatsApp: up to four per chat, each for 24 hours, 7 days or 30 days
+/// (picked when pinning; a fifth replaces the oldest, after asking). The banner under the header shows one
 /// at a time with a bar per pin on its left, the one shown lit; clicking it goes to that
 /// message (loading back to it) and moves on to the next. Right-click: go to it, or unpin.
 /// Pins and unpins sync with the phone and everyone in the chat; they run out by themselves.
@@ -47,7 +47,6 @@ public sealed partial class MainWindow
         PinSegments.Children.Clear();
         if (_pinsChat is not { HasPinnedMessage: true } chat) return;
         var count = chat.Pins.Count;
-        PinnedTitle.Text = count > 1 ? $"Pinned message {chat.PinIndex + 1} of {count}" : "Pinned message";
         if (count < 2) return;   // one pin needs no bars
         var height = (34 - (count - 1) * 2) / (double)count;
         for (var i = 0; i < count; i++)
@@ -90,14 +89,6 @@ public sealed partial class MainWindow
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(new TextBlock { Text = "You can unpin at any time.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(choices);
-        if (ViewModel.SelectedChat is { Pins.Count: >= 3 })
-            content.Children.Add(new TextBlock
-            {
-                Text = "This chat already has three pins; this one will replace the oldest.",
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 13,
-                Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
-            });
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
@@ -108,6 +99,20 @@ public sealed partial class MainWindow
             DefaultButton = ContentDialogButton.Primary,
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        // A fifth pin replaces the oldest: WhatsApp asks first.
+        if (ViewModel.SelectedChat is { Pins.Count: >= 4 })
+        {
+            var replace = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = "Replace oldest pin?",
+                Content = new TextBlock { Text = "Your new pin will replace the oldest one.", TextWrapping = TextWrapping.Wrap },
+                PrimaryButtonText = "Continue",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            if (await replace.ShowAsync() != ContentDialogResult.Primary) return;
+        }
         int[] seconds = [86_400, 604_800, 2_592_000];
         ViewModel.PinMessage(m, true, seconds[Math.Max(0, choices.SelectedIndex)]);
     }

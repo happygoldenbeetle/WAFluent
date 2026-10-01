@@ -360,14 +360,14 @@ public sealed partial class MainViewModel
 
     /// <summary>
     /// Pin for <paramref name="seconds"/> (24 hours, 7 days or 30 days), or unpin. Shown at once;
-    /// a chat keeps three pins, so a fourth replaces the oldest, like WhatsApp.
+    /// a chat keeps four pins, so a fifth replaces the oldest, like WhatsApp.
     /// </summary>
     public void PinMessage(Message m, bool pin, int seconds = 604_800)
     {
         if (_selectedChat is not { } chat) return;
         var others = chat.Pins.Where(p => p.Id != m.Id);
         chat.Pins = pin
-            ? [new PinnedDto(m.Id, Format.QuotePreview(m), m.UnixTs, DateTimeOffset.Now.ToUnixTimeSeconds() + seconds), .. others.Take(2)]
+            ? [new PinnedDto(m.Id, Format.QuotePreview(m), m.UnixTs, DateTimeOffset.Now.ToUnixTimeSeconds() + seconds), .. others.Take(3)]
             : [.. others];
         if (pin) chat.PinIndex = 0;
         if (_core is not null && chat.Id.Length > 0) _core.PinMessage(chat.Id, m.Id, pin, seconds);

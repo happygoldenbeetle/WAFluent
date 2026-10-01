@@ -59,8 +59,8 @@ public sealed partial class MainWindow : Window
         WindowHelper.ApplyCaptionColors(this, Root.ActualTheme);
         Root.ActualThemeChanged += (_, _) => WindowHelper.ApplyCaptionColors(this, Root.ActualTheme);
 
-        WindowHelper.SizeAndCenter(this, 1100, 720);
         WindowHelper.SetMinimumSize(this, 760, 500);
+        RestoreWindowPlacement();
 
         // x:Bind fills the list on Loading, so the initial selection has to wait until then.
         ChatList.Loaded += (_, _) => ChatList.SelectedItem = ViewModel.SelectedChat;
@@ -444,6 +444,14 @@ public sealed partial class MainWindow : Window
                 OpenInfo();
                 await Task.Delay(300);
                 OpenChatStarred();
+            };
+        // WAFLUENT_SELFTEST=jump: goes to the open chat's first message (as a pin or a quote does).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "jump")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var first = ViewModel.SelectedChat!.Messages.First(m => m.Kind == MessageKind.Text);
+                ViewModel.Reveal(first.Id, first.UnixTs);
             };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")

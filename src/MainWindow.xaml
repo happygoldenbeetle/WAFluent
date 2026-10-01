@@ -1423,7 +1423,8 @@
                                                  Preview="{x:Bind ViewModel.ReplyingToPreview, Mode=OneWay}"
                                                  Glyph="{x:Bind ViewModel.ReplyingToGlyph, Mode=OneWay}"
                                                  Thumb="{x:Bind ViewModel.ReplyingToThumb, Mode=OneWay}"
-                                                 FromMe="{x:Bind ViewModel.ReplyingToFromMe, Mode=OneWay}" />
+                                                 FromMe="{x:Bind ViewModel.ReplyingToFromMe, Mode=OneWay}"
+                                                 Tapped="ComposerQuote_Tapped" ToolTipService.ToolTip="Go to message" />
                             <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Cancel reply (Esc)" AutomationProperties.Name="Cancel reply"
                                     Click="CancelReply_Click">

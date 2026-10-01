@@ -116,7 +116,7 @@ pub struct ChatDto {
     /// 1:1 chats: their number split for the New contact form.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<PhoneDto>,
-    /// Messages pinned in this chat (up to three, like WhatsApp), newest pin first.
+    /// Messages pinned in this chat (up to four, like WhatsApp), newest pin first.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub pinned_messages: Vec<PinnedDto>,
     /// Disappearing messages: seconds until new messages go (0 off; 86400, 604800, 7776000).

@@ -256,6 +256,12 @@ public sealed partial class MainWindow
         if (ViewModel.IsReplying) ComposerBox.Focus(FocusState.Programmatic);
     }
 
+    /// <summary>The message you're replying to, from the quote above the composer.</summary>
+    private void ComposerQuote_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (ViewModel.ReplyingTo is { } m) ViewModel.Reveal(m.Id, m.UnixTs);
+    }
+
     private void CancelReply_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.CancelReply();
@@ -271,16 +277,32 @@ public sealed partial class MainWindow
     }
 
     /// <summary>Scrolls a loaded message into the middle of the view and flashes it.</summary>
-    private void ScrollToMessage(string messageId)
+    /// <summary>
+    /// Scrolls a message to the middle and flashes it (a quote, a pin, a search result, Starred).
+    /// Rows above it that were never on screen only have estimated heights, so the first
+    /// scroll lands close; once they've been measured a second, exact one finishes the job.
+    /// </summary>
+    private async void ScrollToMessage(string messageId)
     {
         if (ViewModel.SelectedChat is not { } chat) return;
-        var index = chat.Messages.ToList().FindIndex(m => m.Id == messageId || m.AlbumItems?.Any(x => x.Id == messageId) == true);
+        int Find() => chat.Messages.ToList().FindIndex(m => m.Id == messageId || m.AlbumItems?.Any(x => x.Id == messageId) == true);
+        var index = Find();
         if (index < 0) return;
 
-        var target = Messages.GetOrCreateElement(index);
-        target.UpdateLayout();
-        target.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.5, AnimationDesired = true });
-        Flash(target);
+        UIElement? target = null;
+        for (var pass = 0; pass < 3; pass++)
+        {
+            target = Messages.GetOrCreateElement(index);
+            Messages.UpdateLayout();
+            if (MessagesScroller.Content is not UIElement content) return;
+            var top = target.TransformToVisual(content).TransformPoint(default).Y;
+            var offset = Math.Max(0, top - (MessagesScroller.ViewportHeight - target.ActualSize.Y) / 2);
+            if (pass > 0 && Math.Abs(offset - MessagesScroller.VerticalOffset) < 4) break;   // there
+            MessagesScroller.ChangeView(null, offset, null, disableAnimation: pass > 0);
+            await Task.Delay(pass == 0 ? 400 : 120);
+            if (ViewModel.SelectedChat != chat || (index = Find()) < 0) return;   // gone elsewhere meanwhile
+        }
+        if (target is not null) Flash(target);
     }
 
     private static void Flash(UIElement element)
