@@ -350,6 +350,25 @@ public sealed partial class MainWindow : Window
                 OpenGallery();
                 GalleryTabs.Items[galleryTest switch { "gallery-docs" => 1, "gallery-links" => 2, _ => 0 }].IsSelected = true;
             };
+        // WAFLUENT_SELFTEST=recorder: "records" WAFLUENT_TEST_WAV through the recorder's audio graph (not the microphone)
+        // for 2 s; the recorded length and level go to %TEMP%\wafluent-selftest.txt.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "recorder")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2000);
+                VoiceRecorder.TestInput = Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV");
+                var recorder = new VoiceRecorder();
+                string result;
+                try
+                {
+                    await recorder.StartAsync();
+                    await Task.Delay(2000);
+                    result = $"elapsed={recorder.Elapsed.TotalSeconds:0.00} level={recorder.Level:0.000}";
+                    await recorder.CancelAsync();
+                }
+                catch (Exception ex) { result = "failed: " + ex; }
+                File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), result);
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>
@@ -558,7 +577,7 @@ public sealed partial class MainWindow : Window
     private void ChatList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Filtering can clear the ListView selection; keep the open conversation in that case.
-        if (ChatList.SelectedItem is not Chat chat || chat == ViewModel.SelectedChat) return;
+        if (_syncingList || ChatList.SelectedItem is not Chat chat || chat == ViewModel.SelectedChat) return;
         ViewModel.SelectedChat = chat;
         ScrollToStart();
     }

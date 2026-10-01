@@ -15,7 +15,9 @@ namespace WhatsAppNative;
 /// Swipe to reply: drag any message to the right with the mouse (or pen/touch). The bubble
 /// follows the pointer, a reply arrow grows in behind it, and letting go past the threshold
 /// quotes the message in the composer. Then the bubble springs back.
-/// Drags that start leftwards or vertically are left alone, so text selection still works.
+/// Your own messages also swipe left, like WhatsApp on the phone: an ⓘ comes in from the right
+/// and letting go past the threshold opens Message info.
+/// Drags that start vertically are left alone, as are leftward ones on others' messages.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -31,6 +33,8 @@ public sealed partial class MainWindow
     private bool _swiping;
     private bool _swipeArmed;                  // past the trigger (the arrow has "popped")
     private double _swipeRowLeft;
+    private double _swipeRowRight;
+    private bool _swipeLeft;                   // towards Message info (your messages)
 
     private void SetupSwipe()
     {
@@ -87,17 +91,19 @@ public sealed partial class MainWindow
         if (!_swiping)
         {
             if (dx > SwipeStart && dx > 2 * Math.Abs(dy))
-                BeginSwipe(e.Pointer);
+                BeginSwipe(e.Pointer, left: false);
+            else if (dx < -SwipeStart && -dx > 2 * Math.Abs(dy) && _swipeMessage is { IsOutgoing: true, IsDeleted: false })
+                BeginSwipe(e.Pointer, left: true);
             else if (Math.Abs(dy) > SwipeStart || dx < -SwipeStart)
                 _swipeRow = null;   // a selection drag or a scroll, not ours
             if (!_swiping) return;
         }
 
         e.Handled = true;
-        var offset = Rubber(dx - SwipeStart);
+        var offset = _swipeLeft ? -Rubber(-dx - SwipeStart) : Rubber(dx - SwipeStart);
         SetSwipeOffset(offset);
 
-        var armed = offset >= SwipeTrigger;
+        var armed = Math.Abs(offset) >= SwipeTrigger;
         if (armed != _swipeArmed)
         {
             _swipeArmed = armed;
@@ -118,10 +124,12 @@ public sealed partial class MainWindow
         if (_swiping && e.Pointer.PointerId == _swipePointer) EndSwipe();
     }
 
-    private void BeginSwipe(Pointer pointer)
+    private void BeginSwipe(Pointer pointer, bool left)
     {
         if (_swipeRow is null) return;
         _swiping = true;
+        _swipeLeft = left;
+        SwipeHintIcon.Glyph = left ? Helpers.Glyphs.Info : "\uE97A";
         Messages.CapturePointer(pointer);   // takes the drag away from text selection
         ClearSelection(_swipeRow);
 
@@ -132,6 +140,7 @@ public sealed partial class MainWindow
         var bubble = (_swipeRow as Panel)?.Children.OfType<StackPanel>().FirstOrDefault() ?? _swipeRow;
         var origin = bubble.TransformToVisual(SwipeLayer).TransformPoint(default);
         _swipeRowLeft = origin.X;
+        _swipeRowRight = origin.X + bubble.ActualWidth;
         Canvas.SetTop(ReplyHint, origin.Y + (_swipeRow.ActualHeight - HintSize) / 2);
         Canvas.SetLeft(ReplyHint, 0);
         var hint = ElementCompositionPreview.GetElementVisual(ReplyHint);
@@ -164,7 +173,11 @@ public sealed partial class MainWindow
         fade.Duration = TimeSpan.FromMilliseconds(150);
         hint.StartAnimation("Opacity", fade);
 
-        if (reply && message is not null) StartReply(message);
+        if (reply && message is not null)
+        {
+            if (_swipeLeft) OpenMessageInfo(message);
+            else StartReply(message);
+        }
     }
 
     /// <summary>Moves the bubble and brings the arrow in behind it (fading and growing up to the trigger).</summary>
@@ -173,10 +186,13 @@ public sealed partial class MainWindow
         if (_swipeRow is null) return;
         ElementCompositionPreview.GetElementVisual(_swipeRow).Properties.InsertVector3("Translation", new Vector3((float)offset, 0, 0));
 
-        var progress = (float)Math.Clamp(offset / SwipeTrigger, 0, 1);
+        var progress = (float)Math.Clamp(Math.Abs(offset) / SwipeTrigger, 0, 1);
         var hint = ElementCompositionPreview.GetElementVisual(ReplyHint);
-        // Trails the bubble's left edge by 8 px, but never leaves the conversation on the left.
-        var x = Math.Max(0, _swipeRowLeft + offset - HintSize - 8);
+        // Trails the bubble's edge by 8 px (its left going right, its right going left),
+        // never leaving the conversation.
+        var x = _swipeLeft
+            ? Math.Min(SwipeLayer.ActualWidth - HintSize, _swipeRowRight + offset + 8)
+            : Math.Max(0, _swipeRowLeft + offset - HintSize - 8);
         Canvas.SetLeft(ReplyHint, x);
         hint.Opacity = progress;
         if (!_swipeArmed)

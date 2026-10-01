@@ -1303,7 +1303,7 @@
                                     <Border x:Name="ReplyHint" Width="32" Height="32" CornerRadius="16"
                                             Background="{ThemeResource ComposerBrush}"
                                             BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1">
-                                        <FontIcon Glyph="&#xE97A;" FontSize="14" />
+                                        <FontIcon x:Name="SwipeHintIcon" Glyph="&#xE97A;" FontSize="14" />
                                     </Border>
                                 </Canvas>
                             </Grid>

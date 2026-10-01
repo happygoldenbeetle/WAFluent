@@ -17,6 +17,8 @@ public sealed partial class MainWindow
     private readonly Stack<Chat> _forwardChats = new();
     private Chat? _navCurrent;
     private bool _navigating;
+    /// <summary>When a side button was last pressed: a quick second press isn't a double-click (react).</summary>
+    private DateTime _sideButtonAt;
 
     private void SetupNavigation()
     {
@@ -25,6 +27,10 @@ public sealed partial class MainWindow
         {
             if (e.PropertyName != nameof(ViewModel.SelectedChat)) return;
             var next = ViewModel.SelectedChat;
+            // The chat list's highlight follows the open chat however it was opened (back,
+            // forward, Starred, the mini player…). After it has opened: opening re-sorts the
+            // list (its unread count clears), and the highlight mustn't land mid-shuffle.
+            DispatcherQueue.TryEnqueue(SyncListSelection);
             if (!_navigating && _navCurrent is not null && next != _navCurrent)
             {
                 _backChats.Push(_navCurrent);
@@ -42,9 +48,23 @@ public sealed partial class MainWindow
         Root.KeyboardAccelerators.Add(forward);
     }
 
+    /// <summary>Set while the list's highlight is moved here, so it doesn't count as a click on that chat.</summary>
+    private bool _syncingList;
+
+    private void SyncListSelection()
+    {
+        var open = ViewModel.SelectedChat;
+        var listed = open is not null && ViewModel.Chats.Contains(open) ? open : null;
+        if (ChatList.SelectedItem == listed) return;
+        _syncingList = true;
+        try { ChatList.SelectedItem = listed; }
+        finally { _syncingList = false; }
+    }
+
     private void Navigation_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var buttons = e.GetCurrentPoint(Root).Properties;
+        if (buttons.IsXButton1Pressed || buttons.IsXButton2Pressed) _sideButtonAt = DateTime.Now;
         if (buttons.IsXButton1Pressed)
         {
             GoBack();
@@ -87,6 +107,7 @@ public sealed partial class MainWindow
         _navigating = true;
         try { ViewModel.SelectedChat = chat; }
         finally { _navigating = false; }
+        ScrollToStart();   // as when it's clicked in the list
     }
 
     /// <summary>Closes the topmost thing over the conversation; false when there's nothing to close.</summary>

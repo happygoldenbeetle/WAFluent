@@ -116,6 +116,7 @@ public sealed partial class MainWindow
     private void Messages_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (ViewModel.IsSelecting || Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
+        if (DateTime.Now - _sideButtonAt < TimeSpan.FromSeconds(1)) return;   // back/forward pressed twice, not a double-click
         if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
         if (IsInside<Button>(e.OriginalSource as DependencyObject, row)) return;   // play button, file buttons...
         for (var d = e.OriginalSource as DependencyObject; d is not null && d != row; d = VisualTreeHelper.GetParent(d))

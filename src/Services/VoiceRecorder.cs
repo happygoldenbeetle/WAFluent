@@ -44,6 +44,14 @@ public sealed class VoiceRecorder : IAsyncDisposable
         var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Speech));
         if (created.Status != AudioGraphCreationStatus.Success) throw new InvalidOperationException($"audio: {created.Status}");
         var graph = created.Graph;
+        if (TestInput is { } file)
+        {
+            // Self-test: a WAV through the same graph instead of the microphone.
+            var source = await graph.CreateFileInputNodeAsync(await Windows.Storage.StorageFile.GetFileFromPathAsync(file));
+            if (source.Status != AudioFileNodeCreationStatus.Success) throw new InvalidOperationException($"file: {source.Status}");
+            Begin(graph, source.FileInputNode);
+            return;
+        }
         var input = await graph.CreateDeviceInputNodeAsync(MediaCategory.Speech);
         if (input.Status == AudioDeviceNodeCreationStatus.AccessDenied)
         {
@@ -55,15 +63,36 @@ public sealed class VoiceRecorder : IAsyncDisposable
             graph.Dispose();
             throw new InvalidOperationException($"microphone: {input.Status}");
         }
+        Begin(graph, input.DeviceInputNode);
+    }
+
+    /// <summary>The self-test's stand-in for the microphone.</summary>
+    internal static string? TestInput { get; set; }
+
+    private void Begin(AudioGraph graph, IAudioInputNode input)
+    {
         _graphRate = (int)graph.EncodingProperties.SampleRate;
         _channels = (int)Math.Max(1, graph.EncodingProperties.ChannelCount);
         _output = graph.CreateFrameOutputNode();
-        input.DeviceInputNode.AddOutgoingConnection(_output);
-        graph.QuantumStarted += (_, _) => Collect();
+        input.AddOutgoingConnection(_output);
+        graph.QuantumStarted += (_, _) =>
+        {
+            try
+            {
+                Collect();
+            }
+            catch (Exception ex)
+            {
+                if (!_collectFailed) Helpers.AppLog.Write("reading the microphone failed", ex);
+                _collectFailed = true;
+            }
+        };
         _graph = graph;
         IsPaused = false;
         graph.Start();
     }
+
+    private bool _collectFailed;
 
     /// <summary>Pauses or resumes (what's recorded so far is kept).</summary>
     public void TogglePause()
@@ -81,7 +110,10 @@ public sealed class VoiceRecorder : IAsyncDisposable
         if (_output is not { } output) return;
         using var frame = output.GetFrame();
         using var buffer = frame.LockBuffer(Windows.Media.AudioBufferAccessMode.Read);
-        var bytes = Windows.Storage.Streams.Buffer.CreateCopyFromMemoryBuffer(buffer).ToArray();
+        // The copy holds the samples but says it's empty: its length has to be set.
+        var copy = Windows.Storage.Streams.Buffer.CreateCopyFromMemoryBuffer(buffer);
+        copy.Length = buffer.Length;
+        var bytes = copy.ToArray();
         var floats = new float[bytes.Length / 4];
         Buffer.BlockCopy(bytes, 0, floats, 0, floats.Length * 4);
         var frames = floats.Length / _channels;
