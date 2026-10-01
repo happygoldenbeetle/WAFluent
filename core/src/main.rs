@@ -406,6 +406,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         }
         Command::SendTyping { chat_id, state } => {
             use whatsapp_rust::features::ChatStateType;
+            if ctx.db().is_me(&chat_id) {
+                return;   // nobody to tell in "Message yourself"
+            }
             let Ok(jid) = chat_id.parse::<Jid>() else { return };
             let state = match state.as_str() {
                 "typing" => ChatStateType::Composing,
@@ -854,9 +857,10 @@ fn favorite_sticker(ctx: &Ctx, m: whatsapp_rust::wafluent_hooks::StickerMutation
 }
 
 /// Favourite stickers were dropped before the library patch; pull the app state once more
-/// so the ones starred earlier arrive too. Later changes come as they happen.
+/// so the ones starred earlier arrive too. Later changes come as they happen. v3: every
+/// collection (the critical ones too), in case the phone keeps favourites in one of those.
 fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
-    const FLAG: &str = "favorite_stickers_synced_v2";
+    const FLAG: &str = "favorite_stickers_synced_v3";
     if ctx.db().flag(FLAG) {
         return;
     }
@@ -868,7 +872,13 @@ fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
         // After the chat settings resync, which touches two of these.
         tokio::time::sleep(Duration::from_secs(20)).await;
         let backend = client.persistence_manager().backend();
-        for name in [WAPatchName::Regular, WAPatchName::RegularLow, WAPatchName::RegularHigh] {
+        for name in [
+            WAPatchName::CriticalBlock,
+            WAPatchName::CriticalUnblockLow,
+            WAPatchName::Regular,
+            WAPatchName::RegularLow,
+            WAPatchName::RegularHigh,
+        ] {
             if let Err(e) = backend.set_version(name.as_str(), HashState::default()).await {
                 warn!("could not reset {}: {e}", name.as_str());
             }
@@ -960,6 +970,13 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         Event::LoggedOut(_) => forget_everything(ctx),
         Event::ChatPresence(update) => {
             use whatsapp_rust::wacore::types::presence::{ChatPresence, ChatPresenceMedia};
+            // Your own typing (in "Message yourself", or echoed from your other devices) isn't shown.
+            if update.source.is_from_me
+                || ctx.db().is_me(&update.source.sender.to_non_ad_string())
+                || ctx.db().is_me(&update.source.chat.to_non_ad_string())
+            {
+                return;
+            }
             let (chat_id, who) = {
                 let db = ctx.db();
                 let chat_id = db.canonical(&update.source.chat.to_non_ad_string());
