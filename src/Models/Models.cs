@@ -271,6 +271,14 @@ public sealed class Message : Observable
     public bool IsSelected { get => _isSelected; set => Set(ref _isSelected, value); }
     /// <summary>Select mode is on: every message shows its circle.</summary>
     public bool Selecting { get => _selecting; set => Set(ref _selecting, value); }
+    /// <summary>A notice about disappearing messages ("… turned on disappearing messages", "… updated the message timer").</summary>
+    public bool IsTimerNotice => Kind == MessageKind.System
+                                 && (Text.Contains("disappearing messages", StringComparison.Ordinal) || Text.Contains("message timer", StringComparison.Ordinal));
+    /// <summary>The timer in front of such a notice (Segoe Fluent's stopwatch, then a space).</summary>
+    public string NoticeIcon => IsTimerNotice ? "\uE916  " : "";
+    /// <summary>The link at its end, which opens Disappearing messages.</summary>
+    public string NoticeLink => IsTimerNotice ? " Change timer." : "";
+
     public bool ShowSender => !IsOutgoing && SenderName.Length > 0;
     /// <summary>Something above the content: the sender's name or "Forwarded".</summary>
     public bool HasHeader => ShowSender || IsForwarded;

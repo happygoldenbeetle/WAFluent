@@ -321,12 +321,14 @@ pub fn expiration(message: &wa::Message) -> u32 {
     context_info(message).and_then(|c| c.expiration).unwrap_or(0)
 }
 
-/// "X turned on disappearing messages…", as the phone words it.
-pub fn ephemeral_notice(who: &str, seconds: u32) -> String {
+/// "X turned on disappearing messages…", as the phone words it; "updated the message timer"
+/// when it was already on (`previous` > 0) and only the duration changed.
+pub fn ephemeral_notice(who: &str, seconds: u32, previous: u32) -> String {
     if seconds == 0 {
         return format!("{who} turned off disappearing messages.");
     }
-    format!("{who} turned on disappearing messages. New messages will disappear from this chat {} after they're sent.", duration_words(seconds))
+    let did = if previous > 0 { "updated the message timer" } else { "turned on disappearing messages" };
+    format!("{who} {did}. New messages will disappear from this chat {} after they're sent, except when kept.", duration_words(seconds))
 }
 
 pub fn duration_words(seconds: u32) -> String {

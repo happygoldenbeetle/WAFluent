@@ -286,6 +286,9 @@ pub async fn pin_message(ctx: &Ctx, client: &Arc<Client>, chat_id: String, messa
                 let now = store::unix_now();
                 if pin { db.add_pin(&chat_id, &message_id, now, now + secs) } else { db.remove_pin(&chat_id, &message_id) }
             }
+            if pin {
+                crate::add_notice(ctx, &chat_id, "You pinned a message".into(), store::unix_now());
+            }
             send_chat(ctx, &chat_id);
         }
         Err(e) => {

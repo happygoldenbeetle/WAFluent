@@ -298,10 +298,11 @@ fn rand_u32() -> u32 {
 
 /// The chat's disappearing-messages timer changed (here, on the phone, or by the other side).
 pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &str, ts: i64) {
+    let previous = ctx.db().ephemeral(chat_id);
     if !ctx.db().set_ephemeral(chat_id, seconds) {
         return;   // already so (our own change coming back)
     }
-    add_notice(ctx, chat_id, extract::ephemeral_notice(who, seconds), ts);
+    add_notice(ctx, chat_id, extract::ephemeral_notice(who, seconds, previous), ts);
     send_chat(ctx, chat_id);
 }
 
@@ -686,7 +687,7 @@ async fn send_text(
 }
 
 /// Delete-for-everyone, edits and pins arriving as messages.
-fn apply_control(ctx: &Ctx, chat_id: &str, control: extract::Control) {
+fn apply_control(ctx: &Ctx, chat_id: &str, control: extract::Control, who: &str) {
     match control {
         extract::Control::Revoke(id) => {
             if ctx.db().set_deleted(chat_id, &id) {
@@ -702,6 +703,10 @@ fn apply_control(ctx: &Ctx, chat_id: &str, control: extract::Control) {
         }
         extract::Control::Pin(id, pinned, duration, at_ms) => {
             apply_pin(&ctx.db(), chat_id, &id, pinned, duration, at_ms);
+            if pinned {
+                // "Abdullah pinned a message", like the phone shows in the chat.
+                add_notice(ctx, chat_id, format!("{who} pinned a message"), if at_ms > 0 { at_ms / 1000 } else { store::unix_now() });
+            }
             send_chat(ctx, chat_id);
         }
     }
@@ -1186,7 +1191,8 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     }
     if let Some(control) = extract::control(message) {
         let chat_id = ctx.db().canonical(&raw_chat);
-        apply_control(ctx, &chat_id, control);
+        let who = if source.is_from_me { "You".to_string() } else { ctx.db().person_name(&source.sender.to_non_ad_string(), &info.push_name) };
+        apply_control(ctx, &chat_id, control, &who);
         return;
     }
     if let Some((target, emoji)) = extract::reaction(message) {
@@ -1540,7 +1546,7 @@ fn system_notice(s: &Store, wmi: &wa::WebMessageInfo, from_me: bool, actor: &str
             format!("{names} joined using this group's invite link")
         }
         T::CHANGE_EPHEMERAL_SETTING => match first.parse::<u32>() {
-            Ok(seconds) => extract::ephemeral_notice(&who, seconds),
+            Ok(seconds) => extract::ephemeral_notice(&who, seconds, 0),
             Err(_) => format!("{who} changed the disappearing messages setting"),
         },
         T::BLOCK_CONTACT => if first == "true" { "You blocked this contact" } else { "You unblocked this contact" }.to_string(),

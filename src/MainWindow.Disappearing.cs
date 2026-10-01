@@ -30,6 +30,13 @@ public sealed partial class MainWindow
         ShowDisappearingChoice();
     }
 
+    /// <summary>"Change timer." at the end of a disappearing-messages notice.</summary>
+    private void ChangeTimer_Click(Microsoft.UI.Xaml.Documents.Hyperlink sender, Microsoft.UI.Xaml.Documents.HyperlinkClickEventArgs args)
+    {
+        OpenInfo();
+        OpenDisappearing();
+    }
+
     /// <summary>Ticks the chat's current timer (a custom one from the phone ticks nothing).</summary>
     private void ShowDisappearingChoice()
     {

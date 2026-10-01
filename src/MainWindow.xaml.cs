@@ -494,6 +494,14 @@ public sealed partial class MainWindow : Window
                 }
                 File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
             };
+        // WAFLUENT_SELFTEST=notices: goes to the open chat's disappearing-messages notices.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "notices")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var notice = ViewModel.SelectedChat!.Messages.Last(m => m.IsTimerNotice);
+                ViewModel.Reveal(notice.Id, notice.UnixTs);
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

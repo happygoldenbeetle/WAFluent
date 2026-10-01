@@ -880,8 +880,10 @@
                         <Border HorizontalAlignment="Center" Margin="0,4" Padding="14,6" MaxWidth="520"
                                 Background="{ThemeResource DatePillBrush}" CornerRadius="8">
                             <controls:Redact>
-                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"
-                                           Foreground="{ThemeResource MetaTextBrush}" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
+                                <!-- Disappearing-messages notices start with a timer and end in "Change timer." (opens
+                                     that page); the others are just their text. One line: spaces between runs would show. -->
+                                <TextBlock FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center" LineHeight="19"
+                                           Foreground="{ThemeResource MetaTextBrush}" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}"><Run FontFamily="{StaticResource SymbolThemeFontFamily}" Text="{x:Bind NoticeIcon}" /><Run Text="{x:Bind Text}" /><Hyperlink UnderlineStyle="None" Click="ChangeTimer_Click" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="{x:Bind NoticeLink}" FontWeight="SemiBold" /></Hyperlink></TextBlock>
                             </controls:Redact>
                         </Border>
                     </DataTemplate>
