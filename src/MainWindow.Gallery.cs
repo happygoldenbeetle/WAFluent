@@ -126,6 +126,7 @@ public sealed partial class MainWindow
                     Glyph = "\uE768", FontSize = 14, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
                     HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(6, 0, 0, 6),
                 });
+            Helpers.HandCursor.SetOn(tile, true);
             tile.Tapped += (_, _) => OpenGallery();
             Grid.SetColumn(tile, i);
             strip.Children.Add(tile);

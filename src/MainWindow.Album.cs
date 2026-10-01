@@ -46,6 +46,7 @@ public sealed partial class MainWindow
                         new FontIcon { Glyph = "\uE768", FontSize = 16, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White), Margin = new Thickness(3, 0, 0, 0) },
                     },
                 });
+            Helpers.HandCursor.SetOn(tile, true);
             tile.Tapped += (_, e) =>
             {
                 e.Handled = true;

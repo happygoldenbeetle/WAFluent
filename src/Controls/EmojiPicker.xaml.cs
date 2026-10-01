@@ -223,6 +223,7 @@ public sealed partial class EmojiPicker : UserControl
             choice.Children.Add(new TextBlock { Text = glyph, FontSize = 26, FontFamily = EmojiFont, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
             choice.PointerEntered += (_, _) => choice.Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush");
             choice.PointerExited += (_, _) => choice.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            Helpers.HandCursor.SetOn(choice, true);
             choice.Tapped += (_, e) =>
             {
                 e.Handled = true;

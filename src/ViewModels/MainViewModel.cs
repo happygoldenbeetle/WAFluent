@@ -862,6 +862,15 @@ public sealed partial class MainViewModel : Observable
         }
     }
 
+    /// <summary>"Message yourself": the chat with your own number.</summary>
+    public bool IsSelf(Chat chat)
+    {
+        var mine = new string(SelfPhone.Where(char.IsAsciiDigit).ToArray());
+        if (mine.Length == 0 || chat.IsGroup) return false;
+        var theirs = new string((chat.PhoneCode + chat.PhoneNational).Where(char.IsAsciiDigit).ToArray());
+        return theirs == mine || chat.Id.StartsWith(mine + "@");
+    }
+
     /// <summary>Still in the list (not deleted since): back/forward skip ones that are gone.</summary>
     public bool Exists(Chat chat) => _allChats.Contains(chat);
 

@@ -143,6 +143,7 @@ public sealed partial class MainWindow
             Grid.SetColumn(label, 1);
             row.Children.Add(label);
             row.PointerEntered += (_, _) => { _suggestion = index; RenderShortcodes(); };
+            Helpers.HandCursor.SetOn(row, true);
             row.Tapped += (_, e) => { e.Handled = true; _suggestion = index; ApplyShortcode(); };
             ShortcodeList.Children.Add(row);
         }

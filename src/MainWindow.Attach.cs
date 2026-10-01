@@ -268,6 +268,7 @@ public sealed partial class MainWindow
             tile.Children.Add(remove);
             tile.PointerEntered += (_, _) => remove.Visibility = Visibility.Visible;
             tile.PointerExited += (_, _) => remove.Visibility = Visibility.Collapsed;
+            Helpers.HandCursor.SetOn(tile, true);
             tile.Tapped += (_, e) => { if (e.OriginalSource is not FontIcon) Show(item); };
             ToolTipService.SetToolTip(tile, item.FileName);
             MediaComposerStrip.Children.Add(tile);

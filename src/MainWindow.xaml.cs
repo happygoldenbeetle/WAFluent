@@ -453,6 +453,24 @@ public sealed partial class MainWindow : Window
                 var first = ViewModel.SelectedChat!.Messages.First(m => m.Kind == MessageKind.Text);
                 ViewModel.Reveal(first.Id, first.UnixTs);
             };
+        // WAFLUENT_SELFTEST=hand: which cursor the window shows over a button, the conversation's background and a
+        // chat row (to %TEMP%\wafluent-selftest.txt); then Contact info › Edit for the open chat.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "hand")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var row = ChatList.ContainerFromIndex(1) as DependencyObject;
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"),
+                [
+                    "attach button: " + Helpers.HandCursor.Probe(Root, AttachButton),
+                    "conversation background: " + Helpers.HandCursor.Probe(Root, MessagesScroller),
+                    "chat row: " + (row is null ? "no row" : Helpers.HandCursor.Probe(Root, row)),
+                    "composer text box: " + Helpers.HandCursor.Probe(Root, ComposerBox),
+                ]);
+                OpenInfo();
+                await Task.Delay(300);
+                OpenNewContact(ViewModel.SelectedChat!, edit: true);
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

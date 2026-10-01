@@ -65,6 +65,9 @@ public sealed partial class MainWindow
     {
         SetupJumpDownMotion();
         Use24HourSwitch.IsOn = _ui.Use24Hour;
+        HandCursorSwitch.IsOn = _ui.HandCursor;
+        Helpers.HandCursor.Enabled = _ui.HandCursor;
+        Helpers.HandCursor.Watch(Root);
         NotificationsSwitch.IsOn = _ui.Notifications;
         HdMediaSwitch.IsOn = _ui.HdMedia;
         Messages.ElementPrepared += Messages_ElementPrepared;
@@ -77,6 +80,15 @@ public sealed partial class MainWindow
         // Going to a message (a pin, a quote, Starred, search) scrolls it into view once it's loaded.
         ViewModel.RevealMessage += ScrollToMessage;
         SetupTypingBubbleMotion();
+    }
+
+    /// <summary>Settings › Hand pointer.</summary>
+    private void HandCursor_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (_ui.HandCursor == HandCursorSwitch.IsOn) return;
+        _ui.HandCursor = HandCursorSwitch.IsOn;
+        _ui.Save();
+        Helpers.HandCursor.Enabled = _ui.HandCursor;
     }
 
     /// <summary>Settings › Use 24-hour time: every time is written again and the conversation redrawn.</summary>

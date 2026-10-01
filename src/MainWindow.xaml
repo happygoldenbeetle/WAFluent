@@ -13,7 +13,7 @@
         <Grid.Resources>
             <!-- ───────────── Media, links and docs: a photo or video tile (MainWindow.Gallery.cs) ───────────── -->
             <DataTemplate x:Key="GalleryTileTemplate" x:DataType="models:Message">
-                <Grid CornerRadius="4" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="GalleryTile_Tapped"
+                <Grid CornerRadius="4" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="GalleryTile_Tapped" helpers:HandCursor.On="True"
                       CanDrag="True" DragStarting="Media_DragStarting">
                     <Border>
                         <Border.Background>
@@ -180,7 +180,7 @@
                                     <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
                                     <controls:QuoteBlock Grid.Row="1" Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
                                     <!-- Full line spacing between lines; the negative margins trim only the space above the
                                          first line's capitals (5.3) and below the last baseline (3.5), so the 10 px padding
@@ -188,7 +188,7 @@
                                          wrapped lines overlap.) -->
                                     <!-- Link preview: the sender's card (picture, title, description, site). Click opens the link. -->
                                     <Border Grid.Row="2" Margin="-6,-6,-6,10" CornerRadius="{x:Bind LinkCardCorners}" Background="{ThemeResource FileCardBrush}"
-                                            Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" MaxWidth="420" HorizontalAlignment="Stretch">
+                                            Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" helpers:HandCursor.On="True" MaxWidth="420" HorizontalAlignment="Stretch">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -252,10 +252,10 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- Click opens the picture in the viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind PictureCorners}" Background="{ThemeResource FileCardBrush}"
-                                          Tag="{x:Bind}" Tapped="Media_Tapped"
+                                          Tag="{x:Bind}" Tapped="Media_Tapped" helpers:HandCursor.On="True"
                                           CanDrag="True" DragStarting="Media_DragStarting">
                                         <!-- The sender's tiny preview (blurry by nature) until the picture arrives. -->
                                         <Border>
@@ -344,7 +344,7 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <controls:VoicePlayer Message="{x:Bind}" />
                                 </StackPanel>
                             </controls:Bubble>
@@ -379,7 +379,7 @@
                                 <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                             </StackPanel>
                             <Grid Width="{x:Bind MediaWidth}" Height="{x:Bind MediaHeight}" Background="Transparent"
-                                  Tag="{x:Bind}" Tapped="Media_Tapped"
+                                  Tag="{x:Bind}" Tapped="Media_Tapped" helpers:HandCursor.On="True"
                                           CanDrag="True" DragStarting="Media_DragStarting">
                                 <ProgressRing Width="28" Height="28" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
                                 <Image Source="{x:Bind helpers:Ui.Sticker(MediaPath), Mode=OneWay}" Stretch="Uniform" />
@@ -460,7 +460,7 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10"
                                             Tag="{x:Bind}" CanDrag="True" DragStarting="Media_DragStarting">
                                         <StackPanel Spacing="10">
@@ -548,10 +548,10 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- Click: download (first time), then play in the video viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind VideoCorners}"
-                                          Background="#FF202020" Tag="{x:Bind}" Tapped="Video_Tapped"
+                                          Background="#FF202020" Tag="{x:Bind}" Tapped="Video_Tapped" helpers:HandCursor.On="True"
                                           CanDrag="True" DragStarting="Media_DragStarting">
                                         <Border>
                                             <Border.Background>
@@ -649,9 +649,9 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- A sharp street map (Controls/MapView.cs); click opens the place in Google Maps. -->
-                                    <Grid Height="150" CornerRadius="{x:Bind MapCorners}" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped">
+                                    <Grid Height="150" CornerRadius="{x:Bind MapCorners}" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped" helpers:HandCursor.On="True">
                                         <FontIcon Glyph="&#xE707;" FontSize="32" Foreground="{ThemeResource MetaTextBrush}" />
                                         <controls:MapView Latitude="{x:Bind Latitude}" Longitude="{x:Bind Longitude}" Thumb="{x:Bind Thumb}" CornerRadius="{x:Bind MapCorners}" />
                                         <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Padding="8,2,8,3" CornerRadius="9"
@@ -736,7 +736,7 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,4"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <Grid ColumnSpacing="12" Padding="4,4,4,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
@@ -809,7 +809,7 @@
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
                                                          FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,0"
-                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" />
+                                                         Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <TextBlock Text="{x:Bind Text}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                ContextFlyout="{x:Null}" Margin="0,-4,0,0" />
                                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,-4,0,0">
@@ -819,7 +819,7 @@
                                     <ItemsControl ItemsSource="{x:Bind PollOptions, Mode=OneWay}" IsTabStop="False">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="models:PollOption">
-                                                <Grid ColumnSpacing="10" RowSpacing="7" Padding="0,5" Background="Transparent" Tag="{x:Bind}" Tapped="PollOption_Tapped"
+                                                <Grid ColumnSpacing="10" RowSpacing="7" Padding="0,5" Background="Transparent" Tag="{x:Bind}" Tapped="PollOption_Tapped" helpers:HandCursor.On="True"
                                                       Loaded="PollOption_Loaded">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="Auto" />
@@ -1059,7 +1059,7 @@
                                     Background="{ThemeResource ChatAccentBrush}" Click="MiniPlay_Click" AutomationProperties.Name="Play or pause">
                                 <FontIcon x:Name="MiniPlayIcon" Glyph="&#xE769;" FontSize="14" Foreground="White" />
                             </Button>
-                            <Grid Grid.Column="1" Background="Transparent" Tapped="MiniOpen_Tapped" VerticalAlignment="Center" RowSpacing="3"
+                            <Grid Grid.Column="1" Background="Transparent" Tapped="MiniOpen_Tapped" helpers:HandCursor.On="True" VerticalAlignment="Center" RowSpacing="3"
                                   ToolTipService.ToolTip="Go to message">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
@@ -1171,6 +1171,12 @@
                                            Text="Times as 18:27. Off: 6:27 pm." />
                             </StackPanel>
                             <StackPanel Spacing="4">
+                                <ToggleSwitch x:Name="HandCursorSwitch" Header="Hand pointer" OffContent="Off" OnContent="On"
+                                              Toggled="HandCursor_Toggled" />
+                                <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Text="The pointer turns into a hand over anything you can click. Off: the usual arrow." />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
                                 <ToggleSwitch x:Name="NotificationsSwitch" Header="Notifications" OffContent="Off" OnContent="On"
                                               Toggled="Notifications_Toggled" />
                                 <TextBlock TextWrapping="Wrap" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -1223,7 +1229,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <controls:ClickArea VerticalAlignment="Center" Tapped="Header_Tapped">
+                        <controls:ClickArea VerticalAlignment="Center" Tapped="Header_Tapped" helpers:HandCursor.On="True">
                             <controls:Redact VeilRadius="18">
                                 <controls:Avatar DisplayName="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}"
                                                  Source="{x:Bind ViewModel.SelectedChat.AvatarPath, Mode=OneWay}" Size="36"
@@ -1231,7 +1237,7 @@
                             </controls:Redact>
                         </controls:ClickArea>
                         <!-- Click the photo or the name for Contact / Group info (MainWindow.ContactInfo.cs). -->
-                        <controls:ClickArea Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Tapped="Header_Tapped">
+                        <controls:ClickArea Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left" Tapped="Header_Tapped" helpers:HandCursor.On="True">
                         <StackPanel>
                             <controls:Redact HorizontalAlignment="Left">
                                 <TextBlock Text="{x:Bind ViewModel.SelectedChat.Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -1269,7 +1275,7 @@
                     <Grid x:Name="PinnedBanner" Grid.Row="1" Padding="12,6,16,6" ColumnSpacing="12" Background="{ThemeResource ChatHeaderBackgroundBrush}"
                           BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,0,0,1"
                           Visibility="{x:Bind helpers:Ui.Visible(ViewModel.SelectedChat.HasPinnedMessage), Mode=OneWay, FallbackValue=Collapsed}"
-                          Tapped="PinnedBanner_Tapped" ContextRequested="PinnedBanner_ContextRequested">
+                          Tapped="PinnedBanner_Tapped" helpers:HandCursor.On="True" ContextRequested="PinnedBanner_ContextRequested">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -1424,7 +1430,7 @@
                                                  Glyph="{x:Bind ViewModel.ReplyingToGlyph, Mode=OneWay}"
                                                  Thumb="{x:Bind ViewModel.ReplyingToThumb, Mode=OneWay}"
                                                  FromMe="{x:Bind ViewModel.ReplyingToFromMe, Mode=OneWay}"
-                                                 Tapped="ComposerQuote_Tapped" ToolTipService.ToolTip="Go to message" />
+                                                 Tapped="ComposerQuote_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Go to message" />
                             <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" VerticalAlignment="Center"
                                     ToolTipService.ToolTip="Cancel reply (Esc)" AutomationProperties.Name="Cancel reply"
                                     Click="CancelReply_Click">

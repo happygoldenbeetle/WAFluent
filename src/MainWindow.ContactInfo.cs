@@ -137,6 +137,8 @@ public sealed partial class MainWindow
         InfoActions.Children.Add(ActionButton(Glyphs.VideoCall, "Video", () => StartCall(video: true)));
         if (person && !chat.IsSaved)
             InfoActions.Children.Add(ActionButton(Glyphs.AddContact, "Add", () => OpenNewContact(chat)));
+        else if (person && !ViewModel.IsSelf(chat))
+            InfoActions.Children.Add(ActionButton("\uE70F", "Edit", () => OpenNewContact(chat, edit: true)));
 
         InfoRows.Children.Clear();
         InfoRows.Children.Add(Divider());
@@ -271,8 +273,11 @@ public sealed partial class MainWindow
 
     // ───────────── New contact ─────────────
 
-    /// <summary>Opens the New contact form for a 1:1 chat, first name filled with the name they chose.</summary>
-    private void OpenNewContact(Chat chat)
+    /// <summary>
+    /// Opens the New contact form for a 1:1 chat, first name filled with the name they chose;
+    /// or, for a saved contact (<paramref name="edit"/>), Edit contact with the saved name.
+    /// </summary>
+    private void OpenNewContact(Chat chat, bool edit = false)
     {
         _newContactFromInfo = InfoPanel.Visibility == Visibility.Visible && ContactInfoView.Visibility == Visibility.Visible;
         if (ViewModel.SelectedChat != chat)
@@ -281,14 +286,16 @@ public sealed partial class MainWindow
             ChatList.SelectedItem = chat;
         }
         Track(chat);
-        FirstNameBox.Text = chat.PushName;
-        LastNameBox.Text = "";
+        // A saved name: its first word as the first name, the rest as the last.
+        var saved = chat.Name.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        FirstNameBox.Text = edit && saved.Length > 0 ? saved[0] : chat.PushName;
+        LastNameBox.Text = edit && saved.Length > 1 ? saved[1] : "";
         CountryBox.ItemsSource = new[] { chat.PhoneRegion.Length > 0 ? $"{chat.PhoneRegion} {chat.PhoneCode}" : chat.PhoneCode };
         CountryBox.SelectedIndex = 0;
         PhoneBox.Text = chat.PhoneNational.Length > 0 ? chat.PhoneNational : chat.Name;
         SyncToPhoneSwitch.IsOn = false;
         SaveContactButton.IsEnabled = FirstNameBox.Text.Trim().Length > 0;
-        InfoTitle.Text = "New contact";
+        InfoTitle.Text = edit ? "Edit contact" : "New contact";
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Visible;
         GalleryView.Visibility = Visibility.Collapsed;

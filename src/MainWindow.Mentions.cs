@@ -140,6 +140,7 @@ public sealed partial class MainWindow
                 row.Children.Add(name);
             }
             row.PointerEntered += (_, _) => { _mentionIndex = index; RenderMentions(); };
+            Helpers.HandCursor.SetOn(row, true);
             row.Tapped += (_, e) => { e.Handled = true; _mentionIndex = index; ApplyMention(); };
             MentionList.Children.Add(row);
         }

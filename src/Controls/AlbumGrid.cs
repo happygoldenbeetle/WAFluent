@@ -120,6 +120,7 @@ public sealed partial class AlbumGrid : Grid
         SetColumn(tile, column);
         SetColumnSpan(tile, columnSpan);
         Fill(tile, item, more);
+        Helpers.HandCursor.SetOn(tile, true);
         tile.Tapped += (_, e) =>
         {
             e.Handled = true;

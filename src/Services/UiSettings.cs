@@ -33,6 +33,9 @@ public sealed class UiSettings
     /// <summary>The Windows accent colour instead of WhatsApp green (Helpers/AppColors).</summary>
     public bool UseSystemAccent { get; set; }
 
+    /// <summary>The pointer is a hand over anything clickable (Helpers/HandCursor).</summary>
+    public bool HandCursor { get; set; } = true;
+
     /// <summary>Times as "18:27" (off: "6:27 pm").</summary>
     public bool Use24Hour { get; set; } = true;
 
