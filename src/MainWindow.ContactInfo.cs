@@ -33,6 +33,7 @@ public sealed partial class MainWindow
         NewContactView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Collapsed;
         DisappearingView.Visibility = Visibility.Collapsed;
+        ChatStarredView.Visibility = Visibility.Collapsed;
         InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
@@ -78,7 +79,8 @@ public sealed partial class MainWindow
     {
         // Leaving New contact or Media, links and docs goes back to Contact info when that's where it came from.
         if (NewContactView.Visibility == Visibility.Visible && _newContactFromInfo) OpenInfo();
-        else if (GalleryView.Visibility == Visibility.Visible || DisappearingView.Visibility == Visibility.Visible) OpenInfo();
+        else if (GalleryView.Visibility == Visibility.Visible || DisappearingView.Visibility == Visibility.Visible
+                 || ChatStarredView.Visibility == Visibility.Visible) OpenInfo();
         else CloseInfo();
     }
 
@@ -143,7 +145,7 @@ public sealed partial class MainWindow
                                   action: OpenGallery));
         if (gallery is { Media.Count: > 0 }) InfoRows.Children.Add(GalleryStrip(gallery));
         InfoRows.Children.Add(Divider());
-        InfoRows.Children.Add(Row(Glyphs.Star, "Starred messages", action: () => Nav.SelectedItem = Nav.FooterMenuItems[0]));
+        InfoRows.Children.Add(Row(Glyphs.Star, "Starred messages", action: OpenChatStarred));
         if (!chat.IsBlocked)
             InfoRows.Children.Add(Row("\uE916", "Disappearing messages", detail: chat.EphemeralText, action: OpenDisappearing));
         InfoRows.Children.Add(Row(chat.IsMuted ? Glyphs.RingerSilent : Glyphs.Ringer, "Notification settings",
@@ -291,6 +293,7 @@ public sealed partial class MainWindow
         NewContactView.Visibility = Visibility.Visible;
         GalleryView.Visibility = Visibility.Collapsed;
         DisappearingView.Visibility = Visibility.Collapsed;
+        ChatStarredView.Visibility = Visibility.Collapsed;
         InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;

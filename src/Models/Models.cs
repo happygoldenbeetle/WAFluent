@@ -359,7 +359,8 @@ public sealed class Chat : Observable
     public DateTime LastActivity { get; set; }
 
     private bool _isMuted, _isArchived, _isBlocked, _isSaved, _isFavourite;
-    private string _pinnedMessageId = "", _pinnedMessagePreview = "";
+    private IReadOnlyList<Services.PinnedDto> _pins = [];
+    private int _pinIndex;
     public bool IsMuted { get => _isMuted; set => Set(ref _isMuted, value); }
     public bool IsArchived { get => _isArchived; set => Set(ref _isArchived, value); }
     public bool IsBlocked { get => _isBlocked; set => Set(ref _isBlocked, value); }
@@ -382,14 +383,41 @@ public sealed class Chat : Observable
     public string PhoneCode { get; set; } = "";
     public string PhoneNational { get; set; } = "";
 
-    /// <summary>The message pinned in this chat (banner under the header).</summary>
-    public string PinnedMessageId
+    /// <summary>Pinned messages (up to three, newest pin first), shown one at a time in the banner.</summary>
+    public IReadOnlyList<Services.PinnedDto> Pins
     {
-        get => _pinnedMessageId;
-        set { if (Set(ref _pinnedMessageId, value)) Raise(nameof(HasPinnedMessage)); }
+        get => _pins;
+        set
+        {
+            var shown = PinnedMessageId;
+            _pins = value;
+            // Keep showing the same pin when the list changes around it.
+            var at = _pins.ToList().FindIndex(p => p.Id == shown);
+            _pinIndex = at >= 0 ? at : 0;
+            RaisePins();
+        }
     }
-    public string PinnedMessagePreview { get => _pinnedMessagePreview; set => Set(ref _pinnedMessagePreview, value); }
-    public bool HasPinnedMessage => _pinnedMessageId.Length > 0;
+
+    /// <summary>Which pin the banner shows (clicking it goes to that message, then to the next pin).</summary>
+    public int PinIndex
+    {
+        get => _pinIndex;
+        set { _pinIndex = _pins.Count == 0 ? 0 : ((value % _pins.Count) + _pins.Count) % _pins.Count; RaisePins(); }
+    }
+
+    private void RaisePins()
+    {
+        Raise(nameof(Pins));
+        Raise(nameof(PinIndex));
+        Raise(nameof(PinnedMessageId));
+        Raise(nameof(PinnedMessagePreview));
+        Raise(nameof(HasPinnedMessage));
+    }
+
+    public string PinnedMessageId => _pins.Count > 0 ? _pins[_pinIndex].Id : "";
+    public string PinnedMessagePreview => _pins.Count > 0 ? _pins[_pinIndex].Preview : "";
+    public bool HasPinnedMessage => _pins.Count > 0;
+    public bool HasPin(string messageId) => _pins.Any(p => p.Id == messageId);
 
     /// <summary>When the chat was pinned (Unix seconds): the newest pin sits on top.</summary>
     public long PinnedAt { get; set; }

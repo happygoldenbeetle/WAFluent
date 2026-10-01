@@ -73,6 +73,7 @@ public sealed partial class MainWindow
         SetupGallery();
         SetupDrafts();
         SetupNavigation();
+        SetupPins();
         SetupTypingBubbleMotion();
     }
 

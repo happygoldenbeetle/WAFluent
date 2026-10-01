@@ -1264,24 +1264,27 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- The message pinned in this chat: click to jump to it (right-click the message to unpin). -->
-                    <Grid Grid.Row="1" Padding="16,6,16,6" ColumnSpacing="12" Background="{ThemeResource ChatHeaderBackgroundBrush}"
+                    <!-- Pinned messages (up to three): the banner shows one; click goes to it and on to the next.
+                         The bars on the left say how many there are and which one this is (MainWindow.Pins.cs). -->
+                    <Grid x:Name="PinnedBanner" Grid.Row="1" Padding="12,6,16,6" ColumnSpacing="12" Background="{ThemeResource ChatHeaderBackgroundBrush}"
                           BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,0,0,1"
                           Visibility="{x:Bind helpers:Ui.Visible(ViewModel.SelectedChat.HasPinnedMessage), Mode=OneWay, FallbackValue=Collapsed}"
-                          Tapped="PinnedBanner_Tapped">
+                          Tapped="PinnedBanner_Tapped" ContextRequested="PinnedBanner_ContextRequested">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="PinSegments" Spacing="2" VerticalAlignment="Center" />
                         <!-- Segoe's pin leans 45°; turned upright. -->
-                        <FontIcon Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                  RenderTransformOrigin="0.5,0.5">
+                        <FontIcon Grid.Column="1" Glyph="&#xE840;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                  RenderTransformOrigin="0.5,0.5" VerticalAlignment="Center">
                             <FontIcon.RenderTransform>
                                 <RotateTransform Angle="-45" />
                             </FontIcon.RenderTransform>
                         </FontIcon>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="Pinned message" FontSize="12" Foreground="{ThemeResource ChatAccentTextBrush}" />
+                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                            <TextBlock x:Name="PinnedTitle" Text="Pinned message" FontSize="12" Foreground="{ThemeResource ChatAccentTextBrush}" />
                             <TextBlock Text="{x:Bind ViewModel.SelectedChat.PinnedMessagePreview, Mode=OneWay}" FontSize="13"
                                        TextTrimming="CharacterEllipsis" MaxLines="1" />
                         </StackPanel>
@@ -1889,6 +1892,31 @@
                     <ScrollViewer x:Name="MessageInfoView" Grid.Row="1" Visibility="Collapsed">
                         <StackPanel x:Name="MessageInfoRows" Padding="0,0,0,16" />
                     </ScrollViewer>
+
+                    <!-- This chat's starred messages (MainWindow.ChatStarred.cs) -->
+                    <Grid x:Name="ChatStarredView" Grid.Row="1" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBox x:Name="ChatStarredSearch" Margin="16,4,16,8" PlaceholderText="Search" CornerRadius="20"
+                                 Padding="38,8,12,8" TextChanged="ChatStarredSearch_TextChanged" />
+                        <FontIcon Glyph="&#xE721;" FontSize="14" HorizontalAlignment="Left" Margin="30,0,0,4"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
+                        <ScrollViewer Grid.Row="1">
+                            <StackPanel x:Name="ChatStarredRows" Padding="4,0,4,16" />
+                        </ScrollViewer>
+                        <StackPanel x:Name="ChatStarredEmpty" Grid.Row="1" Spacing="12" VerticalAlignment="Center" Margin="24,0,24,60"
+                                    Visibility="Collapsed">
+                            <Grid Width="76" Height="76" HorizontalAlignment="Center">
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" />
+                                <FontIcon Glyph="&#xE735;" FontSize="32" Foreground="White" />
+                            </Grid>
+                            <TextBlock Text="No starred messages" FontSize="20" HorizontalAlignment="Center" />
+                            <TextBlock Text="Star messages in this chat to find them here." TextWrapping="Wrap" TextAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
 
                     <!-- Disappearing messages (MainWindow.Disappearing.cs) -->
                     <ScrollViewer x:Name="DisappearingView" Grid.Row="1" Visibility="Collapsed">

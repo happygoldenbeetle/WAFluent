@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS extras(
 const CHAT_SELECT: &str = "
 SELECT c.id, c.name, c.is_group, c.unread, c.pinned, c.archived, c.mute_end, c.last_ts,
        m.kind, m.text, m.file_name, m.from_me, m.status, m.sender, m.push_name,
-       a.path, c.blocked, c.pinned_msg, c.ephemeral, c.marked_unread
+       a.path, c.blocked, '' AS pinned_msg, c.ephemeral, c.marked_unread
 FROM chats c
 LEFT JOIN messages m ON m.rowid = (
     SELECT rowid FROM messages WHERE chat_id = c.id ORDER BY ts DESC, rowid DESC LIMIT 1)
@@ -200,6 +200,12 @@ impl Store {
             "ALTER TABLE messages ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0",
             // "Mark as unread" (a dot, no count), apart from real unread messages.
             "ALTER TABLE chats ADD COLUMN marked_unread INTEGER NOT NULL DEFAULT 0",
+            // Pinned messages: up to three per chat, each until it runs out (WhatsApp's 2024 pins).
+            "CREATE TABLE IF NOT EXISTS pins(chat_id TEXT NOT NULL, message_id TEXT NOT NULL, pinned_at INTEGER NOT NULL,
+                                             expires_at INTEGER NOT NULL, PRIMARY KEY(chat_id, message_id))",
+            "INSERT OR IGNORE INTO pins SELECT id, pinned_msg, CAST(strftime('%s','now') AS INTEGER),
+                                               CAST(strftime('%s','now') AS INTEGER) + 604800 FROM chats WHERE pinned_msg != ''",
+            "UPDATE chats SET pinned_msg = '' WHERE pinned_msg != ''",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -452,8 +458,57 @@ impl Store {
         }
     }
 
-    pub fn set_pinned_message(&self, chat_id: &str, message_id: &str) {
-        let _ = self.db.execute("UPDATE chats SET pinned_msg = ?2 WHERE id = ?1", params![chat_id, message_id]);
+    /// Pins a message until `expires_at`; a chat keeps its three newest pins, like WhatsApp.
+    pub fn add_pin(&self, chat_id: &str, message_id: &str, pinned_at: i64, expires_at: i64) {
+        let _ = self.db.execute(
+            "INSERT OR REPLACE INTO pins(chat_id, message_id, pinned_at, expires_at) VALUES(?1, ?2, ?3, ?4)",
+            params![chat_id, message_id, pinned_at, expires_at],
+        );
+        let _ = self.db.execute(
+            "DELETE FROM pins WHERE chat_id = ?1 AND message_id NOT IN
+                 (SELECT message_id FROM pins WHERE chat_id = ?1 ORDER BY pinned_at DESC LIMIT 3)",
+            [chat_id],
+        );
+    }
+
+    pub fn remove_pin(&self, chat_id: &str, message_id: &str) {
+        let _ = self.db.execute("DELETE FROM pins WHERE chat_id = ?1 AND message_id = ?2", [chat_id, message_id]);
+    }
+
+    /// A chat's pins, newest first, with what each message says.
+    pub fn pins(&self, chat_id: &str) -> Vec<PinnedDto> {
+        let Ok(mut stmt) = self
+            .db
+            .prepare("SELECT message_id, expires_at FROM pins WHERE chat_id = ?1 AND expires_at > ?2 ORDER BY pinned_at DESC LIMIT 3")
+        else {
+            return Vec::new();
+        };
+        let rows: Vec<(String, i64)> =
+            stmt.query_map(params![chat_id, unix_now()], |r| Ok((r.get(0)?, r.get(1)?))).map(|r| r.flatten().collect()).unwrap_or_default();
+        rows.into_iter()
+            .map(|(id, expires_at)| {
+                let m = self.message(chat_id, &id);
+                PinnedDto {
+                    preview: m.as_ref().map(|m| preview(&m.kind, &plain_mentions(&self.render_mentions(&m.text)), &m.file_name)).unwrap_or_else(|| "Message".into()),
+                    ts: m.map(|m| m.ts).unwrap_or(0),
+                    id,
+                    expires_at,
+                }
+            })
+            .collect()
+    }
+
+    /// Pins that ran out are removed; returns the chats that changed.
+    pub fn expire_pins(&self, now: i64) -> Vec<String> {
+        let chats: Vec<String> = self
+            .db
+            .prepare("SELECT DISTINCT chat_id FROM pins WHERE expires_at <= ?1")
+            .and_then(|mut s| s.query_map([now], |r| r.get(0)).map(|r| r.flatten().collect()))
+            .unwrap_or_default();
+        if !chats.is_empty() {
+            let _ = self.db.execute("DELETE FROM pins WHERE expires_at <= ?1", [now]);
+        }
+        chats
     }
 
     pub fn set_starred(&self, chat_id: &str, message_id: &str, starred: bool) -> bool {
@@ -505,7 +560,7 @@ impl Store {
 
     /// "Delete for me": gone from this device.
     pub fn delete_message(&self, chat_id: &str, message_id: &str) -> bool {
-        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes"] {
+        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes", "pins"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1 AND message_id = ?2"), [chat_id, message_id]);
         }
         self.db.execute("DELETE FROM messages WHERE chat_id = ?1 AND id = ?2", [chat_id, message_id]).unwrap_or(0) > 0
@@ -513,7 +568,7 @@ impl Store {
 
     /// Empties a chat but keeps it in the list.
     pub fn clear_messages(&self, chat_id: &str) {
-        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes"] {
+        for table in ["media", "quotes", "reactions", "extras", "polls", "poll_votes", "pins"] {
             let _ = self.db.execute(&format!("DELETE FROM {table} WHERE chat_id = ?1"), [chat_id]);
         }
         let _ = self.db.execute("DELETE FROM messages WHERE chat_id = ?1", [chat_id]);
@@ -887,10 +942,8 @@ impl Store {
                 let saved = !is_group && self.has_full_name(&id);
                 let push = if is_group { None } else { self.push_name_of(&id) };
                 let phone = if is_group { None } else { self.phone_number(&id).and_then(|n| phone_parts(&n)) };
-                let pinned_message = (!pinned_msg.is_empty()).then(|| PinnedDto {
-                    preview: self.message(&id, &pinned_msg).map(|m| preview(&m.kind, &m.text, &m.file_name)).unwrap_or_default(),
-                    id: pinned_msg.clone(),
-                });
+                let _ = pinned_msg;
+                let pinned_messages = self.pins(&id);
                 let last_sender = match (&sender, is_group && !from_me) {
                     (Some(s), true) => Some(short_name(&self.person_name(s, push_name.as_deref().unwrap_or("")))),
                     _ => None,
@@ -918,7 +971,7 @@ impl Store {
                     saved,
                     push_name: push,
                     phone,
-                    pinned_message,
+                    pinned_messages,
                 }
             })
             .collect()

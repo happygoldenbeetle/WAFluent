@@ -8,12 +8,13 @@ namespace WhatsAppNative.Services;
 public sealed record ChatDto(
     string Id, string Name, bool IsGroup, int Unread, bool Pinned, bool Archived, bool Muted,
     long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender,
-    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto? PinnedMessage, string? PushName, PhoneDto? Phone,
+    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto[]? PinnedMessages, string? PushName, PhoneDto? Phone,
     int Ephemeral = 0, bool MarkedUnread = false);
 
 public sealed record PhoneDto(string Region, string Code, string National);
 
-public sealed record PinnedDto(string Id, string Preview);
+/// <summary>A pinned message: its id, a one-line preview, its time (to load back to it) and when the pin runs out.</summary>
+public sealed record PinnedDto(string Id, string Preview, long Ts = 0, long ExpiresAt = 0);
 
 public sealed record StarredDto(string ChatId, string ChatName, MessageDto Message);
 
@@ -225,7 +226,9 @@ public sealed class CoreClient : IDisposable
 
     public void Forward(string chatId, string messageId, IReadOnlyList<string> to) => Send(new { cmd = "forward", chatId, messageId, to });
 
-    public void PinMessage(string chatId, string messageId, bool pin) => Send(new { cmd = "pinMessage", chatId, messageId, pin });
+    /// <summary><paramref name="duration"/>: seconds the pin lasts (86400, 604800 or 2592000).</summary>
+    public void PinMessage(string chatId, string messageId, bool pin, int duration = 604_800) =>
+        Send(new { cmd = "pinMessage", chatId, messageId, pin, duration });
 
     public void StarMessage(string chatId, string messageId, bool star) => Send(new { cmd = "starMessage", chatId, messageId, star });
 

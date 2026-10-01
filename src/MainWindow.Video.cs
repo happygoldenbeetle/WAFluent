@@ -50,7 +50,7 @@ public sealed partial class MainWindow
         player.PlaybackSession.PlaybackStateChanged += (_, _) => DispatcherQueue.TryEnqueue(UpdateVideoBar);
         VideoPlayer.SetMediaPlayer(player);
         VideoBar.Visibility = m.IsGif ? Visibility.Collapsed : Visibility.Visible;
-        VideoFullScreenIcon.Glyph = "";
+        VideoFullScreenIcon.Glyph = "\uE740";
 
         // Hidden until it knows its shape; then it flies out of the bubble.
         VideoFrame.Opacity = 0;
@@ -222,7 +222,7 @@ public sealed partial class MainWindow
         Grid.SetRow(VideoViewer, on ? 0 : 1);
         Grid.SetRowSpan(VideoViewer, on ? 2 : 1);
         VideoCloseButton.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        VideoFullScreenIcon.Glyph = on ? "" : "";
+        VideoFullScreenIcon.Glyph = on ? "\uE73F" : "\uE740";
         ToolTipService.SetToolTip(VideoFullScreenButton, on ? "Exit full screen (F)" : "Full screen (F)");
         DispatcherQueue.TryEnqueue(FitVideo);
     }
@@ -247,9 +247,9 @@ public sealed partial class MainWindow
         _videoSeeking = false;
         VideoTime.Text = $"{Clock(now)} / {Clock(total)}";
         var playing = session.PlaybackState == MediaPlaybackState.Playing;
-        VideoPlayIcon.Glyph = playing ? "" : "";
+        VideoPlayIcon.Glyph = playing ? "\uE769" : "\uE768";
         var muted = VideoPlayer.MediaPlayer.IsMuted || VideoVolume.Value == 0;
-        VideoVolumeIcon.Glyph = muted ? "" : "";
+        VideoVolumeIcon.Glyph = muted ? "\uE74F" : "\uE767";
     }
 
     private static string Clock(double seconds)

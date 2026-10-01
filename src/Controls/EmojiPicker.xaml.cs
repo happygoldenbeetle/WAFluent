@@ -63,7 +63,7 @@ public sealed partial class EmojiPicker : UserControl
 
     private void BuildTabs()
     {
-        AddTab(new FontIcon { Glyph = "", FontSize = 16 }, RecentTab, "Recent");
+        AddTab(new FontIcon { Glyph = "\uE81C", FontSize = 16 }, RecentTab, "Recent");
         for (var i = 0; i < TabFaces.Length; i++)
             AddTab(new TextBlock { Text = TabFaces[i], FontSize = 19, FontFamily = EmojiFont }, i, EmojiData.TabNames[i]);
 

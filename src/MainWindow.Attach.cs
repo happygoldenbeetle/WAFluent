@@ -229,7 +229,7 @@ public sealed partial class MainWindow
                 face = new Grid
                 {
                     Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0xFA, 0xA6, 0x1A)),
-                    Children = { new FontIcon { Glyph = "", FontSize = 20, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) } },
+                    Children = { new FontIcon { Glyph = "\uE7F6", FontSize = 20, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) } },
                 };
             else
                 face = new Grid
@@ -260,7 +260,7 @@ public sealed partial class MainWindow
                 Margin = new Thickness(0, 2, 2, 0),
                 Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, 0, 0, 0)),
                 BorderThickness = new Thickness(0),
-                Content = new FontIcon { Glyph = "", FontSize = 9, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) },
+                Content = new FontIcon { Glyph = "\uE711", FontSize = 9, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White) },
                 Visibility = Visibility.Collapsed,
             };
             ToolTipService.SetToolTip(remove, "Remove");

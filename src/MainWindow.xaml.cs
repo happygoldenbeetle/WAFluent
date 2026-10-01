@@ -425,6 +425,26 @@ public sealed partial class MainWindow : Window
                 await Task.Delay(300);
                 OpenDisappearing();
             };
+        // WAFLUENT_SELFTEST=pins: pins three of the open chat's messages (24 hours, 7 days, 30 days) and shows the second
+        // in the banner. WAFLUENT_SELFTEST=chatstarred: stars two messages and opens Contact info › Starred messages.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "pins" or "chatstarred")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var chat = ViewModel.SelectedChat!;
+                var texts = chat.Messages.Where(m => m.Kind == MessageKind.Text && !m.IsDeleted).TakeLast(3).ToList();
+                if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "pins")
+                {
+                    int[] seconds = [86_400, 604_800, 2_592_000];
+                    for (var i = 0; i < texts.Count; i++) ViewModel.PinMessage(texts[i], true, seconds[i]);
+                    chat.PinIndex = 1;
+                    return;
+                }
+                ViewModel.Star(texts.Take(2), true);
+                OpenInfo();
+                await Task.Delay(300);
+                OpenChatStarred();
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

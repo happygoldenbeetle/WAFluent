@@ -292,7 +292,7 @@ public sealed partial class MainViewModel
             case "markUnread": chat.MarkedUnread = true; break;
             case "block": chat.IsBlocked = true; break;
             case "unblock": chat.IsBlocked = false; break;
-            case "clear": chat.Messages.Clear(); chat.PinnedMessageId = ""; break;
+            case "clear": chat.Messages.Clear(); chat.Pins = []; break;
         }
         if (_core is null || chat.Id.Length == 0)
         {
@@ -358,12 +358,19 @@ public sealed partial class MainViewModel
         if (_core is null) Notify(true, to.Count == 1 ? $"Forwarded to {to[0].Name}" : $"Forwarded to {to.Count} chats");
     }
 
-    public void PinMessage(Message m, bool pin)
+    /// <summary>
+    /// Pin for <paramref name="seconds"/> (24 hours, 7 days or 30 days), or unpin. Shown at once;
+    /// a chat keeps three pins, so a fourth replaces the oldest, like WhatsApp.
+    /// </summary>
+    public void PinMessage(Message m, bool pin, int seconds = 604_800)
     {
         if (_selectedChat is not { } chat) return;
-        chat.PinnedMessageId = pin ? m.Id : "";
-        chat.PinnedMessagePreview = pin ? Format.QuotePreview(m) : "";
-        if (_core is not null && chat.Id.Length > 0) _core.PinMessage(chat.Id, m.Id, pin);
+        var others = chat.Pins.Where(p => p.Id != m.Id);
+        chat.Pins = pin
+            ? [new PinnedDto(m.Id, Format.QuotePreview(m), m.UnixTs, DateTimeOffset.Now.ToUnixTimeSeconds() + seconds), .. others.Take(2)]
+            : [.. others];
+        if (pin) chat.PinIndex = 0;
+        if (_core is not null && chat.Id.Length > 0) _core.PinMessage(chat.Id, m.Id, pin, seconds);
     }
 
     public void Star(IEnumerable<Message> messages, bool star)

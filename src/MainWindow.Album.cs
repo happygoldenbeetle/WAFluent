@@ -43,7 +43,7 @@ public sealed partial class MainWindow
                     Children =
                     {
                         new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(0x99, 0, 0, 0)) },
-                        new FontIcon { Glyph = "", FontSize = 16, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White), Margin = new Thickness(3, 0, 0, 0) },
+                        new FontIcon { Glyph = "\uE768", FontSize = 16, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White), Margin = new Thickness(3, 0, 0, 0) },
                     },
                 });
             tile.Tapped += (_, e) =>

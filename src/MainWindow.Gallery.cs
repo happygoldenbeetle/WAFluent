@@ -42,9 +42,10 @@ public sealed partial class MainWindow
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
         DisappearingView.Visibility = Visibility.Collapsed;
+        ChatStarredView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Visible;
         InfoTitle.Text = "Media, links and docs";
-        InfoCloseIcon.Glyph = "";   // back to Contact info
+        InfoCloseIcon.Glyph = "\uE72B";   // back to Contact info
         GalleryTabs.Items[0].IsSelected = true;
         ShowGalleryTab();
         ViewModel.LoadChatMedia(chat);   // fresh: anything sent since
@@ -76,7 +77,7 @@ public sealed partial class MainWindow
     {
         if (media.Count == 0)
         {
-            GalleryContent.Children.Add(Nothing("", "No media"));
+            GalleryContent.Children.Add(Nothing("\uEB9F", "No media"));
             return;
         }
         foreach (var period in media.GroupBy(m => Period(m.Timestamp)))
@@ -122,7 +123,7 @@ public sealed partial class MainWindow
             if (m.Kind == MessageKind.Video)
                 tile.Children.Add(new FontIcon
                 {
-                    Glyph = "", FontSize = 14, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                    Glyph = "\uE768", FontSize = 14, Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
                     HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(6, 0, 0, 6),
                 });
             tile.Tapped += (_, _) => OpenGallery();
@@ -138,7 +139,7 @@ public sealed partial class MainWindow
     {
         if (docs.Count == 0)
         {
-            GalleryContent.Children.Add(Nothing("", "No documents"));
+            GalleryContent.Children.Add(Nothing("\uE8A5", "No documents"));
             return;
         }
         foreach (var period in docs.GroupBy(m => Period(m.Timestamp)))
@@ -159,7 +160,7 @@ public sealed partial class MainWindow
     {
         if (links.Count == 0)
         {
-            GalleryContent.Children.Add(Nothing("", "No links"));
+            GalleryContent.Children.Add(Nothing("\uE71B", "No links"));
             return;
         }
         foreach (var period in links.GroupBy(m => Period(m.Timestamp)))
@@ -174,7 +175,7 @@ public sealed partial class MainWindow
                     : new Grid
                     {
                         Width = 48, Height = 48, CornerRadius = new CornerRadius(6), Background = Themed.Brush("FileCardBrush"),
-                        Children = { new FontIcon { Glyph = "", FontSize = 18, Foreground = Themed.Brush("TextFillColorSecondaryBrush") } },
+                        Children = { new FontIcon { Glyph = "\uE71B", FontSize = 18, Foreground = Themed.Brush("TextFillColorSecondaryBrush") } },
                     };
                 var title = m.LinkTitle.Length > 0 ? m.LinkTitle : target?.Host ?? url;
                 GalleryContent.Children.Add(GalleryRow(leading, title, url, m.Timestamp,

@@ -23,9 +23,10 @@ public sealed partial class MainWindow
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Collapsed;
+        ChatStarredView.Visibility = Visibility.Collapsed;
         DisappearingView.Visibility = Visibility.Visible;
         InfoTitle.Text = "Disappearing messages";
-        InfoCloseIcon.Glyph = "";   // back to Contact info
+        InfoCloseIcon.Glyph = "\uE72B";   // back to Contact info
         ShowDisappearingChoice();
     }
 

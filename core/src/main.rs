@@ -259,6 +259,8 @@ fn spawn_expiry(ctx: Ctx) {
                     chats.insert(chat_id);
                 }
             }
+            // Pins that ran out unpin themselves, like on the phone.
+            chats.extend(ctx.db().expire_pins(store::unix_now()));
             for chat_id in chats {
                 send_chat(&ctx, &chat_id);
             }
@@ -476,9 +478,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::forward(&ctx, &client, chat_id, message_id, to, true).await });
         }
-        Command::PinMessage { chat_id, message_id, pin } => {
+        Command::PinMessage { chat_id, message_id, pin, duration } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
-            tokio::spawn(async move { actions::pin_message(&ctx, &client, chat_id, message_id, pin).await });
+            tokio::spawn(async move { actions::pin_message(&ctx, &client, chat_id, message_id, pin, duration).await });
         }
         Command::EditMessage { chat_id, message_id, text } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -698,11 +700,23 @@ fn apply_control(ctx: &Ctx, chat_id: &str, control: extract::Control) {
                 send_chat(ctx, chat_id);
             }
         }
-        extract::Control::Pin(id, pinned) => {
-            ctx.db().set_pinned_message(chat_id, if pinned { &id } else { "" });
+        extract::Control::Pin(id, pinned, duration, at_ms) => {
+            apply_pin(&ctx.db(), chat_id, &id, pinned, duration, at_ms);
             send_chat(ctx, chat_id);
         }
     }
+}
+
+/// A pin or unpin, from the phone, the other side or history: pins last their duration
+/// (7 days when it isn't said) from when they were made.
+fn apply_pin(db: &store::Store, chat_id: &str, message_id: &str, pinned: bool, duration: u32, at_ms: i64) {
+    if !pinned {
+        db.remove_pin(chat_id, message_id);
+        return;
+    }
+    let at = if at_ms > 0 { at_ms / 1000 } else { store::unix_now() };
+    let duration = if duration > 0 { duration } else { 604_800 };
+    db.add_pin(chat_id, message_id, at, at + i64::from(duration));
 }
 
 pub(crate) fn send_chat(ctx: &Ctx, chat_id: &str) {
@@ -1411,6 +1425,21 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
             s.set_reaction(&chat_id, id, &reactor, r.text.as_deref().unwrap_or(""), r.sender_timestamp_ms.unwrap_or(0));
         }
         let msg = wmi.message.as_option();
+        // Pins from history: the pin event itself, or a pin message.
+        if let Some(pin) = wmi.pin_in_chat.as_option()
+            && let Some(target) = pin.key.as_option().and_then(|k| k.id.clone())
+        {
+            use wa::pin_in_chat::Type as PinType;
+            let duration = pin.message_add_on_context_info.as_option().and_then(|c| c.message_add_on_duration_in_secs).unwrap_or(0);
+            match pin.r#type {
+                Some(PinType::PIN_FOR_ALL) => apply_pin(s, &chat_id, &target, true, duration, pin.sender_timestamp_ms.unwrap_or(0)),
+                Some(PinType::UNPIN_FOR_ALL) => apply_pin(s, &chat_id, &target, false, 0, 0),
+                _ => {}
+            }
+        }
+        if let Some(extract::Control::Pin(target, pinned, duration, at_ms)) = msg.and_then(extract::control) {
+            apply_pin(s, &chat_id, &target, pinned, duration, at_ms);
+        }
         let from_me = key.from_me.unwrap_or(false);
         // Who got and read your older messages, and when (Message info).
         if from_me && let Some(id) = key.id.as_deref() {

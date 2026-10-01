@@ -194,8 +194,9 @@ public sealed partial class MainWindow
             forward.Icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
             forward.Icon.RenderTransform = new Microsoft.UI.Xaml.Media.ScaleTransform { ScaleX = -1 };   // Reply, pointing the other way
             menu.Items.Add(forward);
-            var pinned = ViewModel.SelectedChat?.PinnedMessageId == m.Id;
-            menu.Items.Add(Item(pinned ? "Unpin" : "Pin", pinned ? Glyphs.Unpin : Glyphs.Pin, () => ViewModel.PinMessage(m, !pinned)));
+            var pinned = ViewModel.SelectedChat?.HasPin(m.Id) == true;
+            menu.Items.Add(Item(pinned ? "Unpin" : "Pin", pinned ? Glyphs.Unpin : Glyphs.Pin,
+                () => { if (pinned) ViewModel.PinMessage(m, false); else _ = ChoosePinAsync(m); }));
             menu.Items.Add(Item(m.Starred ? "Unstar" : "Star", m.Starred ? Glyphs.StarFill : Glyphs.Star, () => ViewModel.Star([m], !m.Starred)));
         }
         menu.Items.Add(new MenuFlyoutSeparator());

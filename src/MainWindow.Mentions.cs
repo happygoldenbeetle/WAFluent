@@ -119,7 +119,7 @@ public sealed partial class MainWindow
                     Children =
                     {
                         new Microsoft.UI.Xaml.Shapes.Ellipse { Fill = Themed.Brush("SubtleFillColorSecondaryBrush") },
-                        new FontIcon { Glyph = "", FontSize = 16 },
+                        new FontIcon { Glyph = "\uE716", FontSize = 16 },
                     },
                 });
                 var label = new StackPanel { VerticalAlignment = VerticalAlignment.Center };

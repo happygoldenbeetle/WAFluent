@@ -304,8 +304,9 @@ pub enum Control {
     Revoke(String),
     /// The message with this id was edited to this content.
     Edit(String, Content),
-    /// A message was pinned (true) or unpinned in the chat.
-    Pin(String, bool),
+    /// A message was pinned (true) or unpinned in the chat: for how long (seconds, 0 not
+    /// said) and when (sender's time, Unix ms; 0 not said).
+    Pin(String, bool, u32, i64),
 }
 
 /// Someone turned disappearing messages on (seconds) or off (0) in a 1:1 chat.
@@ -375,12 +376,21 @@ pub fn control(message: &wa::Message) -> Option<Control> {
     if let Some(pin) = m.pin_in_chat_message.as_option() {
         let id = pin.key.as_option()?.id.clone().filter(|id| !id.is_empty())?;
         return match pin.r#type {
-            Some(PinType::PIN_FOR_ALL) => Some(Control::Pin(id, true)),
-            Some(PinType::UNPIN_FOR_ALL) => Some(Control::Pin(id, false)),
+            Some(PinType::PIN_FOR_ALL) => Some(Control::Pin(id, true, pin_duration(message), pin.sender_timestamp_ms.unwrap_or(0))),
+            Some(PinType::UNPIN_FOR_ALL) => Some(Control::Pin(id, false, 0, pin.sender_timestamp_ms.unwrap_or(0))),
             _ => None,
         };
     }
     None
+}
+
+/// How long a pin lasts: the pin message's add-on duration (on the message or its wrapper).
+fn pin_duration(message: &wa::Message) -> u32 {
+    let of = |m: &wa::Message| m.message_context_info.as_option().and_then(|c| c.message_add_on_duration_in_secs);
+    of(message)
+        .or_else(|| message.device_sent_message.as_option().and_then(|d| d.message.as_option()).and_then(of))
+        .or_else(|| of(base(message)))
+        .unwrap_or(0)
 }
 
 /// The secret a poll's votes are encrypted with; the poll message carries it.

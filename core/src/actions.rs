@@ -268,17 +268,24 @@ pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_i
     }
 }
 
-pub async fn pin_message(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, pin: bool) {
+/// Pin for 24 hours, 7 days or 30 days (like the phone), or unpin; synced to everyone.
+pub async fn pin_message(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, pin: bool, duration: Option<u32>) {
+    use whatsapp_rust::send::PinDuration;
     let Some((jid, m)) = lookup(ctx, &chat_id, &message_id) else { return };
     let key = message_key(client, &jid, &chat_id, &m);
-    let result = if pin {
-        client.pin_message(jid, key, whatsapp_rust::send::PinDuration::Days7).await
-    } else {
-        client.unpin_message(jid, key).await
+    let (length, secs) = match duration {
+        Some(86_400) => (PinDuration::Hours24, 86_400),
+        Some(2_592_000) => (PinDuration::Days30, 2_592_000),
+        _ => (PinDuration::Days7, 604_800),
     };
+    let result = if pin { client.pin_message(jid, key, length).await } else { client.unpin_message(jid, key).await };
     match result {
         Ok(()) => {
-            ctx.db().set_pinned_message(&chat_id, if pin { &message_id } else { "" });
+            {
+                let db = ctx.db();
+                let now = store::unix_now();
+                if pin { db.add_pin(&chat_id, &message_id, now, now + secs) } else { db.remove_pin(&chat_id, &message_id) }
+            }
             send_chat(ctx, &chat_id);
         }
         Err(e) => {

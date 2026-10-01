@@ -223,9 +223,13 @@ public sealed partial class MainWindow
         ScrollToMessage(item.Message.Id);
     }
 
+    /// <summary>Goes to the pin shown (loading back to it if needed), then shows the next one, like WhatsApp.</summary>
     private void PinnedBanner_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (ViewModel.SelectedChat is { HasPinnedMessage: true } chat) ScrollToMessage(chat.PinnedMessageId);
+        if (ViewModel.SelectedChat is not { HasPinnedMessage: true } chat) return;
+        var pin = chat.Pins[chat.PinIndex];
+        ViewModel.Reveal(pin.Id, pin.Ts);
+        chat.PinIndex++;
     }
 
     // ───────────── Select mode ─────────────

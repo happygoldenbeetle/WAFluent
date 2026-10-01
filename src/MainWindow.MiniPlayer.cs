@@ -48,7 +48,7 @@ public sealed partial class MainWindow
         var where = _miniChat is { IsGroup: true } chat ? $" · {chat.Name}" : "";
         MiniDetail.Text = $"{Clock(position)} / {Clock(duration)}{where}";
         MiniProgress.Value = duration > TimeSpan.Zero ? Math.Clamp(position / duration, 0, 1) : 0;
-        MiniPlayIcon.Glyph = AudioPlayback.IsPlaying ? "" : "";
+        MiniPlayIcon.Glyph = AudioPlayback.IsPlaying ? "\uE769" : "\uE768";
         MiniRate.Text = $"{AudioPlayback.Rate:0.#}×";
     }
 

@@ -435,8 +435,7 @@ public sealed partial class MainViewModel : Observable
         chat.PhoneRegion = dto.Phone?.Region ?? "";
         chat.PhoneCode = dto.Phone?.Code ?? "";
         chat.PhoneNational = dto.Phone?.National ?? "";
-        chat.PinnedMessageId = dto.PinnedMessage?.Id ?? "";
-        chat.PinnedMessagePreview = dto.PinnedMessage?.Preview ?? "";
+        chat.Pins = dto.PinnedMessages ?? [];
         return chat;
     }
 

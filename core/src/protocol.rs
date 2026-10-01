@@ -116,9 +116,9 @@ pub struct ChatDto {
     /// 1:1 chats: their number split for the New contact form.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phone: Option<PhoneDto>,
-    /// The message pinned in this chat, if any: its id and a one-line preview.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pinned_message: Option<PinnedDto>,
+    /// Messages pinned in this chat (up to three, like WhatsApp), newest pin first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pinned_messages: Vec<PinnedDto>,
     /// Disappearing messages: seconds until new messages go (0 off; 86400, 604800, 7776000).
     pub ephemeral: u32,
     /// "Mark as unread" with nothing actually unread: a dot without a number.
@@ -141,6 +141,10 @@ pub struct PhoneDto {
 pub struct PinnedDto {
     pub id: String,
     pub preview: String,
+    /// The pinned message's own time (to load back to it), Unix seconds.
+    pub ts: i64,
+    /// When the pin runs out, Unix seconds.
+    pub expires_at: i64,
 }
 
 /// One starred message, for the Starred view.
@@ -341,7 +345,8 @@ pub enum Command {
     ExportChat { chat_id: String, path: String, utc_offset_minutes: i32 },
     /// Send copies of a message to other chats.
     Forward { chat_id: String, message_id: String, to: Vec<String> },
-    PinMessage { chat_id: String, message_id: String, pin: bool },
+    /// `duration`: seconds the pin lasts (86400, 604800 or 2592000; default 7 days).
+    PinMessage { chat_id: String, message_id: String, pin: bool, #[serde(default)] duration: Option<u32> },
     StarMessage { chat_id: String, message_id: String, star: bool },
     /// `for_everyone` = revoke (your own messages); otherwise delete for me.
     DeleteMessage { chat_id: String, message_id: String, for_everyone: bool },
