@@ -52,10 +52,18 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <controls:Redact VeilRadius="24">
-                        <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
-                                         Size="48" ShowRing="{x:Bind HasStatus}" IsGroup="{x:Bind IsGroup}" />
-                    </controls:Redact>
+                    <Grid>
+                        <controls:Redact VeilRadius="24">
+                            <controls:Avatar DisplayName="{x:Bind Name, Mode=OneWay}" Source="{x:Bind AvatarPath, Mode=OneWay}"
+                                             Size="48" ShowRing="{x:Bind HasStatus}" IsGroup="{x:Bind IsGroup}" />
+                        </controls:Redact>
+                        <!-- Disappearing messages on: a timer on the picture's corner. -->
+                        <Grid Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-2,-2"
+                              Visibility="{x:Bind HasEphemeral, Mode=OneWay}">
+                            <Ellipse Fill="{ThemeResource ChatAccentBrush}" Stroke="{ThemeResource SolidBackgroundFillColorBaseBrush}" StrokeThickness="2" />
+                            <FontIcon Glyph="&#xE916;" FontSize="9" Foreground="White" />
+                        </Grid>
+                    </Grid>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                         <controls:Redact HorizontalAlignment="Left">
@@ -122,7 +130,10 @@
                                        Foreground="{ThemeResource ChatAccentTextBrush}"
                                        Visibility="{x:Bind helpers:Ui.Both(HasMention, HasUnread), Mode=OneWay}" />
                             <InfoBadge Value="{x:Bind Unread, Mode=OneWay}" Background="{ThemeResource ChatAccentBrush}"
-                                       Visibility="{x:Bind helpers:Ui.Visible(HasUnread), Mode=OneWay}" />
+                                       Visibility="{x:Bind ShowUnreadCount, Mode=OneWay}" />
+                            <!-- Marked as unread: a dot with no number, like the phone. -->
+                            <Ellipse Width="16" Height="16" Fill="{ThemeResource ChatAccentBrush}" VerticalAlignment="Center"
+                                     Visibility="{x:Bind ShowUnreadDot, Mode=OneWay}" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -1877,6 +1888,27 @@
                     <!-- Message info (MainWindow.MessageInfo.cs) -->
                     <ScrollViewer x:Name="MessageInfoView" Grid.Row="1" Visibility="Collapsed">
                         <StackPanel x:Name="MessageInfoRows" Padding="0,0,0,16" />
+                    </ScrollViewer>
+
+                    <!-- Disappearing messages (MainWindow.Disappearing.cs) -->
+                    <ScrollViewer x:Name="DisappearingView" Grid.Row="1" Visibility="Collapsed">
+                        <StackPanel Padding="24,12,24,24" Spacing="14">
+                            <Grid Width="120" Height="120" HorizontalAlignment="Center" Margin="0,8,0,8">
+                                <Ellipse Fill="{ThemeResource ChatAccentBrush}" />
+                                <FontIcon Glyph="&#xE916;" FontSize="54" Foreground="White" />
+                            </Grid>
+                            <TextBlock Text="Make messages in this chat disappear" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock FontSize="14" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="For more privacy and storage, all new messages will disappear from this chat for everyone after the selected duration. Anyone in the chat can change this setting." />
+                            <RadioButtons x:Name="DisappearingChoices" SelectionChanged="DisappearingChoices_SelectionChanged" Margin="0,4,0,0">
+                                <x:String>Off</x:String>
+                                <x:String>24 hours</x:String>
+                                <x:String>7 days</x:String>
+                                <x:String>90 days</x:String>
+                            </RadioButtons>
+                            <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       Text="Messages already in the chat stay. Starred messages are kept on this PC." />
+                        </StackPanel>
                     </ScrollViewer>
 
                     <!-- Media, links and docs (MainWindow.Gallery.cs) -->

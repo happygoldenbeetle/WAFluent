@@ -32,6 +32,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Visible;
         NewContactView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Collapsed;
+        DisappearingView.Visibility = Visibility.Collapsed;
         InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
@@ -77,7 +78,7 @@ public sealed partial class MainWindow
     {
         // Leaving New contact or Media, links and docs goes back to Contact info when that's where it came from.
         if (NewContactView.Visibility == Visibility.Visible && _newContactFromInfo) OpenInfo();
-        else if (GalleryView.Visibility == Visibility.Visible) OpenInfo();
+        else if (GalleryView.Visibility == Visibility.Visible || DisappearingView.Visibility == Visibility.Visible) OpenInfo();
         else CloseInfo();
     }
 
@@ -91,7 +92,8 @@ public sealed partial class MainWindow
 
     private void InfoChat_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if ((e.PropertyName is nameof(Chat.IsMuted) or nameof(Chat.IsFavourite) or nameof(Chat.IsBlocked) or nameof(Chat.IsSaved) or nameof(Chat.Name))
+        if (e.PropertyName == nameof(Chat.Ephemeral) && DisappearingView.Visibility == Visibility.Visible) ShowDisappearingChoice();
+        if ((e.PropertyName is nameof(Chat.IsMuted) or nameof(Chat.IsFavourite) or nameof(Chat.IsBlocked) or nameof(Chat.IsSaved) or nameof(Chat.Name) or nameof(Chat.Ephemeral))
             && ContactInfoView.Visibility == Visibility.Visible)
             RebuildInfo();
     }
@@ -142,6 +144,8 @@ public sealed partial class MainWindow
         if (gallery is { Media.Count: > 0 }) InfoRows.Children.Add(GalleryStrip(gallery));
         InfoRows.Children.Add(Divider());
         InfoRows.Children.Add(Row(Glyphs.Star, "Starred messages", action: () => Nav.SelectedItem = Nav.FooterMenuItems[0]));
+        if (!chat.IsBlocked)
+            InfoRows.Children.Add(Row("\uE916", "Disappearing messages", detail: chat.EphemeralText, action: OpenDisappearing));
         InfoRows.Children.Add(Row(chat.IsMuted ? Glyphs.RingerSilent : Glyphs.Ringer, "Notification settings",
                                   detail: chat.IsMuted ? "Muted" : null, flyout: NotificationMenu(chat)));
         InfoRows.Children.Add(Row(Glyphs.Lock, "Encryption", detail: "Messages are end-to-end encrypted."));
@@ -286,6 +290,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Visible;
         GalleryView.Visibility = Visibility.Collapsed;
+        DisappearingView.Visibility = Visibility.Collapsed;
         InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;

@@ -367,10 +367,11 @@ public sealed partial class MainViewModel : Observable
         if (_core is not null && chat.Id.Length > 0)
         {
             if (!chat.MessagesLoaded) _core.LoadMessages(chat.Id);
-            if (chat.Unread > 0) _core.MarkRead(chat.Id);
+            if (chat.Unread > 0 || chat.MarkedUnread) _core.MarkRead(chat.Id);
             if (!chat.IsGroup) _core.WatchPresence(chat.Id);   // online / last seen / typing
         }
         chat.Unread = 0;
+        chat.MarkedUnread = false;
     }
 
     private void Track(Chat chat)
@@ -420,8 +421,10 @@ public sealed partial class MainViewModel : Observable
         chat.LastDelivery = dto.LastFromMe ? Format.ToDelivery(dto.LastStatus) : Delivery.None;
 
         // Messages arriving in the open chat are read as they come in.
-        if (chat == _selectedChat && dto.Unread > 0) _core?.MarkRead(chat.Id);
+        if (chat == _selectedChat && (dto.Unread > 0 || dto.MarkedUnread)) _core?.MarkRead(chat.Id);
         chat.Unread = chat == _selectedChat ? 0 : dto.Unread;
+        chat.MarkedUnread = chat != _selectedChat && dto.MarkedUnread;
+        chat.Ephemeral = dto.Ephemeral;
 
         chat.IsArchived = dto.Archived;
         chat.IsMuted = dto.Muted;

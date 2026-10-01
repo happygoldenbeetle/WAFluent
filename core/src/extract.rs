@@ -308,6 +308,58 @@ pub enum Control {
     Pin(String, bool),
 }
 
+/// Someone turned disappearing messages on (seconds) or off (0) in a 1:1 chat.
+pub fn ephemeral_setting(message: &wa::Message) -> Option<u32> {
+    use wa::message::protocol_message::Type;
+    let pm = base(message).protocol_message.as_option()?;
+    (pm.r#type == Some(Type::EPHEMERAL_SETTING)).then(|| pm.ephemeral_expiration.unwrap_or(0))
+}
+
+/// The timer a message was sent with (seconds; 0 none).
+pub fn expiration(message: &wa::Message) -> u32 {
+    context_info(message).and_then(|c| c.expiration).unwrap_or(0)
+}
+
+/// "X turned on disappearing messages…", as the phone words it.
+pub fn ephemeral_notice(who: &str, seconds: u32) -> String {
+    if seconds == 0 {
+        return format!("{who} turned off disappearing messages.");
+    }
+    format!("{who} turned on disappearing messages. New messages will disappear from this chat {} after they're sent.", duration_words(seconds))
+}
+
+pub fn duration_words(seconds: u32) -> String {
+    match seconds {
+        86_400 => "24 hours".into(),
+        604_800 => "7 days".into(),
+        7_776_000 => "90 days".into(),
+        s if s % 86_400 == 0 => format!("{} days", s / 86_400),
+        s if s >= 3_600 => format!("{} hours", s / 3_600),
+        s => format!("{} minutes", (s / 60).max(1)),
+    }
+}
+
+/// Marks an outgoing message to disappear after `seconds` (the chat's timer), the way the
+/// phone does: in its context info. 0 leaves it alone.
+pub fn with_expiration(mut m: wa::Message, seconds: u32) -> wa::Message {
+    if seconds == 0 {
+        return m;
+    }
+    if let Some(text) = m.conversation.take() {
+        m.extended_text_message = MessageField::some(wa::message::ExtendedTextMessage { text: Some(text), ..Default::default() });
+    }
+    macro_rules! stamp {
+        ($($field:ident),*) => {$(
+            if let Some(x) = m.$field.as_option_mut() {
+                x.context_info.get_or_insert_default().expiration = Some(seconds);
+            }
+        )*};
+    }
+    stamp!(extended_text_message, image_message, video_message, audio_message, document_message, sticker_message,
+           location_message, contact_message, contacts_array_message, poll_creation_message, poll_creation_message_v3);
+    m
+}
+
 pub fn control(message: &wa::Message) -> Option<Control> {
     use wa::message::pin_in_chat_message::Type as PinType;
     use wa::message::protocol_message::Type;

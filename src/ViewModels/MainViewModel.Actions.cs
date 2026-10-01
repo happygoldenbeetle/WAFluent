@@ -288,8 +288,8 @@ public sealed partial class MainViewModel
             case "unarchive": chat.IsArchived = false; break;
             case "mute": chat.IsMuted = true; break;
             case "unmute": chat.IsMuted = false; break;
-            case "markRead": chat.Unread = 0; break;
-            case "markUnread": chat.Unread = Math.Max(1, chat.Unread); break;
+            case "markRead": chat.Unread = 0; chat.MarkedUnread = false; break;
+            case "markUnread": chat.MarkedUnread = true; break;
             case "block": chat.IsBlocked = true; break;
             case "unblock": chat.IsBlocked = false; break;
             case "clear": chat.Messages.Clear(); chat.PinnedMessageId = ""; break;
@@ -469,6 +469,16 @@ public sealed partial class MainViewModel
     {
         Raise(nameof(SelectionCount));
         Raise(nameof(SelectionText));
+    }
+
+    // ───────────── Disappearing messages ─────────────
+
+    /// <summary>Shown at once; the core sends it to the chat (and your phone) and puts the notice in.</summary>
+    public void SetEphemeral(Chat chat, int seconds)
+    {
+        if (chat.Ephemeral == seconds) return;
+        chat.Ephemeral = seconds;
+        _core?.SetEphemeral(chat.Id, seconds);
     }
 
     // ───────────── Media, links and docs ─────────────

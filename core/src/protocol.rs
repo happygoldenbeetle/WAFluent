@@ -119,6 +119,10 @@ pub struct ChatDto {
     /// The message pinned in this chat, if any: its id and a one-line preview.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pinned_message: Option<PinnedDto>,
+    /// Disappearing messages: seconds until new messages go (0 off; 86400, 604800, 7776000).
+    pub ephemeral: u32,
+    /// "Mark as unread" with nothing actually unread: a dot without a number.
+    pub marked_unread: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -344,6 +348,8 @@ pub enum Command {
     /// Report a message to WhatsApp as spam.
     Report { chat_id: String, message_id: String },
     LoadStarred,
+    /// Disappearing messages for a chat: seconds (0 off). Synced with the phone and the other side.
+    SetEphemeral { chat_id: String, seconds: u32 },
     /// A chat's Media, links and docs (contact info); answered by `chatMedia`.
     LoadChatMedia { chat_id: String },
     /// Pin or unpin a chat. Synced with the phone (WhatsApp allows three pins).

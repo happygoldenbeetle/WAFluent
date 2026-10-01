@@ -41,6 +41,7 @@ public sealed partial class MainWindow
         NewContactView.Visibility = Visibility.Collapsed;
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Collapsed;
+        DisappearingView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Visible;
         InfoTitle.Text = "Media, links and docs";
         InfoCloseIcon.Glyph = "";   // back to Contact info

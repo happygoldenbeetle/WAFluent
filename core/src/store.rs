@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS extras(
 const CHAT_SELECT: &str = "
 SELECT c.id, c.name, c.is_group, c.unread, c.pinned, c.archived, c.mute_end, c.last_ts,
        m.kind, m.text, m.file_name, m.from_me, m.status, m.sender, m.push_name,
-       a.path, c.blocked, c.pinned_msg
+       a.path, c.blocked, c.pinned_msg, c.ephemeral, c.marked_unread
 FROM chats c
 LEFT JOIN messages m ON m.rowid = (
     SELECT rowid FROM messages WHERE chat_id = c.id ORDER BY ts DESC, rowid DESC LIMIT 1)
@@ -195,6 +195,11 @@ impl Store {
             "ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE receipts ADD COLUMN delivered_ts INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE messages ADD COLUMN forwarded INTEGER NOT NULL DEFAULT 0",
+            // Disappearing messages: the chat's timer (seconds, 0 off) and when each message goes.
+            "ALTER TABLE chats ADD COLUMN ephemeral INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0",
+            // "Mark as unread" (a dot, no count), apart from real unread messages.
+            "ALTER TABLE chats ADD COLUMN marked_unread INTEGER NOT NULL DEFAULT 0",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -451,10 +456,6 @@ impl Store {
         let _ = self.db.execute("UPDATE chats SET pinned_msg = ?2 WHERE id = ?1", params![chat_id, message_id]);
     }
 
-    pub fn set_unread(&self, chat_id: &str, unread: u32) {
-        let _ = self.db.execute("UPDATE chats SET unread = ?2 WHERE id = ?1", params![chat_id, unread]);
-    }
-
     pub fn set_starred(&self, chat_id: &str, message_id: &str, starred: bool) -> bool {
         self.db
             .execute("UPDATE messages SET starred = ?3 WHERE chat_id = ?1 AND id = ?2", params![chat_id, message_id, starred])
@@ -707,11 +708,75 @@ impl Store {
     }
 
     pub fn increment_unread(&self, chat_id: &str) {
-        let _ = self.db.execute("UPDATE chats SET unread = unread + 1 WHERE id = ?1", [chat_id]);
+        let _ = self.db.execute("UPDATE chats SET unread = unread + 1, marked_unread = 0 WHERE id = ?1", [chat_id]);
     }
 
     pub fn mark_read(&self, chat_id: &str) {
-        let _ = self.db.execute("UPDATE chats SET unread = 0 WHERE id = ?1", [chat_id]);
+        let _ = self.db.execute("UPDATE chats SET unread = 0, marked_unread = 0 WHERE id = ?1", [chat_id]);
+    }
+
+    /// "Mark as unread": a dot in the list, until the chat is opened.
+    pub fn set_marked_unread(&self, chat_id: &str, marked: bool) {
+        let _ = self.db.execute("UPDATE chats SET marked_unread = ?2 WHERE id = ?1", params![chat_id, marked]);
+    }
+
+    // ───────────── Disappearing messages ─────────────
+
+    /// The chat's timer in seconds (0: off).
+    pub fn ephemeral(&self, chat_id: &str) -> u32 {
+        self.db.query_row("SELECT ephemeral FROM chats WHERE id = ?1", [chat_id], |r| r.get(0)).unwrap_or(0)
+    }
+
+    pub fn set_ephemeral(&self, chat_id: &str, seconds: u32) -> bool {
+        self.db
+            .execute("UPDATE chats SET ephemeral = ?2 WHERE id = ?1 AND ephemeral != ?2", params![chat_id, seconds])
+            .unwrap_or(0)
+            > 0
+    }
+
+    /// When the message goes (Unix seconds; `seconds` 0 leaves it).
+    pub fn set_expiry(&self, chat_id: &str, message_id: &str, sent_at: i64, seconds: u32) {
+        if seconds > 0 {
+            let _ = self.db.execute(
+                "UPDATE messages SET expires_at = ?3 WHERE chat_id = ?1 AND id = ?2",
+                params![chat_id, message_id, sent_at + i64::from(seconds)],
+            );
+        }
+    }
+
+    /// Messages whose time is up (starred ones stay, like kept ones on the phone).
+    pub fn expired(&self, now: i64) -> Vec<(String, String)> {
+        let Ok(mut stmt) = self
+            .db
+            .prepare("SELECT chat_id, id FROM messages WHERE expires_at > 0 AND expires_at <= ?1 AND starred = 0 LIMIT 500")
+        else {
+            return Vec::new();
+        };
+        stmt.query_map([now], |r| Ok((r.get(0)?, r.get(1)?))).map(|rows| rows.flatten().collect()).unwrap_or_default()
+    }
+
+    /// The newest message in a chat (for archive / read state synced to the phone).
+    pub fn last_message(&self, chat_id: &str) -> Option<StoredMessage> {
+        self.db
+            .query_row(
+                "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status
+                 FROM messages WHERE chat_id = ?1 AND kind != 'system' ORDER BY ts DESC, rowid DESC LIMIT 1",
+                [chat_id],
+                |r| {
+                    Ok(StoredMessage {
+                        id: r.get(0)?,
+                        from_me: r.get(1)?,
+                        sender: r.get(2)?,
+                        push_name: r.get(3)?,
+                        ts: r.get(4)?,
+                        kind: r.get(5)?,
+                        text: r.get(6)?,
+                        file_name: r.get(7)?,
+                        status: r.get(8)?,
+                    })
+                },
+            )
+            .ok()
     }
 
     pub fn set_push_name(&self, jid: &str, name: &str) {
@@ -810,11 +875,13 @@ impl Store {
                 r.get::<_, Option<String>>(15)?,
                 r.get::<_, bool>(16)?,
                 r.get::<_, String>(17)?,
+                r.get::<_, u32>(18)?,
+                r.get::<_, bool>(19)?,
             ))
         });
         let Ok(rows) = rows else { return Vec::new() };
         rows.flatten()
-            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name, avatar, blocked, pinned_msg)| {
+            .map(|(id, name, is_group, unread, pinned, archived, mute_end, last_ts, kind, text, file_name, from_me, status, sender, push_name, avatar, blocked, pinned_msg, ephemeral, marked_unread)| {
                 let kind = kind.unwrap_or_default();
                 let from_me = from_me.unwrap_or(false);
                 let saved = !is_group && self.has_full_name(&id);
@@ -834,7 +901,10 @@ impl Store {
                     preview_kind: kind,
                     muted: mute_end == -1 || mute_end > now,
                     last_from_me: from_me,
-                    last_status: status.unwrap_or(0),
+                    // Messages to yourself are read as they're sent (blue ticks, like the phone).
+                    last_status: if from_me && self.is_me(&id) { 3 } else { status.unwrap_or(0) },
+                    ephemeral,
+                    marked_unread: marked_unread && unread == 0,
                     id,
                     is_group,
                     unread,
@@ -1066,7 +1136,7 @@ impl Store {
             kind: m.kind,
             text: self.render_mentions(&m.text),
             file_name: m.file_name,
-            status: m.status,
+            status: if m.from_me && self.is_me(chat_id) { m.status.max(3) } else { m.status },
         }
     }
 

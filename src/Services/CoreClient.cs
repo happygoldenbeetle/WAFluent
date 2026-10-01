@@ -8,7 +8,8 @@ namespace WhatsAppNative.Services;
 public sealed record ChatDto(
     string Id, string Name, bool IsGroup, int Unread, bool Pinned, bool Archived, bool Muted,
     long LastTs, string Preview, string PreviewKind, bool LastFromMe, int LastStatus, string? LastSender,
-    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto? PinnedMessage, string? PushName, PhoneDto? Phone);
+    string? Avatar, long PinnedAt, bool Blocked, bool Saved, PinnedDto? PinnedMessage, string? PushName, PhoneDto? Phone,
+    int Ephemeral = 0, bool MarkedUnread = false);
 
 public sealed record PhoneDto(string Region, string Code, string National);
 
@@ -136,6 +137,9 @@ public sealed class CoreClient : IDisposable
     public void FindMessageAt(string chatId, long ts) => Send(new { cmd = "findMessageAt", chatId, ts });
 
     public void MarkRead(string chatId) => Send(new { cmd = "markRead", chatId });
+
+    /// <summary>Disappearing messages: seconds (0 off). Synced with the phone and the other side.</summary>
+    public void SetEphemeral(string chatId, int seconds) => Send(new { cmd = "setEphemeral", chatId, seconds });
 
     /// <summary>Recent stickers and GIFs for the panel; answered by <see cref="Stickers"/>.</summary>
     public void LoadStickers() => Send(new { cmd = "loadStickers" });

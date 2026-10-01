@@ -156,6 +156,7 @@ async fn run(dir: PathBuf) {
     }
 
     spawn_snapshot_debouncer(ctx.clone());
+    spawn_expiry(ctx.clone());
 
     let session = dir.join("whatsapp.db");
     let backend = match SqliteStore::new(&session.to_string_lossy()).await {
@@ -244,6 +245,62 @@ fn spawn_snapshot_debouncer(ctx: Ctx) {
             ctx.send(Out::Chats { chats });
         }
     });
+}
+
+/// Disappearing messages: once a minute, messages whose time is up are removed here too.
+fn spawn_expiry(ctx: Ctx) {
+    tokio::spawn(async move {
+        loop {
+            let expired = ctx.db().expired(store::unix_now());
+            let mut chats = std::collections::BTreeSet::new();
+            for (chat_id, id) in expired {
+                if ctx.db().delete_message(&chat_id, &id) {
+                    ctx.send(Out::MessageRemoved { chat_id: chat_id.clone(), message_id: id });
+                    chats.insert(chat_id);
+                }
+            }
+            for chat_id in chats {
+                send_chat(&ctx, &chat_id);
+            }
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
+    });
+}
+
+/// A notice in the chat ("You turned on disappearing messages…"), shown at once.
+pub(crate) fn add_notice(ctx: &Ctx, chat_id: &str, text: String, ts: i64) {
+    let stored = StoredMessage {
+        id: format!("notice-{ts}-{:x}", rand_u32()),
+        from_me: false,
+        sender: String::new(),
+        push_name: String::new(),
+        ts,
+        kind: "system".into(),
+        text,
+        file_name: String::new(),
+        status: 0,
+    };
+    let dto = {
+        let db = ctx.db();
+        db.insert_message(chat_id, &stored);
+        db.to_dto(chat_id, stored)
+    };
+    ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto });
+}
+
+fn rand_u32() -> u32 {
+    let mut b = [0u8; 4];
+    let _ = getrandom::fill(&mut b);
+    u32::from_le_bytes(b)
+}
+
+/// The chat's disappearing-messages timer changed (here, on the phone, or by the other side).
+pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &str, ts: i64) {
+    if !ctx.db().set_ephemeral(chat_id, seconds) {
+        return;   // already so (our own change coming back)
+    }
+    add_notice(ctx, chat_id, extract::ephemeral_notice(who, seconds), ts);
+    send_chat(ctx, chat_id);
 }
 
 async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
@@ -440,6 +497,10 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let items = ctx.db().starred();
             ctx.send(Out::Starred { items });
         }
+        Command::SetEphemeral { chat_id, seconds } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::set_ephemeral(&ctx, &client, chat_id, seconds).await });
+        }
         Command::LoadChatMedia { chat_id } => {
             let (media, docs, links) = ctx.db().chat_media(&chat_id);
             ctx.send(Out::ChatMedia { chat_id, media, docs, links });
@@ -579,7 +640,8 @@ async fn send_text(
 
     // The card is kept like a received one (thumb and link details), so the bubble shows it.
     let card = link.is_some().then(|| extract::content(&message)).flatten();
-    let sent = match client.send_message(jid, message).await {
+    let timer = ctx.db().ephemeral(&chat_id);
+    let sent = match client.send_message(jid, extract::with_expiration(message, timer)).await {
         Ok(sent) => sent,
         Err(e) => {
             warn!("send to {chat_id} failed: {e}");
@@ -603,6 +665,7 @@ async fn send_text(
         };
         db.ensure_chat(&chat_id, chat_id.ends_with("@g.us"));
         db.insert_message(&chat_id, &stored);
+        db.set_expiry(&chat_id, &stored.id, stored.ts, timer);
         if let Some(card) = &card {
             db.insert_extra(&chat_id, &stored.id, &card.thumb, card.extra.as_ref());
         }
@@ -655,11 +718,9 @@ pub(crate) fn send_message_update(ctx: &Ctx, chat_id: &str, message_id: &str) {
     }
 }
 
-/// "Mark as unread": WhatsApp shows a dot; one unread is the closest we have.
+/// "Mark as unread": a dot in the list (no number), like the phone, until the chat is opened.
 pub(crate) fn mark_unread(ctx: &Ctx, chat_id: &str) {
-    let db = ctx.db();
-    let unread = db.chat(chat_id).map(|c| c.unread).unwrap_or(0).max(1);
-    db.set_unread(chat_id, unread);
+    ctx.db().set_marked_unread(chat_id, true);
 }
 
 /// Who you blocked, from the server (the phone manages the list too).
@@ -1005,6 +1066,18 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             if update.action.read.unwrap_or(true) { ctx.db().mark_read(&id) } else { mark_unread(ctx, &id) }
             send_chat(ctx, &id);
         }
+        Event::GroupUpdate(update) => {
+            use whatsapp_rust::wacore::stanza::groups::GroupNotificationAction;
+            if let GroupNotificationAction::Ephemeral { expiration, .. } = update.action {
+                let chat_id = ctx.db().canonical(&update.group_jid.to_non_ad_string());
+                let who = match &update.participant {
+                    Some(p) if ctx.db().is_me(&p.to_non_ad_string()) => "You".to_string(),
+                    Some(p) => ctx.db().person_name(&p.to_non_ad_string(), update.notify.as_deref().unwrap_or("")),
+                    None => "Someone".to_string(),
+                };
+                ephemeral_changed(ctx, &chat_id, expiration, &who, update.timestamp.timestamp());
+            }
+        }
         Event::Receipt(receipt) => {
             use whatsapp_rust::wacore::types::presence::ReceiptType;
             let status = match receipt.r#type {
@@ -1074,6 +1147,12 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     if is_hidden_chat(&raw_chat) {
         return;
     }
+    if let Some(seconds) = extract::ephemeral_setting(message) {
+        let chat_id = ctx.db().canonical(&raw_chat);
+        let who = if source.is_from_me { "You".to_string() } else { ctx.db().person_name(&source.sender.to_non_ad_string(), &info.push_name) };
+        ephemeral_changed(ctx, &chat_id, seconds, &who, info.timestamp.timestamp());
+        return;
+    }
     if let Some(control) = extract::control(message) {
         let chat_id = ctx.db().canonical(&raw_chat);
         apply_control(ctx, &chat_id, control);
@@ -1089,6 +1168,7 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let Some(content) = extract::content(message) else { return };
     let quote = extract::quote(message);
     let forwarded = extract::forwarding_score(message);
+    let expiration = extract::expiration(message);
 
     let (chat_id, stored, (media, thumb, extra)) = {
         let db = ctx.db();
@@ -1143,6 +1223,9 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
             db.insert_quote(&chat_id, &stored.id, quote);
         }
         db.set_forwarded(&chat_id, &stored.id, forwarded);
+        // A timer on the message (its sender's setting), else the chat's.
+        let timer = if expiration > 0 { expiration } else { db.ephemeral(&chat_id) };
+        db.set_expiry(&chat_id, &stored.id, stored.ts, timer);
         if !stored.from_me {
             db.increment_unread(&chat_id);
         }
@@ -1281,7 +1364,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
     }
 
     let name = conv.name.as_deref().or(conv.display_name.as_deref()).unwrap_or("");
-    let unread = conv.unread_count.unwrap_or(0) + u32::from(conv.marked_as_unread == Some(true) && conv.unread_count.unwrap_or(0) == 0);
+    let unread = conv.unread_count.unwrap_or(0);
     s.upsert_chat(&ChatMeta {
         id: &chat_id,
         name,
@@ -1291,6 +1374,12 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
         archived: conv.archived.unwrap_or(false),
         mute_end: conv.mute_end_time.map(|t| t as i64).unwrap_or(0),
     });
+    if conv.marked_as_unread == Some(true) && unread == 0 {
+        s.set_marked_unread(&chat_id, true);
+    }
+    if let Some(seconds) = conv.ephemeral_expiration {
+        s.set_ephemeral(&chat_id, seconds);
+    }
 
     for hm in &conv.messages {
         let Some(wmi) = hm.message.as_option() else { continue };
@@ -1354,6 +1443,11 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
             s.insert_quote(&chat_id, &id, &quote);
         }
         let forwarded = msg.map_or(0, extract::forwarding_score);
+        // Disappearing: when it was sent and for how long (from the phone), else its own timer.
+        let (eph_start, eph_secs) = match (wmi.ephemeral_start_timestamp, wmi.ephemeral_duration) {
+            (Some(start), Some(secs)) if secs > 0 => (start as i64, secs),
+            _ => (wmi.message_timestamp.unwrap_or(0) as i64, msg.map_or(0, extract::expiration)),
+        };
         let inserted = s.insert_message(
             &chat_id,
             &StoredMessage {
@@ -1369,6 +1463,7 @@ fn ingest_conversation(s: &Store, conv: &wa::Conversation, upgraded: &mut Vec<(S
             },
         );
         s.set_forwarded(&chat_id, &id, forwarded);
+        s.set_expiry(&chat_id, &id, eph_start, eph_secs);
         if (new_media || new_extra || new_votes) && !inserted {
             upgraded.push((chat_id.clone(), id));
         }
@@ -1398,7 +1493,10 @@ fn system_notice(s: &Store, wmi: &wa::WebMessageInfo, from_me: bool, actor: &str
         T::GROUP_PARTICIPANT_INVITE | T::GROUP_PARTICIPANT_LINKED_GROUP_JOIN | T::GROUP_PARTICIPANT_ADD_REQUEST_JOIN => {
             format!("{names} joined using this group's invite link")
         }
-        T::CHANGE_EPHEMERAL_SETTING => format!("{who} changed the disappearing messages setting"),
+        T::CHANGE_EPHEMERAL_SETTING => match first.parse::<u32>() {
+            Ok(seconds) => extract::ephemeral_notice(&who, seconds),
+            Err(_) => format!("{who} changed the disappearing messages setting"),
+        },
         T::BLOCK_CONTACT => if first == "true" { "You blocked this contact" } else { "You unblocked this contact" }.to_string(),
         _ => return None,
     };

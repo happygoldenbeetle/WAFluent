@@ -425,11 +425,35 @@ public sealed class Chat : Observable
     public int Unread
     {
         get => _unread;
-        set { if (Set(ref _unread, value)) Raise(nameof(HasUnread)); }
+        set { if (Set(ref _unread, value)) { Raise(nameof(HasUnread)); Raise(nameof(ShowUnreadCount)); Raise(nameof(ShowUnreadDot)); } }
     }
+
+    private bool _markedUnread;
+
+    /// <summary>"Mark as unread" with nothing actually unread: a green dot, no number, like the phone.</summary>
+    public bool MarkedUnread
+    {
+        get => _markedUnread;
+        set { if (Set(ref _markedUnread, value)) { Raise(nameof(HasUnread)); Raise(nameof(ShowUnreadCount)); Raise(nameof(ShowUnreadDot)); } }
+    }
+
+    public bool ShowUnreadCount => Unread > 0;
+    public bool ShowUnreadDot => MarkedUnread && Unread == 0;
+
+    private int _ephemeral;
+
+    /// <summary>Disappearing messages: seconds until new messages go (0 off).</summary>
+    public int Ephemeral
+    {
+        get => _ephemeral;
+        set { if (Set(ref _ephemeral, value)) { Raise(nameof(HasEphemeral)); Raise(nameof(EphemeralText)); } }
+    }
+
+    public bool HasEphemeral => _ephemeral > 0;
+    public string EphemeralText => Helpers.Format.EphemeralText(_ephemeral);
 
     /// <summary>Delivery state of the last message, when it was outgoing.</summary>
     public Delivery LastDelivery { get => _lastDelivery; set => Set(ref _lastDelivery, value); }
 
-    public bool HasUnread => Unread > 0;
+    public bool HasUnread => Unread > 0 || MarkedUnread;
 }

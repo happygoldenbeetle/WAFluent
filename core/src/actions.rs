@@ -53,17 +53,19 @@ fn lookup(ctx: &Ctx, chat_id: &str, message_id: &str) -> Option<(Jid, StoredMess
 pub async fn chat_action(ctx: &Ctx, client: &Arc<Client>, chat_id: String, action: String, until_ms: Option<i64>) {
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
     let actions = client.chat_actions();
+    // The phone applies archive and read state only with the chat's last message attached.
+    let range = || last_message_range(ctx, client, &jid, &chat_id);
     let result: Result<(), String> = match action.as_str() {
-        "archive" => actions.archive_chat(&jid, None).await.map_err(|e| e.to_string()),
-        "unarchive" => actions.unarchive_chat(&jid, None).await.map_err(|e| e.to_string()),
+        "archive" => actions.archive_chat(&jid, range()).await.map_err(|e| e.to_string()),
+        "unarchive" => actions.unarchive_chat(&jid, range()).await.map_err(|e| e.to_string()),
         "mute" => match until_ms {
             Some(ms) => actions.mute_chat_until(&jid, ms).await,
             None => actions.mute_chat(&jid).await,
         }
         .map_err(|e| e.to_string()),
         "unmute" => actions.unmute_chat(&jid).await.map_err(|e| e.to_string()),
-        "markRead" => actions.mark_chat_as_read(&jid, true, None).await.map_err(|e| e.to_string()),
-        "markUnread" => actions.mark_chat_as_read(&jid, false, None).await.map_err(|e| e.to_string()),
+        "markRead" => actions.mark_chat_as_read(&jid, true, range()).await.map_err(|e| e.to_string()),
+        "markUnread" => actions.mark_chat_as_read(&jid, false, range()).await.map_err(|e| e.to_string()),
         "clear" => actions.clear_chat(&jid, false, false, None).await.map_err(|e| e.to_string()),
         "delete" => actions.delete_chat(&jid, false, None).await.map_err(|e| e.to_string()),
         "block" => client.blocking().block(&jid).await.map_err(|e| e.to_string()),
@@ -102,6 +104,45 @@ pub async fn chat_action(ctx: &Ctx, client: &Arc<Client>, chat_id: String, actio
         _ => {}
     }
     send_chat(ctx, &chat_id);
+}
+
+/// The chat's last message, as WhatsApp's archive / mark-read actions carry it.
+fn last_message_range(ctx: &Ctx, client: &Client, jid: &Jid, chat_id: &str) -> Option<wa::sync_action_value::SyncActionMessageRange> {
+    let m = ctx.db().last_message(chat_id)?;
+    let key = message_key(client, jid, chat_id, &m);
+    Some(wa::sync_action_value::SyncActionMessageRange {
+        last_message_timestamp: Some(m.ts),
+        last_system_message_timestamp: None,
+        messages: vec![wa::sync_action_value::SyncActionMessage { key: MessageField::some(key), timestamp: Some(m.ts) }],
+    })
+}
+
+/// Disappearing messages on or off for a chat: a group through the group's settings; a 1:1
+/// chat with the message the phone sends (both phones, and yours, apply it).
+pub async fn set_ephemeral(ctx: &Ctx, client: &Arc<Client>, chat_id: String, seconds: u32) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let result = if is_group(&chat_id) {
+        client.groups().set_ephemeral(jid, seconds).await.map_err(|e| e.to_string())
+    } else {
+        let message = wa::Message {
+            protocol_message: MessageField::some(wa::message::ProtocolMessage {
+                r#type: Some(wa::message::protocol_message::Type::EPHEMERAL_SETTING),
+                ephemeral_expiration: Some(seconds),
+                ephemeral_setting_timestamp: Some(store::unix_now()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        client.send_message(jid, message).await.map(|_| ()).map_err(|e| e.to_string())
+    };
+    match result {
+        Ok(()) => crate::ephemeral_changed(ctx, &chat_id, seconds, "You", store::unix_now()),
+        Err(e) => {
+            warn!("disappearing messages for {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't change disappearing messages. Try again.");
+            send_chat(ctx, &chat_id);   // the panel goes back to what it was
+        }
+    }
 }
 
 fn verb(action: &str) -> &'static str {
@@ -186,7 +227,8 @@ pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_i
     let mut sent = 0;
     for target in &to {
         let Ok(jid) = target.parse::<Jid>() else { continue };
-        match client.send_message(jid, message.clone()).await {
+        let timer = ctx.db().ephemeral(target);
+        match client.send_message(jid, extract::with_expiration(message.clone(), timer)).await {
             Ok(result) => {
                 sent += 1;
                 let stored = StoredMessage {
@@ -204,6 +246,7 @@ pub async fn forward(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_i
                     let db = ctx.db();
                     db.insert_message(target, &stored);
                     db.set_forwarded(target, &stored.id, score);
+                    db.set_expiry(target, &stored.id, stored.ts, db.ephemeral(target));
                     if let Some((x, path)) = &media {
                         db.insert_media(target, &stored.id, x);
                         if !path.is_empty() {
@@ -415,7 +458,8 @@ pub async fn send_gif(ctx: &Ctx, client: &Arc<Client>, to: String, path: String,
         streaming_sidecar: up.streaming_sidecar,
         ..Default::default()
     });
-    let sent = match client.send_message(jid, message).await {
+    let timer = ctx.db().ephemeral(&to);
+    let sent = match client.send_message(jid, extract::with_expiration(message, timer)).await {
         Ok(sent) => sent,
         Err(e) => {
             warn!("gif to {to} failed: {e}");
@@ -585,7 +629,8 @@ pub async fn send_media(ctx: &Ctx, client: &Arc<Client>, chat_id: String, file: 
             })
         }
     }
-    let sent = match client.send_message(jid, message.clone()).await {
+    let timer = ctx.db().ephemeral(&chat_id);
+    let sent = match client.send_message(jid, extract::with_expiration(message.clone(), timer)).await {
         Ok(sent) => sent,
         Err(e) => {
             warn!("send to {chat_id} failed: {e}");
@@ -626,7 +671,8 @@ pub async fn send_contacts(ctx: &Ctx, client: &Arc<Client>, chat_id: String, con
             })
         }
     }
-    match client.send_message(jid, message.clone()).await {
+    let timer = ctx.db().ephemeral(&chat_id);
+    match client.send_message(jid, extract::with_expiration(message.clone(), timer)).await {
         Ok(sent) => store_sent(ctx, &chat_id, sent.message_id, &message, None, None),
         Err(e) => {
             warn!("contacts to {chat_id} failed: {e}");
@@ -686,7 +732,8 @@ pub async fn send_poll(ctx: &Ctx, client: &Arc<Client>, chat_id: String, poll: N
         message_secret: Some(secret.clone()),
         ..Default::default()
     });
-    let sent = match client.send_message(jid.clone(), message.clone()).await {
+    let timer = ctx.db().ephemeral(&chat_id);
+    let sent = match client.send_message(jid.clone(), extract::with_expiration(message.clone(), timer)).await {
         Ok(sent) => sent,
         Err(e) => {
             warn!("poll to {chat_id} failed: {e}");
@@ -724,6 +771,7 @@ fn store_sent_as(ctx: &Ctx, chat_id: &str, id: String, message: &wa::Message, lo
         let db = ctx.db();
         db.ensure_chat(chat_id, chat_id.ends_with("@g.us"));
         db.insert_message(chat_id, &stored);
+        db.set_expiry(chat_id, &stored.id, stored.ts, db.ephemeral(chat_id));
         if let Some(media) = &content.media {
             db.insert_media(chat_id, &stored.id, media);
             if let Some(path) = local {

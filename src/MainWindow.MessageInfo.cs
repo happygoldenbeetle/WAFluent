@@ -52,6 +52,7 @@ public sealed partial class MainWindow
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Collapsed;
+        DisappearingView.Visibility = Visibility.Collapsed;
         InfoCloseIcon.Glyph = "\uE711";
         SearchView.Visibility = Visibility.Collapsed;
         MessageInfoView.Visibility = Visibility.Visible;

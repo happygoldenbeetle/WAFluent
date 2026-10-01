@@ -413,6 +413,18 @@ public sealed partial class MainWindow : Window
                 }
                 File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
             };
+        // WAFLUENT_SELFTEST=disappearing: marks Family Foodies unread (a dot), turns 7 days on for the open chat and
+        // opens Contact info › Disappearing messages.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "disappearing")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                ViewModel.ChatAction(ViewModel.Chats.First(c => c.Name == "Family Foodies"), "markUnread");
+                ViewModel.SetEphemeral(ViewModel.SelectedChat!, 604_800);
+                OpenInfo();
+                await Task.Delay(300);
+                OpenDisappearing();
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

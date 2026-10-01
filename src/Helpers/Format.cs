@@ -20,6 +20,18 @@ public static class Format
     public static DateTime FromUnix(long seconds) =>
         seconds <= 0 ? DateTime.MinValue : DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime;
 
+    /// <summary>A disappearing-messages timer in words: "Off", "24 hours", "7 days", "90 days".</summary>
+    public static string EphemeralText(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        86_400 => "24 hours",
+        604_800 => "7 days",
+        7_776_000 => "90 days",
+        var s when s % 86_400 == 0 => $"{s / 86_400} days",
+        var s when s >= 3_600 => $"{s / 3_600} hours",
+        var s => $"{Math.Max(1, s / 60)} minutes",
+    };
+
     /// <summary>Settings › Use 24-hour time: "18:27"; off: "6:27 pm".</summary>
     public static bool Use24Hour { get; set; } = true;
 
