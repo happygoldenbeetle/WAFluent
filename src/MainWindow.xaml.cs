@@ -527,6 +527,17 @@ public sealed partial class MainWindow : Window
                         RebuildGroupChips();
                         FilterNewChat();
                         break;
+                    case "newchat-blocked":   // a blocked contact in the list, then picked: the prompt
+                        var blocked = _newChatContacts.First(c => c.Name == "Mark Rogers");
+                        blocked.IsBlocked = true;
+                        blocked.Subtitle = "Contact is blocked";
+                        NewGroup_Click(this, new RoutedEventArgs());
+                        _groupMembers.AddRange(_newChatContacts.Take(2));
+                        RebuildGroupChips();
+                        FilterNewChat();
+                        await Task.Delay(300);
+                        _ = PickMemberAsync(blocked);
+                        break;
                 }
             };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.

@@ -43,7 +43,12 @@ public sealed class ContactRow : Observable
     public required string Name { get; init; }
     /// <summary>Digits only.</summary>
     public required string Phone { get; init; }
-    public string Subtitle { get; init; } = "";
+    private string _subtitle = "";
+    public string Subtitle
+    {
+        get => _subtitle;
+        set { if (Set(ref _subtitle, value)) Raise(nameof(HasSubtitle)); }
+    }
     public string? AvatarPath { get; init; }
     /// <summary>New chat: their 1:1 chat's id, and whether you've blocked them.</summary>
     public string ChatId { get; init; } = "";

@@ -56,8 +56,8 @@
                         <controls:Redact HorizontalAlignment="Left">
                             <TextBlock Text="{x:Bind Name}" FontSize="15" TextTrimming="CharacterEllipsis" />
                         </controls:Redact>
-                        <TextBlock Text="{x:Bind Subtitle}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasSubtitle}" />
+                        <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasSubtitle, Mode=OneWay}" />
                     </StackPanel>
                 </Grid>
             </DataTemplate>
@@ -1258,6 +1258,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <AutoSuggestBox x:Name="NewChatSearch" Margin="16,4,16,8" PlaceholderText="Search name or number" QueryIcon="Find"
                                             AutomationProperties.Name="Search contacts" TextChanged="NewChatSearch_TextChanged" />
@@ -1317,13 +1318,9 @@
                             </ListView>
                             <TextBlock x:Name="NewChatEmpty" Grid.Row="2" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                                        Margin="0,0,0,120" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
-                            <!-- Group members picked: on to the group's name. -->
-                            <Button x:Name="GroupNext" Grid.Row="2" Visibility="Collapsed" Width="52" Height="52" CornerRadius="26" Padding="0"
-                                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,24" BorderThickness="0"
-                                    Background="{ThemeResource ChatAccentBrush}" Click="GroupNext_Click" ToolTipService.ToolTip="Next"
-                                    AutomationProperties.Name="Next">
-                                <FontIcon Glyph="&#xE72A;" FontSize="18" Foreground="#0B141A" />
-                            </Button>
+                            <!-- Group members picked: on to the group's name (a button like Chat and Save). -->
+                            <Button x:Name="GroupNext" Grid.Row="3" Visibility="Collapsed" Content="Next" Style="{StaticResource AccentButtonStyle}"
+                                    HorizontalAlignment="Stretch" Margin="16,8,16,16" Click="GroupNext_Click" />
                         </Grid>
 
                         <!-- A number you haven't saved: type or tap it, then Chat. -->

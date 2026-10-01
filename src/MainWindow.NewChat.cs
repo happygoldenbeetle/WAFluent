@@ -89,6 +89,7 @@ public sealed partial class MainWindow
         NewChatSubjectPage.Visibility = page == NewChatPage.Subject ? Visibility.Visible : Visibility.Collapsed;
         NewChatDialpad.Visibility = page == NewChatPage.Contacts ? Visibility.Visible : Visibility.Collapsed;
         GroupChipsArea.Visibility = page == NewChatPage.Members ? Visibility.Visible : Visibility.Collapsed;
+        GroupNext.Visibility = page == NewChatPage.Members && _groupMembers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (list)
         {
             FilterNewChat();
@@ -169,6 +170,12 @@ public sealed partial class MainWindow
             CloseNewChat();
             return;
         }
+        await PickMemberAsync(row);
+    }
+
+    /// <summary>Adds a contact to the group being made; a blocked one asks first, and is unblocked on Yes.</summary>
+    private async Task PickMemberAsync(ContactRow row)
+    {
         if (row.IsBlocked)
         {
             var ask = new ContentDialog
@@ -187,6 +194,7 @@ public sealed partial class MainWindow
             if (await ask.ShowAsync() != ContentDialogResult.Primary) return;
             ViewModel.Unblock(row.ChatId);
             row.IsBlocked = false;
+            row.Subtitle = row.Phone.Length > 0 ? "+" + row.Phone : "";
         }
         _groupMembers.Add(row);
         NewChatSearch.Text = "";
@@ -223,7 +231,7 @@ public sealed partial class MainWindow
             GroupChips.Children.Add(chip);
         }
         GroupChipsDivider.Visibility = _groupMembers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        GroupNext.Visibility = _groupMembers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        GroupNext.Visibility = _groupMembers.Count > 0 && _newChatPage == NewChatPage.Members ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void GroupNext_Click(object sender, RoutedEventArgs e)

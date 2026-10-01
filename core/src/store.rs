@@ -200,6 +200,9 @@ impl Store {
             "ALTER TABLE messages ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0",
             // "Mark as unread" (a dot, no count), apart from real unread messages.
             "ALTER TABLE chats ADD COLUMN marked_unread INTEGER NOT NULL DEFAULT 0",
+            // Everyone you've blocked, whether or not there's a chat with them (New chat marks them).
+            "CREATE TABLE IF NOT EXISTS blocklist(id TEXT PRIMARY KEY)",
+            "INSERT OR IGNORE INTO blocklist SELECT id FROM chats WHERE blocked = 1",
             // Pinned messages: up to three per chat, each until it runs out (WhatsApp's 2024 pins).
             "CREATE TABLE IF NOT EXISTS pins(chat_id TEXT NOT NULL, message_id TEXT NOT NULL, pinned_at INTEGER NOT NULL,
                                              expires_at INTEGER NOT NULL, PRIMARY KEY(chat_id, message_id))",
@@ -448,14 +451,40 @@ impl Store {
 
     pub fn set_blocked(&self, chat_id: &str, blocked: bool) {
         let _ = self.db.execute("UPDATE chats SET blocked = ?2 WHERE id = ?1", params![chat_id, blocked]);
+        // Kept apart from the chats too: a blocked contact may have no chat.
+        let _ = if blocked {
+            self.db.execute("INSERT OR IGNORE INTO blocklist(id) VALUES(?1)", [chat_id])
+        } else {
+            self.db.execute("DELETE FROM blocklist WHERE id = ?1", [chat_id])
+        };
     }
 
     /// The server's blocklist replaces ours.
     pub fn set_blocklist(&self, chat_ids: &[String]) {
         let _ = self.db.execute("UPDATE chats SET blocked = 0", []);
+        let _ = self.db.execute("DELETE FROM blocklist", []);
         for id in chat_ids {
             self.set_blocked(id, true);
         }
+    }
+
+    /// Blocked people, as chat ids and as phone numbers (a block may be listed under the
+    /// LID while the contact is known by number, or the other way round).
+    fn blocked_keys(&self) -> std::collections::HashSet<String> {
+        let ids: Vec<String> = self
+            .db
+            .prepare("SELECT id FROM blocklist")
+            .and_then(|mut s| s.query_map([], |r| r.get(0)).map(|r| r.flatten().collect()))
+            .unwrap_or_default();
+        let mut keys = std::collections::HashSet::new();
+        for id in ids {
+            if let Some(number) = self.phone_number(&id) {
+                keys.insert(number);
+            }
+            keys.insert(self.canonical(&id));
+            keys.insert(id);
+        }
+        keys
     }
 
     /// Pins a message until `expires_at`; a chat keeps its four newest pins, like WhatsApp.
@@ -746,6 +775,7 @@ impl Store {
             .prepare("SELECT jid, full_name FROM names WHERE full_name != '' AND jid NOT LIKE '%@g.us'")
             .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map(|r| r.flatten().collect()))
             .unwrap_or_default();
+        let blocked_keys = self.blocked_keys();
         let mut seen = std::collections::HashSet::new();
         let mut contacts: Vec<ContactDto> = rows
             .into_iter()
@@ -763,6 +793,10 @@ impl Store {
                     .db
                     .query_row("SELECT blocked FROM chats WHERE id = ?1", [&chat_id], |r| Ok((r.get(0)?, true)))
                     .unwrap_or((false, false));
+                let blocked = blocked
+                    || blocked_keys.contains(&chat_id)
+                    || blocked_keys.contains(&jid)
+                    || (!phone.is_empty() && blocked_keys.contains(&phone));
                 let avatar: Option<String> = self
                     .db
                     .query_row("SELECT path FROM avatars WHERE jid = ?1", [&chat_id], |r| r.get(0))
