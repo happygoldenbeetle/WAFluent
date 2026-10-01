@@ -507,6 +507,22 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
             tokio::spawn(async move { actions::set_ephemeral(&ctx, &client, chat_id, seconds).await });
         }
+        Command::LoadContacts => {
+            let contacts = ctx.db().contacts();
+            ctx.send(Out::Contacts { contacts });
+        }
+        Command::CreateGroup { subject, members } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::create_group(&ctx, &client, subject, members).await });
+        }
+        Command::SaveNewContact { phone, first_name, last_name, sync_to_phone } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move {
+                let Some(chat_id) = resolve_number(&ctx, &client, &phone).await else { return };
+                actions::save_contact(&ctx, &client, chat_id.clone(), first_name, last_name, sync_to_phone).await;
+                ctx.send(Out::Opened { chat_id });
+            });
+        }
         Command::LoadChatMedia { chat_id } => {
             let (media, docs, links) = ctx.db().chat_media(&chat_id);
             ctx.send(Out::ChatMedia { chat_id, media, docs, links });
@@ -1712,29 +1728,36 @@ async fn send_vote(
 
 /// Opens the chat with a phone number, creating it if you've never messaged them.
 async fn open_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) {
+    if let Some(chat_id) = resolve_number(ctx, client, phone).await {
+        ctx.send(Out::Opened { chat_id });
+    }
+}
+
+/// The 1:1 chat for a phone number, made if the number is on WhatsApp and there isn't one
+/// yet. None (after a notice) when it isn't a number, isn't on WhatsApp, or can't be checked.
+async fn resolve_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) -> Option<String> {
     let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
     if digits.len() < 6 {
         ctx.send(Out::Notice { ok: false, text: format!("{phone} isn't a phone number.") });
-        return;
+        return None;
     }
     let pn = format!("{digits}@s.whatsapp.net");
     let existing = ctx.db().canonical(&pn);
     if ctx.db().chat(&existing).is_some() {
-        ctx.send(Out::Opened { chat_id: existing });
-        return;
+        return Some(existing);
     }
-    let Ok(jid) = pn.parse::<Jid>() else { return };
+    let jid = pn.parse::<Jid>().ok()?;
     let found = match client.contacts().is_on_whatsapp(std::slice::from_ref(&jid)).await {
         Ok(results) => results.into_iter().find(|r| r.is_registered),
         Err(e) => {
             warn!("is_on_whatsapp {digits} failed: {e}");
             ctx.send(Out::Notice { ok: false, text: "Couldn't check that number. Try again in a moment.".into() });
-            return;
+            return None;
         }
     };
     let Some(found) = found else {
         ctx.send(Out::Notice { ok: false, text: format!("{phone} isn't on WhatsApp.") });
-        return;
+        return None;
     };
     let chat_id = {
         let db = ctx.db();
@@ -1749,5 +1772,5 @@ async fn open_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) {
     };
     let _ = ctx.avatars.send(avatars::Request { chat_id: chat_id.clone(), force: false });
     send_chat(ctx, &chat_id);
-    ctx.send(Out::Opened { chat_id });
+    Some(chat_id)
 }

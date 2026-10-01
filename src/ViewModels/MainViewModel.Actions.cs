@@ -478,6 +478,58 @@ public sealed partial class MainViewModel
         Raise(nameof(SelectionText));
     }
 
+    // ───────────── New chat ─────────────
+
+    /// <summary>Raised with your saved contacts, by name.</summary>
+    public event Action<IReadOnlyList<ContactDto>>? ContactsLoaded;
+
+    public void LoadContacts()
+    {
+        if (_core is not null)
+        {
+            _core.LoadContacts();
+            return;
+        }
+        // Sample mode: everyone you have a 1:1 chat with.
+        ContactsLoaded?.Invoke(_allChats.Where(c => !c.IsGroup).OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(c => new ContactDto(c.Id.Length > 0 ? c.Id : c.Name, c.Name, "", c.AvatarPath, c.IsBlocked, true)).ToList());
+    }
+
+    /// <summary>Opens a contact's chat, starting one (by their number) when there isn't one yet.</summary>
+    public void OpenContact(string chatId, string phone, string name)
+    {
+        var chat = _byId.GetValueOrDefault(chatId) ?? (_core is null ? _allChats.FirstOrDefault(c => !c.IsGroup && c.Name == name) : null);
+        if (chat is not null)
+        {
+            SelectedChat = chat;
+            ChatOpened?.Invoke(chat);
+        }
+        else if (phone.Length > 0) OpenNumber(phone);
+        else Notify(false, "This contact's number isn't known yet.");
+    }
+
+    public void CreateGroup(string subject, IReadOnlyList<string> members)
+    {
+        if (_core is null) Notify(true, $"\"{subject}\" would be created with {members.Count} members (sample data).");
+        else _core.CreateGroup(subject, members);
+    }
+
+    public void SaveNewContact(string phone, string first, string last, bool syncToPhone)
+    {
+        if (_core is null) Notify(true, $"{first} would be saved (sample data).");
+        else _core.SaveNewContact(phone, first, last, syncToPhone);
+    }
+
+    public void Unblock(string chatId)
+    {
+        if (_byId.TryGetValue(chatId, out var chat)) ChatAction(chat, "unblock");
+        else _core?.ChatAction(chatId, "unblock");
+    }
+
+    /// <summary>The country code most of your chats have (New contact starts with it).</summary>
+    public string CommonCountryCode() =>
+        _allChats.Where(c => c.PhoneCode.Length > 0).GroupBy(c => c.PhoneCode).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "+";
+
     // ───────────── Disappearing messages ─────────────
 
     /// <summary>Shown at once; the core sends it to the chat (and your phone) and puts the notice in.</summary>

@@ -60,6 +60,7 @@ public sealed partial class MainViewModel : Observable
         core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
         core.ChatMediaReceived += OnChatMedia;
+        core.ContactsReceived += contacts => ContactsLoaded?.Invoke(contacts);
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) { m.IsUploading = false; m.Delivery = Delivery.Failed; } };
         core.ReceiptReceived += OnReceipt;

@@ -292,9 +292,9 @@
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
                         <Border x:Name="Highlight" CornerRadius="8" Opacity="0" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                        <Viewbox Width="21" Height="21" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Fill="{TemplateBinding Foreground}" Data="M 3.4 20.4 l 17.45 -7.48 c .81 -.35 .81 -1.49 0 -1.84 L 3.4 3.6 c -.66 -.29 -1.39 .2 -1.39 .91 L 2 9.12 c 0 .5 .37 .93 .87 .99 L 17 12 2.87 13.88 c -.5 .07 -.87 .5 -.87 1 l .01 4.61 c 0 .71 .73 1.2 1.39 .91 z" />
-                        </Viewbox>
+                        <!-- Stretch: the drawing is fitted by its own outline (it isn't centred in its 24 px grid). -->
+                        <Path Width="20" Height="18" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Fill="{TemplateBinding Foreground}" Data="M 3.4 20.4 l 17.45 -7.48 c .81 -.35 .81 -1.49 0 -1.84 L 3.4 3.6 c -.66 -.29 -1.39 .2 -1.39 .91 L 2 9.12 c 0 .5 .37 .93 .87 .99 L 17 12 2.87 13.88 c -.5 .07 -.87 .5 -.87 1 l .01 4.61 c 0 .71 .73 1.2 1.39 .91 z" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

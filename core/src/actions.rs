@@ -161,6 +161,54 @@ fn verb(action: &str) -> &'static str {
 }
 
 /// Saves the person to your phone's contacts (WhatsApp needs their phone number).
+/// New chat > New group: creates it with these members and opens it.
+pub async fn create_group(ctx: &Ctx, client: &Arc<Client>, subject: String, members: Vec<String>) {
+    use whatsapp_rust::wacore::iq::groups::{GroupCreateOptions, GroupParticipantOptions};
+    let subject = subject.trim().to_string();
+    let participants: Vec<GroupParticipantOptions> = {
+        let db = ctx.db();
+        members
+            .iter()
+            .filter_map(|m| {
+                let jid = m.parse::<Jid>().ok()?;
+                let lid = jid.is_lid();
+                let p = GroupParticipantOptions::new(jid);
+                // Members known by their LID need their number alongside.
+                Some(match db.phone_jid(m).and_then(|pn| pn.parse::<Jid>().ok()) {
+                    Some(pn) if lid => p.with_phone_number(pn),
+                    _ => p,
+                })
+            })
+            .collect()
+    };
+    if subject.is_empty() || participants.is_empty() {
+        notice(ctx, false, "A group needs a name and at least one member.");
+        return;
+    }
+    let options: GroupCreateOptions = GroupCreateOptions::builder().subject(subject.clone()).participants(participants).build();
+    match client.groups().create_group(options).await {
+        Ok(created) => {
+            let chat_id = created.metadata.id.to_non_ad_string();
+            ctx.db().upsert_chat(&store::ChatMeta {
+                id: &chat_id,
+                name: &subject,
+                is_group: true,
+                unread: 0,
+                pinned: 0,
+                archived: false,
+                mute_end: 0,
+            });
+            crate::add_notice(ctx, &chat_id, format!("You created group \"{subject}\""), store::unix_now());
+            send_chat(ctx, &chat_id);
+            ctx.send(Out::Opened { chat_id });
+        }
+        Err(e) => {
+            warn!("creating group {subject} failed: {e}");
+            notice(ctx, false, "Couldn't create the group. Try again.");
+        }
+    }
+}
+
 pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, first: String, last: String, sync_to_phone: bool) {
     let full = format!("{} {}", first.trim(), last.trim()).trim().to_string();
     let Some(pn) = ctx.db().phone_jid(&chat_id).and_then(|j| j.parse::<Jid>().ok()) else {

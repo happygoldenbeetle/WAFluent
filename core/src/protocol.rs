@@ -70,6 +70,8 @@ pub enum Event {
     ChatRemoved { chat_id: String },
     /// Reply to `loadStarred`, newest first.
     Starred { items: Vec<StarredDto> },
+    /// Reply to `loadContacts`: your saved contacts, by name.
+    Contacts { contacts: Vec<ContactDto> },
     /// Reply to `loadChatMedia`, each newest first: photos, videos and GIFs; documents;
     /// messages with links.
     ChatMedia { chat_id: String, media: Vec<MessageDto>, docs: Vec<MessageDto>, links: Vec<MessageDto> },
@@ -145,6 +147,22 @@ pub struct PinnedDto {
     pub ts: i64,
     /// When the pin runs out, Unix seconds.
     pub expires_at: i64,
+}
+
+/// A saved contact, for New chat and Add group members.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ContactDto {
+    /// Their 1:1 chat's id (the chat may not exist yet).
+    pub chat_id: String,
+    pub name: String,
+    /// Digits only ("" when only a LID is known).
+    pub phone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    pub blocked: bool,
+    /// There's a chat with them already.
+    pub has_chat: bool,
 }
 
 /// One starred message, for the Starred view.
@@ -353,6 +371,13 @@ pub enum Command {
     /// Report a message to WhatsApp as spam.
     Report { chat_id: String, message_id: String },
     LoadStarred,
+    /// Your saved contacts (New chat); answered by `contacts`.
+    LoadContacts,
+    /// Create a group with these members (their chat ids); answers `opened` with the new group.
+    CreateGroup { subject: String, members: Vec<String> },
+    /// Save a number as a contact and open its chat (New chat > New contact). Answers `opened`,
+    /// or a `notice` when the number isn't on WhatsApp.
+    SaveNewContact { phone: String, first_name: String, last_name: String, sync_to_phone: bool },
     /// Disappearing messages for a chat: seconds (0 off). Synced with the phone and the other side.
     SetEphemeral { chat_id: String, seconds: u32 },
     /// A chat's Media, links and docs (contact info); answered by `chatMedia`.

@@ -4,7 +4,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::extract::{Media, Quote};
-use crate::protocol::{ChatDto, MediaDto, MessageDto, PhoneDto, PinnedDto, ReplyDto, StarredDto};
+use crate::protocol::{ChatDto, ContactDto, MediaDto, MessageDto, PhoneDto, PinnedDto, ReplyDto, StarredDto};
 
 pub struct Store {
     db: Connection,
@@ -739,6 +739,42 @@ impl Store {
     }
 
     /// The phone-number JID for a chat (its own id, an alias, or the LID map).
+    /// Saved contacts (names from your address book), one per person, by name.
+    pub fn contacts(&self) -> Vec<ContactDto> {
+        let rows: Vec<(String, String)> = self
+            .db
+            .prepare("SELECT jid, full_name FROM names WHERE full_name != '' AND jid NOT LIKE '%@g.us'")
+            .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map(|r| r.flatten().collect()))
+            .unwrap_or_default();
+        let mut seen = std::collections::HashSet::new();
+        let mut contacts: Vec<ContactDto> = rows
+            .into_iter()
+            .filter_map(|(jid, name)| {
+                if self.is_me(&jid) {
+                    return None;
+                }
+                let chat_id = self.canonical(&jid);
+                let phone = self.phone_number(&chat_id).or_else(|| self.phone_number(&jid)).unwrap_or_default();
+                // The same person under their number and their LID is one contact.
+                if !seen.insert(if phone.is_empty() { chat_id.clone() } else { phone.clone() }) {
+                    return None;
+                }
+                let (blocked, has_chat): (bool, bool) = self
+                    .db
+                    .query_row("SELECT blocked FROM chats WHERE id = ?1", [&chat_id], |r| Ok((r.get(0)?, true)))
+                    .unwrap_or((false, false));
+                let avatar: Option<String> = self
+                    .db
+                    .query_row("SELECT path FROM avatars WHERE jid = ?1", [&chat_id], |r| r.get(0))
+                    .ok()
+                    .filter(|p: &String| !p.is_empty());
+                Some(ContactDto { chat_id, name, phone, avatar, blocked, has_chat })
+            })
+            .collect();
+        contacts.sort_by_key(|c| c.name.to_lowercase());
+        contacts
+    }
+
     pub fn phone_jid(&self, jid: &str) -> Option<String> {
         self.phone_number(jid).map(|n| format!("{n}@s.whatsapp.net"))
     }

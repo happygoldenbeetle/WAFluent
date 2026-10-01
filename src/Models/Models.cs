@@ -274,8 +274,6 @@ public sealed class Message : Observable
     /// <summary>A notice about disappearing messages ("… turned on disappearing messages", "… updated the message timer").</summary>
     public bool IsTimerNotice => Kind == MessageKind.System
                                  && (Text.Contains("disappearing messages", StringComparison.Ordinal) || Text.Contains("message timer", StringComparison.Ordinal));
-    /// <summary>The timer in front of such a notice (Segoe Fluent's stopwatch, then a space).</summary>
-    public string NoticeIcon => IsTimerNotice ? "\uE916  " : "";
     /// <summary>The link at its end, which opens Disappearing messages.</summary>
     public string NoticeLink => IsTimerNotice ? " Change timer." : "";
 

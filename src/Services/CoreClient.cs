@@ -13,6 +13,9 @@ public sealed record ChatDto(
 
 public sealed record PhoneDto(string Region, string Code, string National);
 
+/// <summary>A saved contact (New chat): their chat id, name, number (digits), picture, and whether they're blocked.</summary>
+public sealed record ContactDto(string ChatId, string Name, string Phone, string? Avatar = null, bool Blocked = false, bool HasChat = false);
+
 /// <summary>A pinned message: its id, a one-line preview, its time (to load back to it) and when the pin runs out.</summary>
 public sealed record PinnedDto(string Id, string Preview, long Ts = 0, long ExpiresAt = 0);
 
@@ -72,7 +75,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string, string>? SendFailed;         // chat, temp id, reason
     public event Action<string, string, IReadOnlyList<string>, string?>? ReactionsReceived;   // chat, message, all, yours
     public event Action<string, IReadOnlyList<string>, int>? ReceiptReceived;
-    public event Action<string, IReadOnlyList<string>>? ReceiptsChanged;   // someone's receipt for these was recorded
+    public event Action<string, IReadOnlyList<string>>? ReceiptsChanged;
+    public event Action<IReadOnlyList<ContactDto>>? ContactsReceived;   // someone's receipt for these was recorded
     public event Action<string, MessageDto>? MessageUpdated;                 // chat, message (deleted/edited/starred)
     public event Action<string, string>? MessageRemoved;                     // chat, message id (deleted for me)
     public event Action<string>? ChatRemoved;                                // chat deleted
@@ -244,6 +248,16 @@ public sealed class CoreClient : IDisposable
 
     public void LoadStarred() => Send(new { cmd = "loadStarred" });
 
+    /// <summary>Your saved contacts; answered by <see cref="ContactsReceived"/>.</summary>
+    public void LoadContacts() => Send(new { cmd = "loadContacts" });
+
+    /// <summary>Creates a group with these members (chat ids); the new group is then opened.</summary>
+    public void CreateGroup(string subject, IReadOnlyList<string> members) => Send(new { cmd = "createGroup", subject, members });
+
+    /// <summary>Saves a number as a contact and opens its chat.</summary>
+    public void SaveNewContact(string phone, string firstName, string lastName, bool syncToPhone) =>
+        Send(new { cmd = "saveNewContact", phone, firstName, lastName, syncToPhone });
+
     /// <summary>A chat's Media, links and docs; answered by <see cref="ChatMediaReceived"/>.</summary>
     public void LoadChatMedia(string chatId) => Send(new { cmd = "loadChatMedia", chatId });
 
@@ -383,6 +397,10 @@ public sealed class CoreClient : IDisposable
                 Func<string, List<MessageDto>> list = name => root.GetProperty(name).Deserialize<List<MessageDto>>(Json) ?? [];
                 var (galleryMedia, galleryDocs, galleryLinks) = (list("media"), list("docs"), list("links"));
                 Post(() => ChatMediaReceived?.Invoke(galleryChat, galleryMedia, galleryDocs, galleryLinks));
+                break;
+            case "contacts":
+                var contacts = root.GetProperty("contacts").Deserialize<List<ContactDto>>(Json) ?? [];
+                Post(() => ContactsReceived?.Invoke(contacts));
                 break;
             case "starred":
                 var items = root.GetProperty("items").Deserialize<List<StarredDto>>(Json) ?? [];

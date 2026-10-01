@@ -45,6 +45,10 @@ public sealed class ContactRow : Observable
     public required string Phone { get; init; }
     public string Subtitle { get; init; } = "";
     public string? AvatarPath { get; init; }
+    /// <summary>New chat: their 1:1 chat's id, and whether you've blocked them.</summary>
+    public string ChatId { get; init; } = "";
+    public bool IsBlocked { get; set; }
+
     /// <summary>Forwarding: the chat this row sends to.</summary>
     public Chat? Chat { get; init; }
     public bool HasSubtitle => Subtitle.Length > 0;

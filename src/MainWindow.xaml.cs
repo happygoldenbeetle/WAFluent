@@ -502,6 +502,33 @@ public sealed partial class MainWindow : Window
                 var notice = ViewModel.SelectedChat!.Messages.Last(m => m.IsTimerNotice);
                 ViewModel.Reveal(notice.Id, notice.UnixTs);
             };
+        // WAFLUENT_SELFTEST=newchat | newchat-number | newchat-contact | newchat-group: New chat on that page
+        // (the group one with three members picked).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is { } newChatTest && newChatTest.StartsWith("newchat"))
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                NewChat_Click(this, new RoutedEventArgs());
+                await Task.Delay(400);
+                switch (newChatTest)
+                {
+                    case "newchat-number":
+                        NewChatDialpad_Click(this, new RoutedEventArgs());
+                        NumberBox.Text = "+92 300 1234567";
+                        break;
+                    case "newchat-contact":
+                        NewContact_Click(this, new RoutedEventArgs());
+                        NewContactFirst.Text = "Sara";
+                        NewContactPhone.Text = "300 1234567";
+                        break;
+                    case "newchat-group":
+                        NewGroup_Click(this, new RoutedEventArgs());
+                        _groupMembers.AddRange(_newChatContacts.Take(3));
+                        RebuildGroupChips();
+                        FilterNewChat();
+                        break;
+                }
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>
