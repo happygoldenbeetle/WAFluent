@@ -70,6 +70,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string, string>? SendFailed;         // chat, temp id, reason
     public event Action<string, string, IReadOnlyList<string>, string?>? ReactionsReceived;   // chat, message, all, yours
     public event Action<string, IReadOnlyList<string>, int>? ReceiptReceived;
+    public event Action<string, IReadOnlyList<string>>? ReceiptsChanged;   // someone's receipt for these was recorded
     public event Action<string, MessageDto>? MessageUpdated;                 // chat, message (deleted/edited/starred)
     public event Action<string, string>? MessageRemoved;                     // chat, message id (deleted for me)
     public event Action<string>? ChatRemoved;                                // chat deleted
@@ -420,6 +421,11 @@ public sealed class CoreClient : IDisposable
                 var ids = root.GetProperty("messageIds").Deserialize<List<string>>(Json) ?? [];
                 var status = root.GetProperty("status").GetInt32();
                 Post(() => ReceiptReceived?.Invoke(receiptChat, ids, status));
+                break;
+            case "receiptsChanged":
+                var changedChat = root.GetProperty("chatId").GetString() ?? "";
+                var changedIds = root.GetProperty("messageIds").Deserialize<List<string>>(Json) ?? [];
+                Post(() => ReceiptsChanged?.Invoke(changedChat, changedIds));
                 break;
             case "avatar":
                 var avatarChat = root.GetProperty("chatId").GetString() ?? "";

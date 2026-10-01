@@ -11,7 +11,8 @@ namespace WhatsAppNative;
 /// Message info, like WhatsApp: in the side panel, your message over the chat wallpaper,
 /// then who read it and who it reached, each with their picture and when. 1:1 chats show
 /// "Read" and "Delivered" with times. The core keeps every receipt it sees (per person); ones
-/// from before WAFluent started keeping them aren't known.
+/// from before WAFluent started keeping them aren't known. While it's open it keeps up: each
+/// new receipt for the message (a group member reading it, its ticks changing) asks again.
 /// </summary>
 public sealed partial class MainWindow
 {
@@ -25,19 +26,29 @@ public sealed partial class MainWindow
         {
             _infoWired = true;
             if (_core is not null)
+            {
                 _core.MessageInfoReceived += (chatId, messageId, receipts) =>
                 {
-                    if (_infoMessage?.Id == messageId && ViewModel.SelectedChat?.Id == chatId
+                    if (_infoMessage?.Id == messageId && ViewModel.SelectedChat is { } open && open.Id == chatId
                         && MessageInfoView.Visibility == Visibility.Visible)
-                        ShowMessageInfo(chat.IsGroup, receipts);
+                        ShowMessageInfo(open.IsGroup, receipts);
                 };
+                _core.ReceiptsChanged += (chatId, ids) =>
+                {
+                    if (_infoMessage is { } shown && ids.Contains(shown.Id) && ViewModel.SelectedChat?.Id == chatId
+                        && InfoPanel.Visibility == Visibility.Visible && MessageInfoView.Visibility == Visibility.Visible)
+                        _core.MessageInfo(chatId, shown.Id);
+                };
+            }
             // Its ticks can change while it's open.
             ViewModel.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(ViewModel.SelectedChat) && MessageInfoView.Visibility == Visibility.Visible) CloseInfo();
             };
         }
+        if (_infoMessage is { } before) before.PropertyChanged -= InfoMessage_PropertyChanged;
         _infoMessage = m;
+        m.PropertyChanged += InfoMessage_PropertyChanged;
         ContactInfoView.Visibility = Visibility.Collapsed;
         NewContactView.Visibility = Visibility.Collapsed;
         GalleryView.Visibility = Visibility.Collapsed;
@@ -49,6 +60,16 @@ public sealed partial class MainWindow
         PlaceInfoPanel();
         ShowMessageInfo(chat.IsGroup, _core is null ? [] : null);
         _core?.MessageInfo(chat.Id, m.Id);
+    }
+
+    /// <summary>Its ticks moved (or it was edited): the info is asked for again.</summary>
+    private void InfoMessage_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender != _infoMessage || e.PropertyName is not (nameof(Message.Delivery) or nameof(Message.Text) or nameof(Message.Id))) return;
+        if (InfoPanel.Visibility != Visibility.Visible || MessageInfoView.Visibility != Visibility.Visible) return;
+        if (ViewModel.SelectedChat is not { } chat || _infoMessage is not { } m) return;
+        if (_core is null) ShowMessageInfo(chat.IsGroup, []);
+        else _core.MessageInfo(chat.Id, m.Id);
     }
 
     /// <summary><paramref name="receipts"/> null: still asking the core.</summary>

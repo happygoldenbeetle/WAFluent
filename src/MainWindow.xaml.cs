@@ -369,6 +369,65 @@ public sealed partial class MainWindow : Window
                 catch (Exception ex) { result = "failed: " + ex; }
                 File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), result);
             };
+        // WAFLUENT_SELFTEST=playsent: encodes WAFLUENT_TEST_WAV like a sent voice note and opens it in a muted player;
+        // whether it opened (and its length) goes to %TEMP%\wafluent-selftest.txt.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "playsent")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(1500);
+                // WAFLUENT_TEST_OGG: check an existing voice note instead (still muted).
+                var encoded = Environment.GetEnvironmentVariable("WAFLUENT_TEST_OGG") is { } ogg
+                    ? (ogg, 0, Array.Empty<byte>())
+                    : VoiceRecorder.EncodeWav(Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV")!);
+                var result = new TaskCompletionSource<string>();
+                var player = new Windows.Media.Playback.MediaPlayer { IsMuted = true };
+                player.MediaOpened += (p, _) => result.TrySetResult($"opened {p.PlaybackSession.NaturalDuration}");
+                player.MediaFailed += (_, e) => result.TrySetResult($"failed {e.Error} {e.ErrorMessage} 0x{e.ExtendedErrorCode?.HResult:X8}");
+                player.Source = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(encoded!.Value.Path));
+                var done = await Task.WhenAny(result.Task, Task.Delay(5000));
+                File.WriteAllText(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"),
+                    $"{encoded.Value.Path} {new FileInfo(encoded.Value.Path).Length} bytes: " + (done == result.Task ? result.Task.Result : "timeout"));
+                player.Dispose();
+            };
+        // WAFLUENT_SELFTEST=sendvoice: sends WAFLUENT_TEST_WAV as a voice note in the open chat, presses its play
+        // button (muted) and writes whether it played to %TEMP%\wafluent-selftest.txt.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "sendvoice")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2000);
+                AudioPlayback.Muted = true;
+                var (path, seconds, waveform) = VoiceRecorder.EncodeWav(Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV")!)!.Value;
+                ViewModel.SendVoice(path, seconds, waveform);
+                ScrollToBottom();
+                await Task.Delay(1500);
+                var note = ViewModel.SelectedChat!.Messages.Last(m => m.Kind == MessageKind.Voice);
+                var lines = new List<string> { $"path={note.MediaPath} hasFile={note.HasMediaFile} loading={note.IsMediaLoading} delivery={note.Delivery}" };
+                var player = FindDescendant(Messages, e => e is Controls.VoicePlayer { Message: { } v } && v == note) as Controls.VoicePlayer;
+                var button = player is null ? null : FindDescendant(player, e => e is Button { Name: "PlayButton" }) as Button;
+                lines.Add($"player={player is not null} button={button is not null} enabled={button?.IsEnabled}");
+                if (button is not null)
+                {
+                    new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(button).Invoke();
+                    await Task.Delay(1500);
+                    lines.Add($"current={AudioPlayback.Current == note} playing={AudioPlayback.IsPlaying} position={AudioPlayback.Position}");
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+            };
+        // WAFLUENT_SELFTEST=pull | pull-open: Message info halfway out of the right edge, as a swipe left holds it;
+        // "pull-open" then lets go (it slides the rest of the way and settles).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "pull" or "pull-open")
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var mine = ViewModel.SelectedChat!.Messages.Last(m => m.IsOutgoing && m.Kind == MessageKind.Text);
+                StartPanelPull(mine);
+                foreach (var travel in new[] { 30.0, 60, 90, 120 })
+                {
+                    PullPanel(travel);
+                    await Task.Delay(60);
+                }
+                if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "pull-open") FinishPanelPull(open: true);
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

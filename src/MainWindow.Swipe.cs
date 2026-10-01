@@ -15,8 +15,10 @@ namespace WhatsAppNative;
 /// Swipe to reply: drag any message to the right with the mouse (or pen/touch). The bubble
 /// follows the pointer, a reply arrow grows in behind it, and letting go past the threshold
 /// quotes the message in the composer. Then the bubble springs back.
-/// Your own messages also swipe left, like WhatsApp on the phone: an ⓘ comes in from the right
-/// and letting go past the threshold opens Message info.
+/// Your own messages also swipe left, like WhatsApp on the phone: Message info slides out from
+/// the right edge in step with the drag; let go once a third of it is out and it opens the
+/// rest of the way, otherwise it slides back. (With the side panel already open, an ⓘ comes
+/// in instead and letting go past the threshold switches it to Message info.)
 /// Drags that start vertically are left alone, as are leftward ones on others' messages.
 /// </summary>
 public sealed partial class MainWindow
@@ -35,6 +37,8 @@ public sealed partial class MainWindow
     private double _swipeRowLeft;
     private double _swipeRowRight;
     private bool _swipeLeft;                   // towards Message info (your messages)
+    private bool _panelDrag;                   // the side panel is coming out with the drag
+    private double _swipeTravel;               // px dragged left past the start
 
     private void SetupSwipe()
     {
@@ -102,6 +106,12 @@ public sealed partial class MainWindow
         e.Handled = true;
         var offset = _swipeLeft ? -Rubber(-dx - SwipeStart) : Rubber(dx - SwipeStart);
         SetSwipeOffset(offset);
+        if (_panelDrag)
+        {
+            _swipeTravel = Math.Max(0, -dx - SwipeStart);
+            _swipeArmed = PullPanel(_swipeTravel) >= InfoPanel.Width / 3;
+            return;
+        }
 
         var armed = Math.Abs(offset) >= SwipeTrigger;
         if (armed != _swipeArmed)
@@ -130,6 +140,8 @@ public sealed partial class MainWindow
         _swiping = true;
         _swipeLeft = left;
         SwipeHintIcon.Glyph = left ? Helpers.Glyphs.Info : "\uE97A";
+        _panelDrag = left && InfoPanel.Visibility != Visibility.Visible && _swipeMessage is not null;
+        if (_panelDrag) StartPanelPull(_swipeMessage!);
         Messages.CapturePointer(pointer);   // takes the drag away from text selection
         ClearSelection(_swipeRow);
 
@@ -173,6 +185,12 @@ public sealed partial class MainWindow
         fade.Duration = TimeSpan.FromMilliseconds(150);
         hint.StartAnimation("Opacity", fade);
 
+        if (_panelDrag)
+        {
+            _panelDrag = false;
+            FinishPanelPull(open: reply);
+            return;
+        }
         if (reply && message is not null)
         {
             if (_swipeLeft) OpenMessageInfo(message);
@@ -194,11 +212,55 @@ public sealed partial class MainWindow
             ? Math.Min(SwipeLayer.ActualWidth - HintSize, _swipeRowRight + offset + 8)
             : Math.Max(0, _swipeRowLeft + offset - HintSize - 8);
         Canvas.SetLeft(ReplyHint, x);
-        hint.Opacity = progress;
+        hint.Opacity = _panelDrag ? 0 : progress;   // the panel itself is the hint
         if (!_swipeArmed)
         {
             var scale = 0.5f + 0.5f * progress;
             hint.Scale = new Vector3(scale, scale, 1);
+        }
+    }
+
+    // ───── Message info pulled out by the swipe ─────
+
+    /// <summary>Message info opens over the conversation's right edge, fully off to the right.</summary>
+    private void StartPanelPull(Message message)
+    {
+        OpenMessageInfo(message);
+        Grid.SetColumn(InfoPanel, 1);   // over the conversation while it moves (no reflow)
+        InfoPanel.HorizontalAlignment = HorizontalAlignment.Right;
+        InfoPanel.Shadow = new ThemeShadow();
+        InfoPanel.TranslationTransition = null;
+        InfoPanel.Translation = new Vector3((float)InfoPanel.Width, 0, 32);
+    }
+
+    /// <summary>The panel follows the drag (a little faster than it, so it's out after ~240 px). Returns how much is out.</summary>
+    private double PullPanel(double travel)
+    {
+        var width = InfoPanel.Width;
+        var shown = Math.Clamp(travel * 1.6, 0, width);
+        InfoPanel.Translation = new Vector3((float)(width - shown), 0, 32);
+        return shown;
+    }
+
+    /// <summary>Let go: the rest of the way out (then settles beside the conversation if there's room), or back in.</summary>
+    private async void FinishPanelPull(bool open)
+    {
+        InfoPanel.TranslationTransition = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(open ? 200 : 160) };
+        InfoPanel.Translation = new Vector3(open ? 0 : (float)InfoPanel.Width, 0, 32);
+        await Task.Delay(open ? 210 : 170);
+        InfoPanel.TranslationTransition = null;
+        if (open)
+        {
+            InfoPanel.Translation = new Vector3(0, 0, 32);
+            PlaceInfoPanel();
+        }
+        else
+        {
+            CloseInfo();
+            InfoPanel.Translation = Vector3.Zero;
+            Grid.SetColumn(InfoPanel, 2);
+            InfoPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+            InfoPanel.Shadow = null;
         }
     }
 

@@ -181,6 +181,57 @@ public sealed class VoiceRecorder : IAsyncDisposable
         _output = null;
     }
 
+    private static readonly string DecodedFolder =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent", "media", "decoded");
+
+    private static string DecodedPath(string ogg) =>
+        Path.Combine(DecodedFolder, Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(ogg.ToLowerInvariant())))[..16] + ".wav");
+
+    /// <summary>A WAV decoded from this OGG earlier, if there is one.</summary>
+    internal static string? DecodedCopy(string ogg) => File.Exists(DecodedPath(ogg)) ? DecodedPath(ogg) : null;
+
+    /// <summary>
+    /// Decodes an OGG Opus voice note to a 48 kHz mono WAV with Concentus, for when Windows'
+    /// own decoder won't play it. Kept, so it's decoded once. Null when it can't be read.
+    /// </summary>
+    internal static string? DecodeToWav(string ogg)
+    {
+        try
+        {
+            var samples = new List<short>();
+            using (var input = File.OpenRead(ogg))
+            {
+                var reader = new OpusOggReadStream(OpusCodecFactory.CreateDecoder(Rate, 1), input);
+                while (reader.HasNextPacket)
+                    if (reader.DecodeNextPacket() is { } packet) samples.AddRange(packet);
+            }
+            if (samples.Count == 0) return null;
+            var path = DecodedPath(ogg);
+            Directory.CreateDirectory(DecodedFolder);
+            using var output = new BinaryWriter(File.Create(path));
+            var data = samples.Count * 2;
+            output.Write("RIFF"u8);
+            output.Write(36 + data);
+            output.Write("WAVEfmt "u8);
+            output.Write(16);
+            output.Write((short)1);        // PCM
+            output.Write((short)1);        // mono
+            output.Write(Rate);
+            output.Write(Rate * 2);        // bytes per second
+            output.Write((short)2);        // block align
+            output.Write((short)16);       // bits
+            output.Write("data"u8);
+            output.Write(data);
+            foreach (var sample in samples) output.Write(sample);
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Helpers.AppLog.Write($"decoding a voice note failed ({ogg})", ex);
+            return null;
+        }
+    }
+
     /// <summary>Encodes a 48 kHz mono 16-bit WAV (the self-test uses this without a microphone).</summary>
     internal static (string Path, int Seconds, byte[] Waveform)? EncodeWav(string wav) => Encode(ReadPcm(wav));
 

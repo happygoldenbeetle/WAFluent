@@ -1013,6 +1013,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 _ => return,
             };
             let chat_id = ctx.db().canonical(&receipt.source.chat.to_non_ad_string());
+            let mut recorded = false;
             let (changed, chat) = {
                 let db = ctx.db();
                 // Per person, for Message info (in 1:1 chats the sender is the chat).
@@ -1024,11 +1025,15 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 for id in &receipt.message_ids {
                     db.set_receipt(&chat_id, id, &who, status, receipt.timestamp.timestamp());
                 }
+                recorded = true;
                 }
                 let changed = db.upgrade_status(&chat_id, &receipt.message_ids, status);
                 let chat = if changed.is_empty() { None } else { db.chat(&chat_id) };
                 (changed, chat)
             };
+            if recorded {
+                ctx.send(Out::ReceiptsChanged { chat_id: chat_id.clone(), message_ids: receipt.message_ids.clone() });
+            }
             if !changed.is_empty() {
                 ctx.send(Out::Receipt { chat_id, message_ids: changed, status });
                 if let Some(chat) = chat {

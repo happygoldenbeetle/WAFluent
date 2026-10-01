@@ -77,6 +77,9 @@ pub enum Event {
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
     Receipt { chat_id: String, message_ids: Vec<String>, status: u8 },
+    /// Someone's own receipt for these messages was recorded (a group member read it, even
+    /// when the ticks don't change yet): an open Message info asks again.
+    ReceiptsChanged { chat_id: String, message_ids: Vec<String> },
 }
 
 #[derive(Serialize, Debug, Clone)]
