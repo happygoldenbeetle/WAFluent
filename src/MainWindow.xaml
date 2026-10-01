@@ -877,11 +877,11 @@
                 <helpers:MessageTemplateSelector.System>
                     <DataTemplate x:DataType="models:Message">
                         <!-- WhatsApp's own notices: missed calls, group changes... -->
-                        <Border HorizontalAlignment="Center" Margin="0,4" Padding="12,5" MaxWidth="520"
-                                Background="{ThemeResource DatePillBrush}" CornerRadius="6">
+                        <Border HorizontalAlignment="Center" Margin="0,4" Padding="14,6" MaxWidth="520"
+                                Background="{ThemeResource DatePillBrush}" CornerRadius="8">
                             <controls:Redact>
-                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center"
-                                           Foreground="{ThemeResource MetaTextBrush}" />
+                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center"
+                                           Foreground="{ThemeResource MetaTextBrush}" IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
                             </controls:Redact>
                         </Border>
                     </DataTemplate>
@@ -889,9 +889,11 @@
 
                 <helpers:MessageTemplateSelector.DateDivider>
                     <DataTemplate x:DataType="models:Message">
-                        <Border HorizontalAlignment="Center" Margin="0,10" Padding="12,4"
-                                Background="{ThemeResource DatePillBrush}" CornerRadius="6">
-                            <TextBlock Text="{x:Bind Text}" FontSize="12" Foreground="{ThemeResource MetaTextBrush}" />
+                        <!-- WhatsApp's pill: #1D1F1F in dark, 8 px corners, bold grey text. -->
+                        <Border HorizontalAlignment="Center" Margin="0,10" Padding="14,6"
+                                Background="{ThemeResource DatePillBrush}" CornerRadius="8">
+                            <TextBlock Text="{x:Bind Text}" FontSize="12.5" FontWeight="SemiBold" Foreground="{ThemeResource MetaTextBrush}"
+                                       IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
                         </Border>
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.DateDivider>
@@ -931,8 +933,9 @@
                 <helpers:MessageTemplateSelector.UnreadDivider>
                     <DataTemplate x:DataType="models:Message">
                         <Border Margin="-28,12" Padding="0,5" Background="{ThemeResource UnreadBandBrush}">
-                            <Border HorizontalAlignment="Center" Padding="14,4" CornerRadius="12" Background="{ThemeResource DatePillBrush}">
-                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" Foreground="{ThemeResource ChatAccentTextBrush}" FontWeight="SemiBold" />
+                            <Border HorizontalAlignment="Center" Padding="14,6" CornerRadius="8" Background="{ThemeResource DatePillBrush}">
+                                <TextBlock Text="{x:Bind Text}" FontSize="12.5" Foreground="{ThemeResource ChatAccentTextBrush}" FontWeight="SemiBold"
+                                           IsTextSelectionEnabled="True" ContextFlyout="{x:Null}" />
                             </Border>
                         </Border>
                     </DataTemplate>
@@ -1546,9 +1549,7 @@
                             </Button>
                             <Button x:Name="RecordingSend" Grid.Column="5" Style="{StaticResource SendFabStyle}" Margin="2,0,2,0"
                                     Click="RecordingSend_Click" VerticalAlignment="Center" ToolTipService.ToolTip="Send (Enter)"
-                                    AutomationProperties.Name="Send voice message">
-                                <FontIcon Glyph="&#xE725;" FontSize="18" />
-                            </Button>
+                                    AutomationProperties.Name="Send voice message" />
                         </Grid>
                         <TextBox x:Name="ComposerBox" Grid.Row="1" Grid.Column="2"
                                  PlaceholderText="{x:Bind ViewModel.ComposerPlaceholder}"
@@ -1580,10 +1581,8 @@
                                     <FontIcon Glyph="&#xE70D;" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                 </Button>
                             </StackPanel>
-                            <Button x:Name="SendButton" Style="{StaticResource IconButtonStyle}" Visibility="Collapsed"
-                                    ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="Send_Click">
-                                <FontIcon Glyph="&#xE724;" FontSize="17" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
-                            </Button>
+                            <Button x:Name="SendButton" Style="{StaticResource SendFabStyle}" Width="40" Height="36" Visibility="Collapsed"
+                                    ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="Send_Click" />
                         </Grid>
                     </Grid>
 
@@ -1656,9 +1655,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                             <Button Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,24,0"
-                                    ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="MediaComposerSend_Click">
-                                <FontIcon Glyph="&#xE725;" FontSize="20" />
-                            </Button>
+                                    ToolTipService.ToolTip="Send" AutomationProperties.Name="Send" Click="MediaComposerSend_Click" />
                         </Grid>
                     </Grid>
 
@@ -1754,9 +1751,7 @@
                                 <TextBlock x:Name="ContactsPicked" VerticalAlignment="Center" Margin="0,0,80,0" TextTrimming="CharacterEllipsis" FontSize="15" />
                                 <Button x:Name="ContactsSend" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right"
                                         VerticalAlignment="Center" IsEnabled="False"
-                                        ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click">
-                                    <FontIcon Glyph="&#xE725;" FontSize="20" />
-                                </Button>
+                                        ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click" />
                             </Grid>
                         </Grid>
 
@@ -1844,9 +1839,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                             <Button x:Name="PollSend" Grid.Row="2" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" Margin="0,4,20,20"
-                                    IsEnabled="False" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send poll" Click="PollSend_Click">
-                                <FontIcon Glyph="&#xE725;" FontSize="20" />
-                            </Button>
+                                    IsEnabled="False" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send poll" Click="PollSend_Click" />
                         </Grid>
                     </Grid>
                     <!-- Files dragged over the conversation (MainWindow.Drop.cs): drop to open the send preview. -->

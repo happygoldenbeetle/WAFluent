@@ -39,7 +39,7 @@
             <SolidColorBrush x:Key="ComposerFieldBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="SheetFooterBrush" Color="#F5F5F5" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#00FFFFFF" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#F7FFFFFF" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14000000" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#0D0B141A" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#6B4EAB" />
@@ -83,7 +83,7 @@
             <SolidColorBrush x:Key="ComposerFieldBrush" Color="#2A2A2A" />
             <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="SheetFooterBrush" Color="#2A2A2A" />
-            <SolidColorBrush x:Key="DatePillBrush" Color="#00000000" />
+            <SolidColorBrush x:Key="DatePillBrush" Color="#1D1F1F" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#26000000" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#A791FF" />
@@ -258,9 +258,10 @@
     <Style x:Key="AttachMenuPresenterStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
         <Setter Property="Background" Value="{ThemeResource AcrylicInAppFillColorDefaultBrush}" />
     </Style>
-    <!-- Send, everywhere it stands on its own (send preview, poll, forward, voice recording): the
-         arrow itself in the accent green, no disc; a softly rounded highlight on hover; dimmed
-         while there's nothing to send. -->
+    <!-- Send, everywhere (composer, send preview, poll, forward, voice recording): the arrow itself
+         in the accent green with rounded corners (Material's rounded "send", drawn here so every
+         button gets the same one), no disc; a soft highlight on hover; dimmed while there's
+         nothing to send. -->
     <Style x:Key="SendFabStyle" TargetType="Button">
         <Setter Property="Width" Value="44" />
         <Setter Property="Height" Value="44" />
@@ -291,8 +292,9 @@
                             </VisualStateGroup>
                         </VisualStateManager.VisualStateGroups>
                         <Border x:Name="Highlight" CornerRadius="8" Opacity="0" Background="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Foreground="{TemplateBinding Foreground}" />
+                        <Viewbox Width="21" Height="21" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Fill="{TemplateBinding Foreground}" Data="M 3.4 20.4 l 17.45 -7.48 c .81 -.35 .81 -1.49 0 -1.84 L 3.4 3.6 c -.66 -.29 -1.39 .2 -1.39 .91 L 2 9.12 c 0 .5 .37 .93 .87 .99 L 17 12 2.87 13.88 c -.5 .07 -.87 .5 -.87 1 l .01 4.61 c 0 .71 .73 1.2 1.39 .91 z" />
+                        </Viewbox>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

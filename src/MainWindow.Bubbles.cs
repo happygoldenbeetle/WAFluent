@@ -68,6 +68,9 @@ public sealed partial class MainWindow
         HandCursorSwitch.IsOn = _ui.HandCursor;
         Helpers.HandCursor.Enabled = _ui.HandCursor;
         Helpers.HandCursor.Watch(Root);
+        // At launch WinUI focuses the first control (the rail's ☰) and, started from the keyboard,
+        // boxes it. Focus goes to the chat list instead, as a click would put it: no box.
+        Root.Loaded += (_, _) => DispatcherQueue.TryEnqueue(() => ChatList.Focus(FocusState.Pointer));
         NotificationsSwitch.IsOn = _ui.Notifications;
         HdMediaSwitch.IsOn = _ui.HdMedia;
         Messages.ElementPrepared += Messages_ElementPrepared;
