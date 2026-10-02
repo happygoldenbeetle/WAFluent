@@ -874,6 +874,28 @@ impl Store {
         self.db.execute("DELETE FROM call_log WHERE id = ?1", [id]).unwrap_or(0) > 0
     }
 
+    /// The lines WAFluent left in 1:1 chats about its own calls ("Voice call · 0:29"): (message, chat, time, text).
+    pub fn call_notices(&self) -> Vec<(String, String, i64, String)> {
+        self.db
+            .prepare(
+                "SELECT id, chat_id, ts, text FROM messages WHERE id LIKE 'notice-%' AND chat_id NOT LIKE '%@g.us'
+                 AND (text LIKE '%oice call%' OR text LIKE '%ideo call%')",
+            )
+            .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map(|r| r.flatten().collect()))
+            .unwrap_or_default()
+    }
+
+    /// Whether the history has a call with this chat within two minutes of `ts`.
+    pub fn call_near(&self, chat_id: &str, ts: i64) -> bool {
+        self.db
+            .query_row(
+                "SELECT 1 FROM call_log WHERE abs(ts - ?2) <= 120 AND (',' || peers || ',') LIKE '%,' || ?1 || ',%'",
+                params![chat_id, ts],
+                |_| Ok(()),
+            )
+            .is_ok()
+    }
+
     /// The calls WhatsApp wrote into 1:1 chats ("Voice call", "Missed video call"), as history
     /// rows: most of the history, since the phone's own call list only syncs a few. Newer ones
     /// carry their outcome and length (extract.rs); older ones only say voice or video.
@@ -1096,6 +1118,11 @@ impl Store {
             .optional()
             .ok()
             .flatten()
+    }
+
+    /// LID chats recorded as having no picture count as never checked again.
+    pub fn forget_missing_lid_avatars(&self) {
+        let _ = self.db.execute("DELETE FROM avatars WHERE path = '' AND jid LIKE '%@lid'", []);
     }
 
     pub fn set_avatar(&self, jid: &str, picture_id: &str, path: &str, checked_at: i64) {

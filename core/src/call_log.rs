@@ -30,7 +30,66 @@ pub(crate) fn spawn_debouncer(ctx: Ctx) {
 
 pub(crate) fn send(ctx: &Ctx) {
     let calls = ctx.db().calls(SHOWN);
+    // Their pictures: anyone listed without one is asked for (once a day at most; see avatars.rs).
+    let mut asked = std::collections::HashSet::new();
+    for call in calls.iter().filter(|c| c.avatar.is_none() && !c.chat_id.is_empty()) {
+        if asked.insert(call.chat_id.clone()) {
+            let _ = ctx.avatars.send(crate::avatars::Request { chat_id: call.chat_id.clone(), force: false });
+        }
+    }
     ctx.send(Out::Calls { calls });
+}
+
+/// Calls made here before the history was kept only left a line in their chat ("Voice call ·
+/// 0:29"): those lines become history entries, once. Such a line doesn't say who called, so
+/// a call that connected is taken to be one you made.
+pub(crate) fn backfill_notices_once(ctx: &Ctx) {
+    const FLAG: &str = "call_notices_backfilled_v1";
+    let db = ctx.db();
+    if db.flag(FLAG) {
+        return;
+    }
+    let mut added = 0;
+    for (message_id, chat_id, ts, text) in db.call_notices() {
+        let detail = text.rsplit_once(" · ").map(|(_, d)| d.trim()).unwrap_or("");
+        let (incoming, result, duration) = if text.starts_with("Missed") {
+            (true, "missed", 0)
+        } else if detail == "Declined" {
+            (false, "rejected", 0)
+        } else if let Some(seconds) = clock_seconds(detail) {
+            (false, "connected", seconds)
+        } else {
+            (false, "cancelled", 0)
+        };
+        let started = ts - duration;   // the line was written when the call ended
+        if db.call_near(&chat_id, started) {
+            continue;
+        }
+        added += db.put_call(&CallEntry {
+            id: format!("notice:{message_id}"),
+            ts: started,
+            duration,
+            incoming,
+            video: text.contains("ideo call"),
+            result: result.to_string(),
+            group_jid: String::new(),
+            peers: vec![chat_id],
+        }) as usize;
+    }
+    db.set_flag(FLAG);
+    if added > 0 {
+        info!("call history: {added} earlier calls made here added");
+    }
+}
+
+/// "0:29" or "1:02:33" as seconds.
+fn clock_seconds(text: &str) -> Option<i64> {
+    let parts: Vec<i64> = text.split(':').map(|p| p.parse::<i64>().ok()).collect::<Option<_>>()?;
+    match parts[..] {
+        [m, s] => Some(m * 60 + s),
+        [h, m, s] => Some(h * 3600 + m * 60 + s),
+        _ => None,
+    }
 }
 
 /// A call made, answered, missed or declined on this PC.

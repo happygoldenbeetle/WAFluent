@@ -47,6 +47,17 @@ pub fn queue_stale(ctx: &Ctx) {
     }
 }
 
+/// Pictures that came back empty for people known by their LID are asked for again, once,
+/// now that their number is tried too.
+pub fn retry_missing_once(ctx: &Ctx) {
+    const FLAG: &str = "avatars_number_retry_v1";
+    let db = ctx.db();
+    if !db.flag(FLAG) {
+        db.forget_missing_lid_avatars();
+        db.set_flag(FLAG);
+    }
+}
+
 pub fn clear_cache(ctx: &Ctx) {
     let dir = cache_dir(ctx);
     let _ = std::fs::remove_dir_all(&dir);
@@ -83,6 +94,13 @@ async fn refresh(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<bool,
         .get_profile_picture_with_timeout(&jid, false, Some(Duration::from_secs(15)))
         .await;
 
+    // Someone known here by their LID may only show their picture under their number.
+    let number = if req.chat_id.ends_with("@lid") { ctx.db().phone_jid(&req.chat_id).and_then(|pn| pn.parse::<Jid>().ok()) } else { None };
+    let picture = match (picture, number) {
+        (Ok(None), Some(pn)) => client.contacts().get_profile_picture_with_timeout(&pn, false, Some(Duration::from_secs(15))).await,
+        (picture, _) => picture,
+    };
+
     match picture {
         Ok(Some(pic)) => {
             if pic.id == known_id && !known_path.is_empty() && Path::new(&known_path).exists() {
@@ -106,6 +124,7 @@ async fn refresh(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<bool,
             let path = path.to_string_lossy().into_owned();
             ctx.db().set_avatar(&req.chat_id, &pic.id, &path, now);
             ctx.send(Out::Avatar { chat_id: req.chat_id.clone(), path: Some(path) });
+            ctx.calls_dirty.notify_one();   // the Calls page shows pictures too
         }
         Ok(None) => {
             // No picture, or hidden by their privacy settings.

@@ -171,6 +171,8 @@ async fn run(dir: PathBuf) {
     spawn_snapshot_debouncer(ctx.clone());
     spawn_expiry(ctx.clone());
     call_log::spawn_debouncer(ctx.clone());
+    call_log::backfill_notices_once(&ctx);
+    avatars::retry_missing_once(&ctx);
 
     let session = dir.join("whatsapp.db");
     let backend = match SqliteStore::new(&session.to_string_lossy()).await {
@@ -1127,6 +1129,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
             call_log::resync_once(ctx, client);
+            ctx.calls_dirty.notify_one();   // the call list's pictures are asked for now that there's a connection
             resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);
             avatars::queue_stale(ctx);
