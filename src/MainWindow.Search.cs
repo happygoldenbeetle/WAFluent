@@ -133,7 +133,7 @@ public sealed partial class MainWindow
         SearchHint.Visibility = hits.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchResultsList.ItemsSource = hits.Select(m => ResultRow(m, query)).ToList();
         var footer = oldestTs is { } ts
-            ? $"Use WhatsApp on your phone to search messages from before {Format.FromUnix(ts):dd/MM/yyyy}"
+            ? $"Use WhatsApp on your phone to search messages from before {Format.Date(Format.FromUnix(ts))}"
             : "";
         SearchFooter.Text = footer;
         SearchFooter.Visibility = SearchFooterLine.Visibility = footer.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -145,7 +145,7 @@ public sealed partial class MainWindow
         var row = new StackPanel { Spacing = 2, Padding = new Thickness(8, 10, 8, 10), Tag = m };
         row.Children.Add(new TextBlock
         {
-            Text = m.Timestamp == default || m.Timestamp.Date == DateTime.Today ? m.Time : m.Timestamp.ToString("dd/MM/yyyy"),
+            Text = m.Timestamp == default || m.Timestamp.Date == DateTime.Today ? m.Time : Format.Date(m.Timestamp),
             FontSize = 13,
             Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
         });

@@ -470,7 +470,7 @@ public sealed class Chat : Observable
             if (g.Created > 0)
             {
                 var when = DateTimeOffset.FromUnixTimeSeconds(g.Created).LocalDateTime;
-                var day = when.Date == DateTime.Today ? "today" : when.Date == DateTime.Today.AddDays(-1) ? "yesterday" : "on " + when.ToString("d MMM yyyy");
+                var day = when.Date == DateTime.Today ? "today" : when.Date == DateTime.Today.AddDays(-1) ? "yesterday" : "on " + Helpers.Format.Date(when);
                 parts.Add(g.Creator.Length > 0 ? $"Created {day} by {(g.Creator == "You" ? "you" : g.Creator)}" : $"Created {day}");
             }
             return string.Join(" · ", parts);

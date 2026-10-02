@@ -1402,6 +1402,9 @@ fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
             db.insert_media(&chat_id, &stored.id, media);
         }
         db.insert_extra(&chat_id, &stored.id, &thumb, extra.as_ref());
+        if extra.as_ref().is_some_and(|e| e.get("call").is_some()) {
+            ctx.calls_dirty.notify_one();   // a call the phone just logged in this chat
+        }
         if stored.kind == "poll" {
             if let Some(secret) = extract::message_secret(message) {
                 db.set_poll(&chat_id, &stored.id, &secret, &source.sender.to_non_ad_string());

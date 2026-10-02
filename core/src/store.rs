@@ -28,6 +28,12 @@ pub struct StoredMessage {
 /// Pseudo chat id the favourite stickers' files are stored under.
 pub const FAVORITES: &str = "favorites";
 
+/// What a history entry made from a chat's call message is called: this, the chat, `|`, the message.
+const CHAT_CALL: &str = "msg:";
+
+/// A call as read from the tables: id, time, seconds, incoming, video, result, group, peers.
+type CallRow = (String, i64, i64, bool, bool, String, String, String);
+
 /// One call in the history. `peers`: everyone else in it (JIDs); `result`: connected |
 /// missed | rejected | cancelled | elsewhere | failed.
 pub struct CallEntry {
@@ -228,6 +234,8 @@ impl Store {
                                                   incoming INTEGER NOT NULL, video INTEGER NOT NULL, result TEXT NOT NULL,
                                                   group_jid TEXT NOT NULL DEFAULT '', peers TEXT NOT NULL DEFAULT '')",
             "CREATE INDEX IF NOT EXISTS call_log_ts ON call_log(ts DESC)",
+            // Calls taken out of the Calls page that live on as messages in a chat.
+            "CREATE TABLE IF NOT EXISTS call_log_hidden(id TEXT PRIMARY KEY)",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -859,13 +867,53 @@ impl Store {
     }
 
     pub fn remove_call(&self, id: &str) -> bool {
+        if id.starts_with(CHAT_CALL) {
+            // A call that's a message in a chat: the message stays, the Calls page stops listing it.
+            return self.db.execute("INSERT OR IGNORE INTO call_log_hidden(id) VALUES(?1)", [id]).unwrap_or(0) > 0;
+        }
         self.db.execute("DELETE FROM call_log WHERE id = ?1", [id]).unwrap_or(0) > 0
+    }
+
+    /// The calls WhatsApp wrote into 1:1 chats ("Voice call", "Missed video call"), as history
+    /// rows: most of the history, since the phone's own call list only syncs a few. Newer ones
+    /// carry their outcome and length (extract.rs); older ones only say voice or video.
+    fn chat_calls(&self, limit: u32) -> Vec<CallRow> {
+        let found: Vec<(String, String, i64, bool, String, String)> = self
+            .db
+            .prepare(
+                "SELECT m.id, m.chat_id, m.ts, m.from_me, m.text, COALESCE(e.data, '') FROM messages m
+                 LEFT JOIN extras e ON e.chat_id = m.chat_id AND e.message_id = m.id
+                 WHERE m.chat_id NOT LIKE '%@g.us' AND m.id NOT LIKE 'notice-%'
+                   AND ((m.kind = 'text' AND m.text LIKE ?2) OR (m.kind = 'system' AND m.text LIKE '%Missed % call'))
+                 ORDER BY m.ts DESC LIMIT ?1",
+            )
+            .and_then(|mut s| {
+                s.query_map(params![limit, "📞 %call"], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))
+                    .map(|r| r.flatten().collect())
+            })
+            .unwrap_or_default();
+        found
+            .into_iter()
+            .filter_map(|(message_id, chat_id, ts, from_me, text, extra)| {
+                let id = format!("{CHAT_CALL}{chat_id}|{message_id}");
+                if self.db.query_row("SELECT 1 FROM call_log_hidden WHERE id = ?1", [&id], |_| Ok(())).is_ok() {
+                    return None;
+                }
+                let details = serde_json::from_str::<serde_json::Value>(&extra).ok().and_then(|e| e.get("call").cloned());
+                let detail = |key: &str| details.as_ref().and_then(|d| d.get(key).cloned());
+                let video = detail("video").and_then(|v| v.as_bool()).unwrap_or_else(|| text.contains("ideo call"));
+                let result = detail("result")
+                    .and_then(|v| v.as_str().map(str::to_string))
+                    .unwrap_or_else(|| if text.contains("Missed") { "missed" } else { "connected" }.to_string());
+                let duration = detail("duration").and_then(|v| v.as_i64()).unwrap_or(0);
+                Some((id, ts, duration, !from_me, video, result, String::new(), chat_id))
+            })
+            .collect()
     }
 
     /// The call history, newest first, with each call's person (or people) named.
     pub fn calls(&self, limit: u32) -> Vec<CallLogDto> {
-        type Row = (String, i64, i64, bool, bool, String, String, String);
-        let rows: Vec<Row> = self
+        let mut rows: Vec<CallRow> = self
             .db
             .prepare("SELECT id, ts, duration, incoming, video, result, group_jid, peers FROM call_log ORDER BY ts DESC LIMIT ?1")
             .and_then(|mut s| {
@@ -873,6 +921,15 @@ impl Store {
                     .map(|r| r.flatten().collect())
             })
             .unwrap_or_default();
+        // The ones in chats too, unless the phone's list has the same call (same person, same minute).
+        for call in self.chat_calls(limit) {
+            let listed = rows.iter().any(|r| (r.1 - call.1).abs() <= 120 && r.7.split(',').any(|p| self.canonical(p) == call.7));
+            if !listed {
+                rows.push(call);
+            }
+        }
+        rows.sort_by(|a, b| b.1.cmp(&a.1));
+        rows.truncate(limit as usize);
         rows.into_iter()
             .map(|(id, ts, duration, incoming, video, result, group_jid, peers)| {
                 let mut people: Vec<String> = Vec::new();

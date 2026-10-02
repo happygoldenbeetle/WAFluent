@@ -238,7 +238,7 @@ public sealed partial class MainWindow
         grid.Children.Add(texts);
         var date = new TextBlock
         {
-            Text = when == default ? "" : when.ToString(when.Year == DateTime.Now.Year ? "d MMM" : "d MMM yyyy"),
+            Text = when == default ? "" : Format.Date(when),
             FontSize = 12, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0),
             Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
         };

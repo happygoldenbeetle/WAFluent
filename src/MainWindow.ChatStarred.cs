@@ -70,7 +70,7 @@ public sealed partial class MainWindow
     {
         var m = item.Message;
         var who = m.IsOutgoing ? "You" : m.SenderName.Length > 0 ? m.SenderName : chat.Name;
-        var when = m.Timestamp == default ? "" : m.Timestamp.ToString(m.Timestamp.Year == DateTime.Now.Year ? "d MMM" : "d MMM yyyy");
+        var when = m.Timestamp == default ? "" : Format.Date(m.Timestamp);
 
         var column = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Stretch };
         column.Children.Add(new TextBlock

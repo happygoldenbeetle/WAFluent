@@ -216,6 +216,6 @@ public sealed partial class MainWindow
         var time = Format.Clock(at);
         if (at.Date == DateTime.Today) return $"Today at {time}";
         if (at.Date == DateTime.Today.AddDays(-1)) return $"Yesterday at {time}";
-        return $"{at:d MMMM yyyy} at {time}";
+        return $"{Format.Date(at)} at {time}";
     }
 }

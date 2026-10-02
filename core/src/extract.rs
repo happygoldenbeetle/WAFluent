@@ -256,8 +256,24 @@ pub fn content(message: &wa::Message) -> Option<Content> {
         return Some(Content::new("text", format!("📅 {name}{state}")));
     }
     if let Some(call) = m.call_log_messsage.as_option() {
-        let what = if call.is_video == Some(true) { "Video call" } else { "Voice call" };
-        return Some(Content::new("text", format!("📞 {what}")));
+        use wa::message::call_log_message::CallOutcome;
+        let video = call.is_video == Some(true);
+        let result = match call.call_outcome {
+            Some(CallOutcome::MISSED) | Some(CallOutcome::SILENCED_BY_DND) | Some(CallOutcome::SILENCED_UNKNOWN_CALLER) => "missed",
+            Some(CallOutcome::FAILED) => "failed",
+            Some(CallOutcome::REJECTED) => "rejected",
+            Some(CallOutcome::ACCEPTED_ELSEWHERE) => "elsewhere",
+            _ => "connected",
+        };
+        let what = match (result, video) {
+            ("missed", true) => "Missed video call",
+            ("missed", false) => "Missed voice call",
+            (_, true) => "Video call",
+            (_, false) => "Voice call",
+        };
+        // The details go to the Calls page (store::calls reads them back).
+        let details = json!({ "call": { "video": video, "result": result, "duration": call.duration_secs.unwrap_or(0).max(0) } });
+        return Some(Content::new("text", format!("📞 {what}")).with_extra(details));
     }
     if let Some(pack) = m.sticker_pack_message.as_option() {
         return Some(Content::new("text", format!("💟 Sticker pack: {}", pack.name.clone().unwrap_or_default())));

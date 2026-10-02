@@ -39,7 +39,10 @@ public static class Format
     public static string Clock(DateTime local) =>
         Use24Hour ? local.ToString("H:mm", CultureInfo.InvariantCulture) : local.ToString("h:mm tt", CultureInfo.InvariantCulture).ToLowerInvariant();
 
-    /// <summary>Chat list: "14:05", "Yesterday", "Monday", then a short date.</summary>
+    /// <summary>A date the way the whole app writes one: day/month/year, "24/09/2026".</summary>
+    public static string Date(DateTime local) => local.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>Chat list: "14:05", "Yesterday", "Monday", then the date.</summary>
     public static string ListTime(DateTime local)
     {
         if (local == DateTime.MinValue) return "";
@@ -47,7 +50,7 @@ public static class Format
         if (local.Date == today) return Clock(local);
         if (local.Date == today.AddDays(-1)) return "Yesterday";
         if (local.Date > today.AddDays(-7)) return local.ToString("dddd", CultureInfo.CurrentCulture);
-        return local.ToString("d", CultureInfo.CurrentCulture);
+        return Date(local);
     }
 
     /// <summary>"last seen today at 14:54", "last seen yesterday at 9:02", "last seen 12/09/2026 at 18:30".</summary>
@@ -56,7 +59,7 @@ public static class Format
         if (local == DateTime.MinValue) return "";
         var day = local.Date == DateTime.Today ? "today"
                 : local.Date == DateTime.Today.AddDays(-1) ? "yesterday"
-                : local.ToString("d", CultureInfo.CurrentCulture);
+                : Date(local);
         return $"last seen {day} at {Clock(local)}";
     }
 
@@ -67,7 +70,7 @@ public static class Format
         if (local.Date == today) return "Today";
         if (local.Date == today.AddDays(-1)) return "Yesterday";
         if (local.Date > today.AddDays(-7)) return local.ToString("dddd", CultureInfo.CurrentCulture);
-        return local.ToString("d MMMM yyyy", CultureInfo.CurrentCulture);
+        return Date(local);
     }
 
     public static string PreviewGlyph(string kind) => kind switch
