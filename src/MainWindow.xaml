@@ -1501,8 +1501,13 @@
                                                        TextAlignment="Center" MaxLines="4" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"
                                                        Foreground="{ThemeResource ChatAccentTextBrush}" />
                                         </HyperlinkButton>
-                                        <Button HorizontalAlignment="Stretch" Height="46" CornerRadius="23" Margin="0,10,0,0" Background="Transparent"
+                                        <!-- 48 high, not 46: at 125% scale 46 is 57.5 px, and the half pixel cut the outline's bottom edge off. -->
+                                        <Button HorizontalAlignment="Stretch" Height="48" CornerRadius="24" Margin="0,12,0,0" Background="Transparent"
                                                 BorderBrush="{ThemeResource PaneDividerBrush}" Click="GroupIntroAdd_Click">
+                                            <Button.Resources>
+                                                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="PaneDividerBrush" />
+                                                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="PaneDividerBrush" />
+                                            </Button.Resources>
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <FontIcon Glyph="&#xE8FA;" FontSize="16" Foreground="{ThemeResource ChatAccentTextBrush}" />
                                                 <TextBlock Text="Add members" FontWeight="SemiBold" Foreground="{ThemeResource ChatAccentTextBrush}" />
