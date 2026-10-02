@@ -1483,7 +1483,7 @@
                                         <Paragraph><InlineUIContainer><FontIcon Glyph="&#xE72E;" FontSize="11" Margin="0,0,6,-2" Foreground="{ThemeResource EncryptionNoticeBrush}" /></InlineUIContainer><Run Text="Messages and calls are end-to-end encrypted. Only people in this chat can read, listen to, or share them." /></Paragraph>
                                     </RichTextBlock>
                                 </Border>
-                                <Border HorizontalAlignment="Center" Width="430" Padding="28,26,28,24" CornerRadius="24" Background="{ThemeResource DatePillBrush}"
+                                <Border HorizontalAlignment="Stretch" MaxWidth="430" Padding="28,26,28,24" CornerRadius="24" Background="{ThemeResource DatePillBrush}"
                                         Visibility="{x:Bind ViewModel.SelectedChat.IsGroup, Mode=OneWay, FallbackValue=Collapsed}">
                                     <StackPanel Spacing="6">
                                         <controls:Redact VeilRadius="55" HorizontalAlignment="Center" Margin="0,0,0,10">
