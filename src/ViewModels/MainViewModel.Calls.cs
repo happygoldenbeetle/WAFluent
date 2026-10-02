@@ -18,6 +18,9 @@ public sealed partial class MainViewModel
     /// <summary>Video in the call: request | on | off | declined | ended | failed | keyframe.</summary>
     public event Action<string>? CallVideoState;
 
+    /// <summary>A call with several people: who's in it besides you, and how many more were rung.</summary>
+    public event Action<IReadOnlyList<string>, int>? CallPeople;
+
     public Chat? ChatById(string chatId) => _byId.GetValueOrDefault(chatId);
 
     // ───── The Calls page ─────

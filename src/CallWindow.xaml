@@ -45,6 +45,12 @@
                     <TextBlock x:Name="CallerName" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"
                                TextTrimming="CharacterEllipsis" MaxWidth="360" />
                 </controls:Redact>
+                <!-- A call with several people: who's in it. -->
+                <controls:Redact HorizontalAlignment="Center">
+                    <TextBlock x:Name="CallPeople" Visibility="Collapsed" HorizontalAlignment="Center" TextAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="360" MaxLines="2" TextTrimming="CharacterEllipsis"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </controls:Redact>
                 <!-- Voice level: the bars follow the two voices while connected. -->
                 <StackPanel x:Name="Wave" Height="30" Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" />
                 <TextBlock x:Name="CallStatus" FontSize="18" HorizontalAlignment="Center" TextAlignment="Center"

@@ -510,9 +510,10 @@ public sealed partial class MainWindow
 
     private void CallTargetNow(CallTarget target, bool video)
     {
-        if (target.IsGroup)
+        // A call that had several people outside a group: there's no one chat to ring again.
+        if (target.IsGroup && target.Chat is not { IsGroup: true })
         {
-            ShowToast(false, "Group calls aren't available yet.");
+            ShowToast(false, "That call had several people. Start one from a group chat to ring them together.");
             return;
         }
         // Someone called before there's a chat with them: just enough of one for the call window.

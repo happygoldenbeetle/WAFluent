@@ -197,6 +197,27 @@ pub(crate) fn resync_once(ctx: &Ctx, client: &Arc<Client>) {
     });
 }
 
+/// The phone lists its calls only in a full history sync, and the one from when this PC was
+/// linked came before the history was kept. Ask the phone for one again, once: its chunks
+/// arrive like any history (main.rs ingests their calls).
+pub(crate) fn request_history_once(ctx: &Ctx, client: &Arc<Client>) {
+    const FLAG: &str = "call_history_requested_v1";
+    if ctx.db().flag(FLAG) {
+        return;
+    }
+    let (ctx, client) = (ctx.clone(), Arc::clone(client));
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(12)).await;
+        match client.fetch_full_history(365).await {
+            Ok(_) => {
+                info!("call history: asked the phone for a full history sync");
+                ctx.db().set_flag(FLAG);
+            }
+            Err(e) => warn!("call history: the phone couldn't be asked for its history: {e}"),
+        }
+    });
+}
+
 /// A link to a call anyone with WhatsApp can join.
 pub(crate) fn create_link(ctx: &Ctx, client: &Arc<Client>, video: bool) {
     use whatsapp_rust::voip::CallLinkMedia;

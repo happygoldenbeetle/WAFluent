@@ -80,6 +80,7 @@ public sealed partial class CallWindow : Window
 
         CallerAvatar.DisplayName = chat.Name;
         CallerAvatar.Source = chat.AvatarPath;
+        CallerAvatar.IsGroup = chat.IsGroup;
         CallerName.Text = chat.Name;
         BuildWave();
 
@@ -98,6 +99,7 @@ public sealed partial class CallWindow : Window
 
         _audio.Frame += OnFrame;
         _vm.CallAudio += OnAudio;
+        _vm.CallPeople += OnPeople;
         Closed += OnClosed;
         Root.Loaded += (_, _) => FocusRest.Focus(FocusState.Programmatic);
         SetupVideo(incoming?.Video ?? video, startCamera: incoming is null);
@@ -282,6 +284,25 @@ public sealed partial class CallWindow : Window
         _audio.Play(data, opus);
     }
 
+    /// <summary>A call with several people: who's in it, and how many are still being rung.</summary>
+    private void OnPeople(IReadOnlyList<string> names, int waiting)
+    {
+        if (_phase != Phase.Ended) ShowPeople(names, waiting);
+    }
+
+    internal void ShowPeople(IReadOnlyList<string> names, int waiting)
+    {
+        var joined = names.Count switch
+        {
+            0 => "",
+            <= 3 => string.Join(", ", names),
+            _ => $"{string.Join(", ", names.Take(3))} and {names.Count - 3} more",
+        };
+        var rung = waiting == 0 ? "" : names.Count == 0 ? $"Ringing {waiting} {(waiting == 1 ? "person" : "people")}" : $"{waiting} still ringing";
+        CallPeople.Text = joined.Length > 0 && rung.Length > 0 ? $"{joined} · {rung}" : joined + rung;
+        CallPeople.Visibility = CallPeople.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     // ───── Buttons ─────
 
     /// <summary>Answers (the button, or Accept on Windows' notification).</summary>
@@ -359,6 +380,7 @@ public sealed partial class CallWindow : Window
         _phase = Phase.Ended;
         StopTimers();
         _vm.CallAudio -= OnAudio;
+        _vm.CallPeople -= OnPeople;
         _audio.Frame -= OnFrame;
         _audio.Dispose();
         StopVideo();

@@ -66,8 +66,7 @@ public sealed partial class MainWindow
         }
         if (ViewModel.IsLive)
         {
-            var problem = chat.IsGroup ? "Group calls aren't available yet."
-                : ViewModel.IsSelf(chat) ? "You can't call yourself."
+            var problem = ViewModel.IsSelf(chat) ? "You can't call yourself."
                 : chat.IsBlocked ? "Unblock this contact to call them."
                 : ViewModel.State != ConnectionState.Connected ? "You're not connected to WhatsApp right now."
                 : null;
@@ -77,7 +76,32 @@ public sealed partial class MainWindow
                 return;
             }
         }
-        OpenCall(chat, null, video);
+        if (chat.IsGroup) _ = CallGroupAsync(chat, video);
+        else OpenCall(chat, null, video);
+    }
+
+    /// <summary>A group's call rings everyone in it: asked first.</summary>
+    private async Task CallGroupAsync(Chat chat, bool video)
+    {
+        var others = (chat.GroupInfo?.Members ?? 0) - 1;
+        var who = others > 0 ? $"all {others} other {(others == 1 ? "member" : "members")} of" : "everyone in";
+        var group = Redact.Enabled ? "this group" : $"\u201C{chat.Name}\u201D";
+        var ask = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = video ? "Start a group video call?" : "Start a group voice call?",
+            Content = new TextBlock
+            {
+                Text = $"This rings {who} {group}. WhatsApp allows up to 32 people in a call.",
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = "Call",
+            CloseButtonText = "Cancel",
+            // Enter cancels: ringing a whole group shouldn't be one stray key press away.
+            DefaultButton = ContentDialogButton.Close,
+            RequestedTheme = Root.ActualTheme,
+        };
+        if (await ask.ShowAsync() == ContentDialogResult.Primary && _call is null) OpenCall(chat, null, video);
     }
 
     /// <summary>Joins the call behind a WhatsApp call link (yours from the Calls page, or one someone sent).</summary>
@@ -235,6 +259,18 @@ public sealed partial class MainWindow
                         case "calls-share": SendTextToChats("Share call link with", "https://call.whatsapp.com/voice/Example"); break;
                         case "calls-link": NewCallLink(demo: true); break;
                     }
+                    break;
+                case "call-group":
+                    // A group call as it looks with two people in and one still ringing (sample data, nothing placed).
+                    if (ViewModel.ForwardTargets().FirstOrDefault(c => c.IsGroup) is { } sampleGroup)
+                    {
+                        OpenCall(sampleGroup, null);
+                        await Task.Delay(3200);
+                        _call?.ShowPeople(["Rebecca", "Chris"], 1);
+                    }
+                    break;
+                case "call-group-ask":
+                    if (ViewModel.ForwardTargets().FirstOrDefault(c => c.IsGroup) is { } askGroup) _ = CallGroupAsync(askGroup, video: false);
                     break;
                 case "call-contact-info":
                     OpenInfo();   // the round buttons under the name

@@ -102,6 +102,7 @@ public sealed class CoreClient : IDisposable
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<CallDto>? CallChanged;
+    public event Action<IReadOnlyList<string>, int>? CallPeople;            // a group call: who's in it besides you, how many more were rung
     public event Action<IReadOnlyList<CallLogDto>>? CallsReceived;          // the call history, newest first
     public event Action<IReadOnlyList<string>, bool>? FavouritesReceived;   // the phone's favourite chats; whether it's been heard yet
     public event Action<string, bool>? CallLinkReceived;                    // link, video
@@ -522,6 +523,11 @@ public sealed class CoreClient : IDisposable
                 var picture = root.GetProperty("data").GetBytesFromBase64();
                 var key = root.GetProperty("key").GetBoolean();
                 CallVideo?.Invoke(picture, key, root.TryGetProperty("rotation", out var turn) ? turn.GetInt32() : 0);
+                break;
+            case "callPeople":
+                var inCall = root.GetProperty("names").Deserialize<List<string>>(Json) ?? [];
+                var stillRung = root.GetProperty("waiting").GetInt32();
+                Post(() => CallPeople?.Invoke(inCall, stillRung));
                 break;
             case "callVideoState":
                 var videoState = root.GetProperty("state").GetString() ?? "";

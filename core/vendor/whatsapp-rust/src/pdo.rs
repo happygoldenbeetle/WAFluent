@@ -205,6 +205,49 @@ impl Client {
         Ok(())
     }
 
+    /// WAFluent patch: asks the primary phone for a full history sync again (what it sends a
+    /// desktop client when it's first linked). Its chunks arrive as ordinary history-sync
+    /// events and carry what the on-demand per-chat request doesn't, the call history.
+    pub async fn fetch_full_history(self: &Arc<Self>, days: u32) -> Result<String, anyhow::Error> {
+        let device_snapshot = self.persistence_manager.get_device_snapshot();
+        let peer_target = self_peer_target(&device_snapshot)?;
+        let mut config = wacore::store::device::default_history_sync_config();
+        config.full_sync_days_limit = Some(days);
+        config.on_demand_ready = Some(true);
+        config.complete_on_demand_ready = Some(true);
+        let pdo_request = wa::message::PeerDataOperationRequestMessage {
+            peer_data_operation_request_type: Some(
+                wa::message::PeerDataOperationRequestType::FULL_HISTORY_SYNC_ON_DEMAND,
+            ),
+            full_history_sync_on_demand_request: buffa::MessageField::some(
+                wa::message::peer_data_operation_request_message::FullHistorySyncOnDemandRequest {
+                    request_metadata: buffa::MessageField::some(wa::message::FullHistorySyncOnDemandRequestMetadata {
+                        request_id: Some(self.generate_message_id()),
+                        ..Default::default()
+                    }),
+                    history_sync_config: buffa::MessageField::some(config),
+                    full_history_sync_on_demand_config: buffa::MessageField::some(wa::message::FullHistorySyncOnDemandConfig {
+                        history_duration_days: Some(days),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            ..Default::default()
+        };
+        let protocol_message = wa::message::ProtocolMessage {
+            r#type: Some(wa::message::protocol_message::Type::PEER_DATA_OPERATION_REQUEST_MESSAGE),
+            peer_data_operation_request_message: buffa::MessageField::some(pdo_request),
+            ..Default::default()
+        };
+        let msg = wa::Message {
+            protocol_message: buffa::MessageField::some(protocol_message),
+            ..Default::default()
+        };
+        self.ensure_e2e_sessions(std::slice::from_ref(&peer_target)).await?;
+        self.send_peer_message(peer_target, &msg).await
+    }
+
     /// Request on-demand message history from the primary phone via PDO.
     #[cfg_attr(feature = "tracing", tracing::instrument(name = "wa.pdo.fetch_history", level = "debug", skip_all, fields(chat = %chat_jid.observe(), count), err(Debug)))]
     pub async fn fetch_message_history(

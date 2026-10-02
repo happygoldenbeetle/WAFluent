@@ -152,9 +152,7 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
     tokio::spawn(async move {
         let fail = |detail: &str| ctx.call("", &chat_id, true, video, "ended", Some("failed"), Some(detail.to_string()));
         let Ok(jid) = chat_id.parse::<Jid>() else { return fail("This chat can't be called.") };
-        if chat_id.ends_with("@g.us") {
-            return fail("Group calls aren't available yet.");
-        }
+        let group = chat_id.ends_with("@g.us");
         {
             let mut calls = ctx.calls();
             if calls.active.is_some() || calls.starting {
@@ -166,11 +164,21 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
         }
         let media = Media::new();
         let voip = client.voip();
-        let mut call = voip.call(&jid).audio(media.microphone.1.clone(), media.speaker.0.clone());
-        if video {
-            call = call.video(media.camera.1.clone(), media.view.0.clone());
-        }
-        let handle = match call.start().await {
+        // A group chat: one call that rings everyone in it (WhatsApp takes up to 32 people).
+        let started = if group {
+            let mut call = voip.group_call_by_id(&jid).audio(media.microphone.1.clone(), media.speaker.0.clone());
+            if video {
+                call = call.video(media.camera.1.clone(), media.view.0.clone());
+            }
+            call.start().await
+        } else {
+            let mut call = voip.call(&jid).audio(media.microphone.1.clone(), media.speaker.0.clone());
+            if video {
+                call = call.video(media.camera.1.clone(), media.view.0.clone());
+            }
+            call.start().await
+        };
+        let handle = match started {
             Ok(handle) => handle,
             Err(e) => {
                 warn!("call: couldn't start: {e}");
@@ -179,7 +187,7 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
             }
         };
         let call_id = handle.call_id().to_string();
-        info!("call: ringing {call_id} (video: {video})");
+        info!("call: ringing {call_id} (video: {video}, group: {group})");
         let cancelled = register(&ctx, media.active(&handle, &chat_id, true, video));
         ctx.call(&call_id, &chat_id, true, video, "calling", None, None);
         if cancelled {
@@ -686,6 +694,7 @@ async fn on_call_event(ctx: &Ctx, handle: &CallHandle, event: CallEvent) {
             handle.hangup().await;
         }
         CallEvent::VideoStateChanged { state, upgrade_token, .. } => peer_video(ctx, handle, state, upgrade_token),
+        CallEvent::GroupUpdated(update) => group_updated(ctx, handle, &update),
         // They lost part of your picture and ask for a whole one.
         CallEvent::RtcpReceived { feedback, .. } if feedback.iter().any(|f| f.packet_type == RTCP_FEEDBACK && matches!(f.fmt, 1 | 4)) => {
             ctx.send(Out::CallVideoState { state: "keyframe" });
@@ -695,6 +704,41 @@ async fn on_call_event(ctx: &Ctx, handle: &CallHandle, event: CallEvent) {
         }
         _ => {}
     }
+}
+
+/// Who's in a call with several people changed. The first person to join a call you started
+/// is its "they picked up".
+fn group_updated(ctx: &Ctx, handle: &CallHandle, update: &whatsapp_rust::voip::GroupCallUpdate) {
+    let (names, waiting) = {
+        let db = ctx.db();
+        let others: Vec<_> = update
+            .participants
+            .iter()
+            .filter(|p| !db.is_me(&p.jid.to_non_ad_string()) && !p.pn.as_ref().is_some_and(|pn| db.is_me(&pn.to_non_ad_string())))
+            .collect();
+        let names: Vec<String> = others
+            .iter()
+            .filter(|p| p.is_connected())
+            .map(|p| db.person_name(&db.canonical(&p.pn.as_ref().unwrap_or(&p.jid).to_non_ad_string()), ""))
+            .collect();
+        let waiting = others.len() - names.len();
+        (names, waiting)
+    };
+    info!("call: {} now has {} other people in it, {} still rung", handle.call_id(), names.len(), waiting);
+    let picked_up = {
+        let mut calls = ctx.calls();
+        match calls.active.as_mut().filter(|a| a.call_id == handle.call_id()) {
+            Some(active) if active.connected_at.is_none() && !names.is_empty() => {
+                active.connected_at = Some(store::unix_now());
+                Some((active.chat_id.clone(), active.outgoing, active.video))
+            }
+            _ => None,
+        }
+    };
+    if let Some((chat_id, outgoing, video)) = picked_up {
+        ctx.call(handle.call_id(), &chat_id, outgoing, video, "connected", None, None);
+    }
+    ctx.send(Out::CallPeople { names, waiting });
 }
 
 /// The other side's video changed: they ask to switch to it, turned theirs on or off, or refused yours.
@@ -787,7 +831,9 @@ fn length(seconds: i64) -> String {
 
 /// What to tell you when a call couldn't be set up.
 fn failure(error: &str) -> String {
-    if error.contains("no resolvable devices") {
+    if error.contains("remote users") {
+        "A group call needs between 2 and 31 other people in the group.".to_string()
+    } else if error.contains("no resolvable devices") {
         "This contact can't take calls right now.".to_string()
     } else if error.contains("relay") {
         "Couldn't reach WhatsApp's call server.".to_string()

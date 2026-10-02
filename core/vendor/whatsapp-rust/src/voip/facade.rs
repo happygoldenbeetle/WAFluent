@@ -828,11 +828,13 @@ impl<'a> OutgoingGroupCall<'a> {
             }
             Err(_) => return Err(CallError::ResponseTimeout),
         };
-        let ack_update = parse_initial_group_call_ack(response.get())
+        let mut ack_update = parse_initial_group_call_ack(response.get())
             .map_err(|error| CallError::Response(error.to_string()))?
             .ok_or_else(|| {
                 CallError::Response("group offer ack has no group snapshot".to_string())
             })?;
+        // WAFluent patch: participant id 0 is "none yet" (wafluent_hooks::settle_pids).
+        crate::wafluent_hooks::settle_pids(&mut ack_update);
         if ack_update.call_id != call_id || ack_update.call_creator != own_lid {
             return Err(CallError::Response(
                 "group offer ack identity mismatch".to_string(),

@@ -94,6 +94,9 @@ pub enum Event {
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         link: bool,
     },
+    /// A call with several people: who's in it besides you (names), and how many more were
+    /// rung and haven't joined.
+    CallPeople { names: Vec<String>, waiting: usize },
     /// The other side's voice: 60 ms of 16 kHz mono 16-bit PCM (base64), or with `opus` one
     /// standard Opus packet for the app to decode.
     CallAudio {
@@ -490,7 +493,8 @@ pub enum Command {
     DeleteCall { id: String },
     /// A link anyone with WhatsApp can use to join a call; answered by `callLink`.
     CreateCallLink { #[serde(default)] video: bool },
-    /// Call this chat (voice, or with `video`). Answered by `call` events.
+    /// Call this chat (voice, or with `video`); a group chat rings everyone in it. Answered by
+    /// `call` events (and `callPeople` as people join a group's call).
     StartCall { chat_id: String, #[serde(default)] video: bool },
     /// Answer the call that's ringing.
     /// `video`: answer a video call with your camera too.

@@ -9,7 +9,8 @@ drops, are handed to the app through `whatsapp_rust::wafluent_hooks::on_sticker_
 "WAFluent patch": WhatsApp's own messages about such a call (sent from the call's JID) are
 accepted, participant id 0 means "none yet", joining waits for a second person instead of
 giving up after ten seconds, and stanzas describing a link call are handed to the app
-(`on_link_call`). The patch is the new
+(`on_link_call`). `Client::fetch_full_history` (pdo.rs) asks the phone for a full history sync
+again, for the call history. The patch is the new
 `src/wafluent_hooks.rs`, its `pub mod` line in `src/lib.rs`, and a four-line call at the top
 of `dispatch_app_state_mutation` in `src/client/app_state.rs` (search "WAFluent patch").
 

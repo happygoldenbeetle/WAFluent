@@ -1140,6 +1140,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
             call_log::resync_once(ctx, client);
+            call_log::request_history_once(ctx, client);
             favorites::resync_once(ctx, client);
             ctx.calls_dirty.notify_one();   // the call list's pictures are asked for now that there's a connection
             resync_stickers_once(ctx, client);
@@ -1194,13 +1195,17 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             if on_demand {
                 info!("on-demand history answer, session {session:?}");
             }
+            let kind = lazy.sync_type();
             let result = tokio::task::spawn_blocking(move || ingest_history(&lazy, &db)).await;
             match result {
-                Ok(Ok(Ingested { chats, upgraded })) => {
+                Ok(Ok(Ingested { chats, upgraded, calls })) => {
                     info!(
-                        "history chunk: {} conversations, {} messages gained media details (progress {progress:?}, on-demand {on_demand})",
+                        "history chunk: {} conversations, {} messages gained media details, {} calls listed ({} new) (progress {progress:?}, on-demand {on_demand}, kind {})",
                         chats.len(),
-                        upgraded.len()
+                        upgraded.len(),
+                        calls.0,
+                        calls.1,
+                        kind
                     );
                     for (chat_id, message_id) in &upgraded {
                         send_message_update(ctx, chat_id, message_id);
@@ -1549,6 +1554,8 @@ struct Ingested {
     chats: HashMap<String, usize>,
     /// Messages already stored without download details that now have them.
     upgraded: Vec<(String, String)>,
+    /// Calls the chunk listed (the phone's call history), and how many of them were new here.
+    calls: (usize, usize),
 }
 
 /// Decodes one history-sync chunk into the store.
@@ -1567,7 +1574,7 @@ fn ingest_history(
             }
         }
         let rest = stream.remainder().map_err(|e| e.to_string())?;
-        call_log::ingest(s, &rest.call_log_records);
+        let calls = (rest.call_log_records.len(), call_log::ingest(s, &rest.call_log_records));
         for p in &rest.pushnames {
             if let (Some(id), Some(name)) = (&p.id, &p.pushname) {
                 s.set_push_name(id, name);
@@ -1579,7 +1586,7 @@ fn ingest_history(
                 if s.chat(lid).is_some() { s.add_alias(pn, lid) } else { s.add_alias(lid, pn) }
             }
         }
-        Ok(Ingested { chats, upgraded })
+        Ok(Ingested { chats, upgraded, calls })
     })
 }
 
