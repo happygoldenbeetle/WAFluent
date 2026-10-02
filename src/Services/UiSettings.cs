@@ -36,6 +36,9 @@ public sealed class UiSettings
     /// <summary>The microphone voice notes record from (its device id; empty: Windows' default).</summary>
     public string MicrophoneId { get; set; } = "";
 
+    /// <summary>The camera video calls use ("" = Windows' default).</summary>
+    public string CameraId { get; set; } = "";
+
     /// <summary>The pointer is a hand over anything clickable (Helpers/HandCursor).</summary>
     public bool HandCursor { get; set; } = true;
 

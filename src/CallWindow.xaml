@@ -37,7 +37,7 @@
             <controls:TiledBackground Background="{ThemeResource WallpaperColorBrush}" Source="{ThemeResource WallpaperTile}"
                                       TileOpacity="{ThemeResource WallpaperTileOpacity}" Opacity="0.7"
                                       TileWidth="{ThemeResource WallpaperTileWidth}" TileHeight="{ThemeResource WallpaperTileHeight}" />
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+            <StackPanel x:Name="CallerPanel" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                 <controls:Redact VeilRadius="48" HorizontalAlignment="Center">
                     <controls:Avatar x:Name="CallerAvatar" Size="96" HorizontalAlignment="Center" />
                 </controls:Redact>
@@ -55,6 +55,49 @@
                            TextWrapping="Wrap" MaxWidth="340" Visibility="Collapsed"
                            Foreground="{ThemeResource SystemFillColorCautionBrush}" />
             </StackPanel>
+
+            <!-- Their picture (Services/CallVideoPlayer.cs), over the card while their camera is on. -->
+            <Grid x:Name="RemoteVideoHost" Visibility="Collapsed" Background="Black">
+                <MediaPlayerElement x:Name="RemoteVideo" AreTransportControlsEnabled="False" Stretch="Uniform" />
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12" Padding="10,5" CornerRadius="6" Background="#99000000">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <controls:Redact>
+                            <TextBlock x:Name="VideoName" Foreground="White" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                        </controls:Redact>
+                        <TextBlock x:Name="VideoClock" Foreground="#CCFFFFFF" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="VideoNote" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,14"
+                           FontSize="12" Foreground="#FFFFD470" TextWrapping="Wrap" MaxWidth="340" TextAlignment="Center" />
+            </Grid>
+
+            <!-- Your camera, the way a mirror shows you, in the corner. -->
+            <Border x:Name="PreviewFrame" Visibility="Collapsed" Width="168" Height="96" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="12" CornerRadius="8" Background="Black" BorderBrush="#33FFFFFF" BorderThickness="1"
+                    RenderTransformOrigin="0.5,0.5">
+                <!-- The whole frame is flipped (it's symmetric), so its rounded corners still clip the picture. -->
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="-1" />
+                </Border.RenderTransform>
+                <Image x:Name="PreviewImage" Stretch="UniformToFill" />
+            </Border>
+
+            <!-- They asked to switch the call to video. -->
+            <Grid x:Name="VideoRequest" Visibility="Collapsed" VerticalAlignment="Top" Margin="12" Padding="14,8,6,8" CornerRadius="8" ColumnSpacing="8"
+                  Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                  BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="VideoRequestText" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Switch" Style="{StaticResource AccentButtonStyle}" Click="VideoSwitch_Click" />
+                <Button Grid.Column="2" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Not now" AutomationProperties.Name="Not now"
+                        Click="VideoDismiss_Click">
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                </Button>
+            </Grid>
         </Grid>
 
         <!-- Someone is calling: decline or answer. -->
@@ -97,7 +140,8 @@
                 <FontIcon Glyph="&#xE8FA;" FontSize="16" />
             </Button>
             <ToggleButton x:Name="CameraToggle" Style="{StaticResource CallToggleStyle}" IsEnabled="False"
-                          ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera">
+                          ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera"
+                          Checked="Camera_Changed" Unchecked="Camera_Changed">
                 <FontIcon Glyph="&#xE714;" FontSize="16" />
             </ToggleButton>
             <ToggleButton x:Name="MuteToggle" Style="{StaticResource CallToggleStyle}"
@@ -105,8 +149,8 @@
                           Checked="Mute_Changed" Unchecked="Mute_Changed">
                 <FontIcon x:Name="MuteIcon" Glyph="&#xE720;" FontSize="16" />
             </ToggleButton>
-            <!-- More: which microphone the call uses. -->
-            <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Microphone" AutomationProperties.Name="Microphone"
+            <!-- More: which microphone and camera the call uses. -->
+            <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Microphone and camera" AutomationProperties.Name="Microphone and camera"
                     Click="More_Click">
                 <FontIcon Glyph="&#xE712;" FontSize="16" />
             </Button>

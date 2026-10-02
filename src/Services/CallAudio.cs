@@ -29,8 +29,6 @@ public sealed class CallAudio : IDisposable
     public const int Rate = 16000;
     public const int FrameSamples = 960;
 
-    private static readonly Guid MemoryBufferByteAccess = new("5B0D3235-4DBA-4D44-865E-8F1D0E4FD04D");
-
     private AudioGraph? _graph;
     private AudioFrameInputNode? _speaker;
     private AudioDeviceInputNode? _microphone;
@@ -238,34 +236,14 @@ public sealed class CallAudio : IDisposable
     }
 
     /// <summary>The graph wants <paramref name="samples"/> more to play: the queue, resampled, plus any tone.</summary>
-    private unsafe void Feed(AudioFrameInputNode node, int samples)
+    private void Feed(AudioFrameInputNode node, int samples)
     {
         using var frame = new AudioFrame((uint)(samples * sizeof(float)));
         using (var buffer = frame.LockBuffer(AudioBufferAccessMode.Write))
         using (var reference = buffer.CreateReference())
         {
-            var unknown = WinRT.MarshalInterface<Windows.Foundation.IMemoryBufferReference>.FromManaged(reference);
-            try
-            {
-                Marshal.ThrowExceptionForHR(Marshal.QueryInterface(unknown, in MemoryBufferByteAccess, out var access));
-                try
-                {
-                    byte* data;
-                    uint capacity;
-                    // IMemoryBufferByteAccess::GetBuffer, the first method after IUnknown's three.
-                    var getBuffer = (delegate* unmanaged[Stdcall]<nint, byte**, uint*, int>)(*(void***)access)[3];
-                    Marshal.ThrowExceptionForHR(getBuffer(access, &data, &capacity));
-                    Render(new Span<float>(data, Math.Min(samples, (int)(capacity / sizeof(float)))));
-                }
-                finally
-                {
-                    Marshal.Release(access);
-                }
-            }
-            finally
-            {
-                Marshal.Release(unknown);
-            }
+            var floats = MemoryMarshal.Cast<byte, float>(Helpers.MemoryBuffers.Bytes(reference));
+            Render(floats[..Math.Min(samples, floats.Length)]);
         }
         node.AddFrame(frame);
     }

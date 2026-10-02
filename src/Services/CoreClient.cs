@@ -95,6 +95,10 @@ public sealed class CoreClient : IDisposable
     public event Action<CallDto>? CallChanged;
     /// <summary>The other side's voice in a call: 16-bit samples, or an Opus packet. Raised off the UI thread.</summary>
     public event Action<byte[], bool>? CallAudio;
+    /// <summary>The other side's picture: an H.264 access unit, whether a decoder can start at it, their camera's quarter turns. Raised off the UI thread.</summary>
+    public event Action<byte[], bool, int>? CallVideo;
+    /// <summary>Video in the call: request | on | off | declined | ended | failed | keyframe.</summary>
+    public event Action<string>? CallVideoState;
     public event Action<string, string>? Me;                                 // your name, number
     public event Action? FavoritesChanged;                                   // starred/unstarred on the phone
     public event Action<IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>>? Stickers;   // favourites, recent stickers, GIFs
@@ -282,11 +286,16 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>Calls a chat (voice); answered by <see cref="CallChanged"/>.</summary>
     public void StartCall(string chatId, bool video) => Send(new { cmd = "startCall", chatId, video });
-    public void AcceptCall(string callId) => Send(new { cmd = "acceptCall", callId });
+    /// <summary><paramref name="video"/>: answer a video call with your camera too.</summary>
+    public void AcceptCall(string callId, bool video) => Send(new { cmd = "acceptCall", callId, video });
     public void RejectCall(string callId) => Send(new { cmd = "rejectCall", callId });
     /// <summary>Hangs up, or stops calling.</summary>
     public void EndCall() => Send(new { cmd = "endCall" });
     public void MuteCall(bool muted) => Send(new { cmd = "muteCall", muted });
+    /// <summary>Your camera on (asks to switch to video, or accepts their asking) or off.</summary>
+    public void SetCallVideo(bool on) => Send(new { cmd = "setCallVideo", on });
+    /// <summary>Your camera in a call: one H.264 access unit.</summary>
+    public void SendCallVideo(byte[] unit) => Send(new { cmd = "callVideo", data = Convert.ToBase64String(unit) });
     /// <summary>Your microphone in a call: 960 samples (60 ms at 16 kHz), 16-bit.</summary>
     public void SendCallAudio(byte[] pcm) => Send(new { cmd = "callAudio", data = Convert.ToBase64String(pcm) });
 
@@ -470,6 +479,15 @@ public sealed class CoreClient : IDisposable
                 // Straight to the player: the UI thread's queue would make the voice stutter.
                 var sound = root.GetProperty("data").GetBytesFromBase64();
                 CallAudio?.Invoke(sound, root.TryGetProperty("opus", out var op) && op.ValueKind == JsonValueKind.True);
+                break;
+            case "callVideo":
+                var picture = root.GetProperty("data").GetBytesFromBase64();
+                var key = root.GetProperty("key").GetBoolean();
+                CallVideo?.Invoke(picture, key, root.TryGetProperty("rotation", out var turn) ? turn.GetInt32() : 0);
+                break;
+            case "callVideoState":
+                var videoState = root.GetProperty("state").GetString() ?? "";
+                Post(() => CallVideoState?.Invoke(videoState));
                 break;
             case "call":
                 if (root.Deserialize<CallDto>(Json) is { } call) Post(() => CallChanged?.Invoke(call));

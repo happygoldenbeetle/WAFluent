@@ -15,12 +15,13 @@ using WhatsAppNative.ViewModels;
 namespace WhatsAppNative;
 
 /// <summary>
-/// A WhatsApp voice call. Yours: "Calling…", "Ringing…" (with a ringback tone) once it rings
-/// there, then the timer when they pick up. Theirs: Decline / Accept (Windows' incoming-call
-/// notification rings alongside, Services/Notifications.cs). Connected, the microphone goes to
-/// the call and their voice to the speakers (Services/CallAudio.cs), the bars follow the two
-/// voices, and Mute, the microphone picker and hang up work. With the sample data (no phone
-/// linked) it only pretends: it "connects" after a moment and the bars move by themselves.
+/// A WhatsApp call, voice or video. Yours: "Calling…", "Ringing…" (with a ringback tone) once
+/// it rings there, then the timer when they pick up. Theirs: Decline / Accept (Windows'
+/// incoming-call notification rings alongside, Services/Notifications.cs). Connected, the
+/// microphone goes to the call and their voice to the speakers (Services/CallAudio.cs), the
+/// bars follow the two voices, and Mute, the microphone and camera picker and hang up work.
+/// Video is in CallWindow.Video.cs. With the sample data (no phone linked) it only pretends:
+/// it "connects" after a moment, the bars move by themselves, and your camera is shown back to you.
 /// </summary>
 public sealed partial class CallWindow : Window
 {
@@ -50,7 +51,8 @@ public sealed partial class CallWindow : Window
     internal CallAudio Audio => _audio;
 
     /// <param name="incoming">Someone calling you; null when you're the one calling.</param>
-    public CallWindow(Chat chat, ElementTheme theme, Window owner, MainViewModel vm, UiSettings ui, CallDto? incoming)
+    /// <param name="video">Your call is a video call (theirs says so itself).</param>
+    public CallWindow(Chat chat, ElementTheme theme, Window owner, MainViewModel vm, UiSettings ui, CallDto? incoming, bool video = false)
     {
         InitializeComponent();
         if (theme != ElementTheme.Default) Root.RequestedTheme = theme;
@@ -91,22 +93,23 @@ public sealed partial class CallWindow : Window
         _vm.CallAudio += OnAudio;
         Closed += OnClosed;
         Root.Loaded += (_, _) => FocusRest.Focus(FocusState.Programmatic);
+        SetupVideo(incoming?.Video ?? video, startCamera: incoming is null);
 
         if (incoming is not null)
         {
             _phase = Phase.Ringing;
             CallId = incoming.CallId;
-            CallStatus.Text = incoming.Video ? "Incoming video call\nAccept answers with voice" : "Incoming voice call";
+            CallStatus.Text = incoming.Video ? "Incoming video call" : "Incoming voice call";
             RingButtons.Visibility = Visibility.Visible;
             CallButtons.Visibility = Visibility.Collapsed;
         }
         else
         {
             _phase = Phase.Calling;
-            CallStatus.Text = "Calling…";
+            CallStatus.Text = video ? "Video calling…" : "Calling…";
             if (_live)
             {
-                _vm.StartCall(chat, video: false);
+                _vm.StartCall(chat, video);
                 _ = OpenSoundAsync();
             }
             else
@@ -170,6 +173,7 @@ public sealed partial class CallWindow : Window
         UpdateClock();
         _clockTimer.Start();
         _waveTimer.Start();
+        VideoConnected();
         if (!_live) return;
         if (MuteToggle.IsChecked == true) _vm.MuteCall(true);
         _ = OpenMicrophoneAsync();
@@ -182,6 +186,7 @@ public sealed partial class CallWindow : Window
         _phase = Phase.Ended;
         StopTimers();
         _audio.Dispose();
+        StopVideo();
         Notifications.ClearCall(CallId);
         CallStatus.Text = text;
         CallNote.Visibility = Visibility.Collapsed;
@@ -260,9 +265,10 @@ public sealed partial class CallWindow : Window
     {
         if (_phase != Phase.Ringing) return;
         Connecting();
+        if (_videoCall) _ = SetCameraAsync(true);
         if (_live)
         {
-            _vm.AcceptCall(CallId);
+            _vm.AcceptCall(CallId, _videoCall);
             _ = OpenSoundAsync();
         }
         else
@@ -310,6 +316,7 @@ public sealed partial class CallWindow : Window
             };
             menu.Items.Add(item);
         }
+        await AddCamerasAsync(menu);
         menu.ShowAt((FrameworkElement)sender);
     }
 
@@ -330,6 +337,7 @@ public sealed partial class CallWindow : Window
         _vm.CallAudio -= OnAudio;
         _audio.Frame -= OnFrame;
         _audio.Dispose();
+        StopVideo();
         Notifications.ClearCall(CallId);
     }
 
@@ -353,7 +361,7 @@ public sealed partial class CallWindow : Window
     private void UpdateClock()
     {
         var elapsed = DateTime.Now - _connectedAt;
-        CallStatus.Text = elapsed.TotalHours >= 1 ? elapsed.ToString(@"h\:mm\:ss") : elapsed.ToString(@"mm\:ss");
+        CallStatus.Text = VideoClock.Text = elapsed.TotalHours >= 1 ? elapsed.ToString(@"h\:mm\:ss") : elapsed.ToString(@"mm\:ss");
     }
 
     /// <summary>

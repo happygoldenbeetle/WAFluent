@@ -98,6 +98,18 @@ pub enum Event {
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         opus: bool,
     },
+    /// The other side's picture: one H.264 access unit (Annex B), base64. `key`: a decoder can
+    /// start here. `rotation`: how their camera is turned, in quarter turns.
+    CallVideo {
+        data: String,
+        key: bool,
+        #[serde(skip_serializing_if = "is_zero_u8")]
+        rotation: u8,
+    },
+    /// Video in the call changed. `state`: request (they ask to switch to video) | on (their
+    /// picture is coming) | off (they paused it) | declined (they refused yours) | ended (the
+    /// call is voice again) | failed (yours couldn't start) | keyframe (send a whole picture now).
+    CallVideoState { state: &'static str },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -434,15 +446,20 @@ pub enum Command {
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.
     React { chat_id: String, message_id: String, emoji: String },
-    /// Call this chat (voice). Answered by `call` events.
+    /// Call this chat (voice, or with `video`). Answered by `call` events.
     StartCall { chat_id: String, #[serde(default)] video: bool },
     /// Answer the call that's ringing.
-    AcceptCall { call_id: String },
+    /// `video`: answer a video call with your camera too.
+    AcceptCall { call_id: String, #[serde(default)] video: bool },
     /// Decline the call that's ringing.
     RejectCall { call_id: String },
     /// Hang up (or stop calling).
     EndCall,
     MuteCall { muted: bool },
+    /// Your camera: one H.264 access unit (Annex B, 15 a second), base64.
+    CallVideo { data: String },
+    /// Turn your camera on (asks the other side to switch to video, or accepts their asking) or off.
+    SetCallVideo { on: bool },
     /// Your microphone: 60 ms of 16 kHz mono 16-bit PCM (960 samples), base64.
     CallAudio { data: String },
     /// Local only for now: clears the unread badge, sends no read receipts.
@@ -509,6 +526,10 @@ pub struct LinkPreview {
     #[serde(default)]
     pub description: String,
     pub thumb: Option<String>,
+}
+
+fn is_zero_u8(n: &u8) -> bool {
+    *n == 0
 }
 
 fn is_zero(n: &u32) -> bool {

@@ -315,7 +315,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     match cmd {
         Command::CallAudio { data } => calls::microphone(ctx, &data),
         Command::StartCall { chat_id, video } => calls::start(ctx, client, chat_id, video),
-        Command::AcceptCall { call_id } => calls::accept(ctx, client, call_id),
+        Command::AcceptCall { call_id, video } => calls::accept(ctx, client, call_id, video),
+        Command::CallVideo { data } => calls::camera(ctx, &data),
+        Command::SetCallVideo { on } => calls::set_video(ctx, client, on),
         Command::RejectCall { call_id } => calls::reject(ctx, client, call_id).await,
         Command::EndCall => calls::end(ctx, client, "ended").await,
         Command::MuteCall { muted } => calls::mute(ctx, muted),

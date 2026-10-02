@@ -63,6 +63,8 @@ public sealed partial class MainViewModel : Observable
         core.ContactsReceived += contacts => ContactsLoaded?.Invoke(contacts);
         core.CallChanged += call => CallChanged?.Invoke(call);
         core.CallAudio += (data, opus) => CallAudio?.Invoke(data, opus);
+        core.CallVideo += (unit, key, rotation) => CallVideo?.Invoke(unit, key, rotation);
+        core.CallVideoState += state => CallVideoState?.Invoke(state);
         core.GroupInfoReceived += (chatId, info) => { if (_byId.TryGetValue(chatId, out var group)) group.GroupInfo = info; };
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) { m.IsUploading = false; m.Delivery = Delivery.Failed; } };

@@ -1,8 +1,10 @@
-//! Voice calls: WhatsApp's own calling (whatsapp-rust's voip stack) joined to the app.
+//! Calls: WhatsApp's own calling (whatsapp-rust's voip stack) joined to the app.
 //!
-//! The library does the signalling, the relay and the codec. The app has the microphone and
-//! the speakers, so sound crosses the pipe both ways as `callAudio` lines: 60 ms of 16 kHz mono
-//! 16-bit PCM (960 samples), base64. One call at a time; group calls aren't answered here.
+//! The library does the signalling, the relay and the voice codec. The app has the microphone,
+//! the speakers, the camera and the screen, so media crosses the pipe both ways, base64 in
+//! lines: `callAudio` is 60 ms of 16 kHz mono 16-bit PCM (960 samples), and `callVideo` is one
+//! H.264 access unit (the app encodes and decodes; the library only carries it). One call at a
+//! time; group calls aren't answered here.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,7 +14,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use log::{info, warn};
 use whatsapp_rust::prelude::*;
-use whatsapp_rust::voip::{CallEvent, CallHandle};
+use whatsapp_rust::voip::{CallEvent, CallHandle, VideoFrame, VideoState, VideoUpgradeToken};
+use whatsapp_rust::wacore::stanza::call::{VideoStateParams, build_video_state};
 use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::protocol::Event as Out;
@@ -22,6 +25,8 @@ use crate::{Ctx, add_notice, chat_for, send_chat, store};
 const FRAME_SAMPLES: usize = 960;
 /// How long your call rings there before it gives up.
 const RING_TIME: Duration = Duration::from_secs(60);
+/// RTCP "payload-specific feedback"; its formats 1 (PLI) and 4 (FIR) ask for a whole picture.
+const RTCP_FEEDBACK: u8 = 206;
 
 #[derive(Default)]
 pub(crate) struct Calls {
@@ -41,12 +46,32 @@ struct Ringing {
     video: bool,
 }
 
+/// Your camera in the call.
+#[derive(Clone, Copy, PartialEq)]
+enum Camera {
+    /// The call has no video from you (a voice call).
+    Off,
+    On,
+    /// Video is set up, but you turned the camera off: nothing is sent, theirs still shows.
+    Paused,
+}
+
 struct Active {
     call_id: String,
     chat_id: String,
     handle: CallHandle,
     /// Your microphone, to the library.
     microphone: async_channel::Sender<Vec<i16>>,
+    /// Your camera, to the library (the other end is handed over when video starts).
+    camera: async_channel::Sender<Vec<u8>>,
+    camera_feed: async_channel::Receiver<Vec<u8>>,
+    /// Where the library puts their picture.
+    view: async_channel::Sender<VideoFrame>,
+    camera_state: Camera,
+    /// They asked to switch to video and you haven't answered.
+    video_request: Option<VideoUpgradeToken>,
+    /// It was (or became) a video call: what the line left in the chat says.
+    video: bool,
     outgoing: bool,
     /// When the other side picked up (or you did), Unix seconds.
     connected_at: Option<i64>,
@@ -55,13 +80,52 @@ struct Active {
     detail: Option<String>,
 }
 
+/// The channels a call's media goes through.
+struct Media {
+    microphone: (async_channel::Sender<Vec<i16>>, async_channel::Receiver<Vec<i16>>),
+    speaker: (async_channel::Sender<Vec<i16>>, async_channel::Receiver<Vec<i16>>),
+    camera: (async_channel::Sender<Vec<u8>>, async_channel::Receiver<Vec<u8>>),
+    view: (async_channel::Sender<VideoFrame>, async_channel::Receiver<VideoFrame>),
+}
+
+impl Media {
+    fn new() -> Self {
+        Self {
+            microphone: async_channel::bounded(8),
+            speaker: async_channel::bounded(16),
+            camera: async_channel::bounded(6),
+            view: async_channel::bounded(16),
+        }
+    }
+
+    fn active(&self, handle: &CallHandle, chat_id: &str, outgoing: bool, video: bool) -> Active {
+        Active {
+            call_id: handle.call_id().to_string(),
+            chat_id: chat_id.to_string(),
+            handle: handle.clone(),
+            microphone: self.microphone.0.clone(),
+            camera: self.camera.0.clone(),
+            camera_feed: self.camera.1.clone(),
+            view: self.view.0.clone(),
+            camera_state: if video { Camera::On } else { Camera::Off },
+            video_request: None,
+            video,
+            outgoing,
+            connected_at: if outgoing { None } else { Some(store::unix_now()) },
+            reason: None,
+            detail: None,
+        }
+    }
+}
+
 impl Ctx {
     fn calls(&self) -> std::sync::MutexGuard<'_, Calls> {
         self.calls.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn call(&self, call_id: &str, chat_id: &str, outgoing: bool, state: &'static str, reason: Option<&'static str>, detail: Option<String>) {
-        self.send(Out::Call { call_id: call_id.to_string(), chat_id: chat_id.to_string(), state, video: false, outgoing, reason, detail });
+    #[allow(clippy::too_many_arguments)]
+    fn call(&self, call_id: &str, chat_id: &str, outgoing: bool, video: bool, state: &'static str, reason: Option<&'static str>, detail: Option<String>) {
+        self.send(Out::Call { call_id: call_id.to_string(), chat_id: chat_id.to_string(), state, video, outgoing, reason, detail });
     }
 }
 
@@ -71,10 +135,7 @@ impl Ctx {
 pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: bool) {
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
     tokio::spawn(async move {
-        let fail = |detail: &str| ctx.call("", &chat_id, true, "ended", Some("failed"), Some(detail.to_string()));
-        if video {
-            return fail("Video calls aren't available yet.");
-        }
+        let fail = |detail: &str| ctx.call("", &chat_id, true, video, "ended", Some("failed"), Some(detail.to_string()));
         let Ok(jid) = chat_id.parse::<Jid>() else { return fail("This chat can't be called.") };
         if chat_id.ends_with("@g.us") {
             return fail("Group calls aren't available yet.");
@@ -88,10 +149,13 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
             calls.starting = true;
             calls.cancelled = false;
         }
-        let (mic_tx, mic_rx) = async_channel::bounded::<Vec<i16>>(8);
-        let (speaker_tx, speaker_rx) = async_channel::bounded::<Vec<i16>>(16);
-        let started = client.voip().call(&jid).audio(mic_rx, speaker_tx).start().await;
-        let handle = match started {
+        let media = Media::new();
+        let voip = client.voip();
+        let mut call = voip.call(&jid).audio(media.microphone.1.clone(), media.speaker.0.clone());
+        if video {
+            call = call.video(media.camera.1.clone(), media.view.0.clone());
+        }
+        let handle = match call.start().await {
             Ok(handle) => handle,
             Err(e) => {
                 warn!("call: couldn't start: {e}");
@@ -100,18 +164,9 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
             }
         };
         let call_id = handle.call_id().to_string();
-        info!("call: ringing {call_id}");
-        let cancelled = register(&ctx, Active {
-            call_id: call_id.clone(),
-            chat_id: chat_id.clone(),
-            handle: handle.clone(),
-            microphone: mic_tx,
-            outgoing: true,
-            connected_at: None,
-            reason: None,
-            detail: None,
-        });
-        ctx.call(&call_id, &chat_id, true, "calling", None, None);
+        info!("call: ringing {call_id} (video: {video})");
+        let cancelled = register(&ctx, media.active(&handle, &chat_id, true, video));
+        ctx.call(&call_id, &chat_id, true, video, "calling", None, None);
         if cancelled {
             end(&ctx, &client, "ended").await;
         }
@@ -126,12 +181,12 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
                 }
             }
         });
-        drive(ctx.clone(), handle, speaker_rx).await;
+        drive(ctx.clone(), handle, media).await;
     });
 }
 
-/// Answers the call that's ringing.
-pub(crate) fn accept(ctx: &Ctx, client: &Arc<Client>, call_id: String) {
+/// Answers the call that's ringing; `video`: with your camera, when it's a video call.
+pub(crate) fn accept(ctx: &Ctx, client: &Arc<Client>, call_id: String, video: bool) {
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
     tokio::spawn(async move {
         let ring = {
@@ -144,34 +199,29 @@ pub(crate) fn accept(ctx: &Ctx, client: &Arc<Client>, call_id: String) {
             calls.cancelled = false;
             ring
         };
-        ctx.call(&call_id, &ring.chat_id, false, "connecting", None, None);
-        let (mic_tx, mic_rx) = async_channel::bounded::<Vec<i16>>(8);
-        let (speaker_tx, speaker_rx) = async_channel::bounded::<Vec<i16>>(16);
-        let started = client.voip().accept(&ring.incoming).audio(mic_rx, speaker_tx).start().await;
-        let handle = match started {
+        let video = video && ring.video;
+        ctx.call(&call_id, &ring.chat_id, false, video, "connecting", None, None);
+        let media = Media::new();
+        let voip = client.voip();
+        let mut call = voip.accept(&ring.incoming).audio(media.microphone.1.clone(), media.speaker.0.clone());
+        if video {
+            call = call.video(media.camera.1.clone(), media.view.0.clone());
+        }
+        let handle = match call.start().await {
             Ok(handle) => handle,
             Err(e) => {
                 warn!("call: couldn't answer {call_id}: {e}");
                 ctx.calls().starting = false;
-                return ctx.call(&call_id, &ring.chat_id, false, "ended", Some("failed"), Some(failure(&e.to_string())));
+                return ctx.call(&call_id, &ring.chat_id, false, video, "ended", Some("failed"), Some(failure(&e.to_string())));
             }
         };
-        info!("call: answered {call_id}");
-        let cancelled = register(&ctx, Active {
-            call_id: call_id.clone(),
-            chat_id: ring.chat_id.clone(),
-            handle: handle.clone(),
-            microphone: mic_tx,
-            outgoing: false,
-            connected_at: Some(store::unix_now()),
-            reason: None,
-            detail: None,
-        });
-        ctx.call(&call_id, &ring.chat_id, false, "connected", None, None);
+        info!("call: answered {call_id} (video: {video})");
+        let cancelled = register(&ctx, media.active(&handle, &ring.chat_id, false, video));
+        ctx.call(&call_id, &ring.chat_id, false, video, "connected", None, None);
         if cancelled {
             end(&ctx, &client, "ended").await;
         }
-        drive(ctx.clone(), handle, speaker_rx).await;
+        drive(ctx.clone(), handle, media).await;
     });
 }
 
@@ -189,7 +239,7 @@ pub(crate) async fn reject(ctx: &Ctx, client: &Arc<Client>, call_id: String) {
     if let Err(e) = client.voip().reject(&ring.incoming).await {
         warn!("call: couldn't decline {call_id}: {e}");
     }
-    ctx.call(&call_id, &ring.chat_id, false, "ended", Some("declined"), None);
+    ctx.call(&call_id, &ring.chat_id, false, ring.video, "ended", Some("declined"), None);
 }
 
 /// Hangs up (or stops calling). `reason` is kept unless one is already known.
@@ -233,6 +283,78 @@ pub(crate) fn microphone(ctx: &Ctx, data: &str) {
     }
 }
 
+/// A picture from your camera (one H.264 access unit).
+pub(crate) fn camera(ctx: &Ctx, data: &str) {
+    let Ok(unit) = BASE64.decode(data) else { return };
+    let dropped = match ctx.calls().active.as_ref() {
+        Some(active) if active.camera_state == Camera::On => active.camera.try_send(unit).is_err(),
+        _ => false,
+    };
+    if dropped {
+        // The pictures after a lost one build on it: start again from a whole one.
+        ctx.send(Out::CallVideoState { state: "keyframe" });
+    }
+}
+
+/// Your camera, on or off. On in a voice call asks the other side to switch to video (or says
+/// yes when they asked); off keeps their picture coming and only stops yours.
+pub(crate) fn set_video(ctx: &Ctx, client: &Arc<Client>, on: bool) {
+    let (ctx, client) = (ctx.clone(), Arc::clone(client));
+    tokio::spawn(async move {
+        let found = {
+            let mut calls = ctx.calls();
+            calls.active.as_mut().map(|a| (a.handle.clone(), a.camera_state, a.video_request.take(), a.camera_feed.clone(), a.view.clone()))
+        };
+        let Some((handle, state, request, feed, view)) = found else { return };
+        let answering = request.is_some();
+        let (result, next) = match (on, state) {
+            (true, Camera::Paused) => (handle.announce_video_enabled().await.map_err(|e| e.to_string()), Camera::On),
+            (true, Camera::Off) => {
+                while feed.try_recv().is_ok() {}   // nothing left over from an earlier try
+                let started = match request {
+                    Some(token) => handle.accept_video(token, feed, view).await,
+                    None => handle.start_video(feed, view).await,
+                };
+                (started.map_err(|e| e.to_string()), Camera::On)
+            }
+            (false, Camera::On) => (video_state(&client, &handle, VideoState::Paused).await, Camera::Paused),
+            _ => return,
+        };
+        match result {
+            Ok(()) => {
+                if let Some(active) = ctx.calls().active.as_mut().filter(|a| a.call_id == handle.call_id()) {
+                    active.camera_state = next;
+                    active.video |= on;
+                }
+                if answering && on {
+                    ctx.send(Out::CallVideoState { state: "on" });
+                }
+            }
+            Err(e) => {
+                warn!("call: video {} failed: {e}", if on { "on" } else { "off" });
+                if on {
+                    ctx.send(Out::CallVideoState { state: "failed" });
+                }
+            }
+        }
+    });
+}
+
+/// Tells the other side what your video is doing (the library has no call for "paused").
+async fn video_state(client: &Client, handle: &CallHandle, state: VideoState) -> Result<(), String> {
+    let id = format!("{:08X}{:08X}", crate::rand_u32(), crate::rand_u32());
+    let stanza = build_video_state(&VideoStateParams {
+        call_id: handle.call_id(),
+        to: &handle.peer_jid(),
+        id: &id,
+        call_creator: handle.call_creator(),
+        state,
+        dec: None,
+        device_orientation: Some(0),
+    });
+    client.send_node(stanza).await.map_err(|e| e.to_string())
+}
+
 // ───── From WhatsApp ─────
 
 /// Call signalling: someone is calling, or the other side answered / declined / hung up.
@@ -249,7 +371,7 @@ pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall)
             }
             info!("call: {call_id} ringing (video: {is_video})");
             ctx.calls().ringing.insert(call_id.to_string(), Ringing { incoming: call.clone(), chat_id: chat_id.clone(), video: *is_video });
-            ctx.send(Out::Call { call_id: call_id.to_string(), chat_id, state: "ringing", video: *is_video, outgoing: false, reason: None, detail: None });
+            ctx.call(call_id, &chat_id, false, *is_video, "ringing", None, None);
         }
         CallAction::Accept { .. } => {
             let answered = {
@@ -257,14 +379,14 @@ pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall)
                 match calls.active.as_mut() {
                     Some(active) if active.call_id == call_id && active.outgoing && active.connected_at.is_none() => {
                         active.connected_at = Some(store::unix_now());
-                        Some(active.chat_id.clone())
+                        Some((active.chat_id.clone(), active.video))
                     }
                     _ => None,
                 }
             };
-            if let Some(chat_id) = answered {
+            if let Some((chat_id, video)) = answered {
                 info!("call: {call_id} answered");
-                ctx.call(call_id, &chat_id, true, "connected", None, None);
+                ctx.call(call_id, &chat_id, true, video, "connected", None, None);
             }
         }
         // "busy" is one of their devices that can't take calls; the others keep ringing.
@@ -289,7 +411,7 @@ pub(crate) async fn missed(ctx: &Ctx, client: &Arc<Client>, from: &Jid, call_id:
     let ring = ctx.calls().ringing.remove(call_id);
     let (chat_id, video) = match ring {
         Some(ring) => {
-            ctx.call(call_id, &ring.chat_id, false, "ended", Some("missed"), None);
+            ctx.call(call_id, &ring.chat_id, false, ring.video, "ended", Some("missed"), None);
             (ring.chat_id, ring.video)
         }
         None => (chat_for(ctx, client, from).await, false),
@@ -297,21 +419,22 @@ pub(crate) async fn missed(ctx: &Ctx, client: &Arc<Client>, from: &Jid, call_id:
     if chat_id.ends_with("@g.us") || ctx.db().chat(&chat_id).is_none() {
         return;
     }
-    add_notice(ctx, &chat_id, format!("Missed {} call", if video { "video" } else { "voice" }), ts);
+    add_notice(ctx, &chat_id, format!("Missed {} call", kind(video)), ts);
 }
 
 /// The call was answered or declined on another of your devices: stop ringing here.
 pub(crate) fn elsewhere(ctx: &Ctx, call_id: &str) {
     if let Some(ring) = ctx.calls().ringing.remove(call_id) {
-        ctx.call(call_id, &ring.chat_id, false, "ended", Some("elsewhere"), None);
+        ctx.call(call_id, &ring.chat_id, false, ring.video, "ended", Some("elsewhere"), None);
     }
 }
 
 // ───── A call in progress ─────
 
-/// Runs until the call is over: the other side's voice goes to the app, and the end is told.
-async fn drive(ctx: Ctx, handle: CallHandle, speaker: async_channel::Receiver<Vec<i16>>) {
+/// Runs until the call is over: the other side's voice and picture go to the app, and the end is told.
+async fn drive(ctx: Ctx, handle: CallHandle, media: Media) {
     let call_id = handle.call_id().to_string();
+    let speaker = media.speaker.1;
     let voice = tokio::spawn({
         let ctx = ctx.clone();
         async move {
@@ -321,6 +444,15 @@ async fn drive(ctx: Ctx, handle: CallHandle, speaker: async_channel::Receiver<Ve
                     bytes.extend_from_slice(&sample.to_le_bytes());
                 }
                 ctx.send(Out::CallAudio { data: BASE64.encode(bytes), opus: false });
+            }
+        }
+    });
+    let view = media.view.1;
+    let picture = tokio::spawn({
+        let ctx = ctx.clone();
+        async move {
+            while let Ok(frame) = view.recv().await {
+                ctx.send(Out::CallVideo { data: BASE64.encode(&frame.data), key: frame.keyframe, rotation: frame.orientation });
             }
         }
     });
@@ -340,6 +472,7 @@ async fn drive(ctx: Ctx, handle: CallHandle, speaker: async_channel::Receiver<Ve
         }
     }
     voice.abort();
+    picture.abort();
     // The signal that says why (declined, hung up) is handled alongside this: let it land.
     tokio::time::sleep(Duration::from_millis(200)).await;
     finish(&ctx, &call_id);
@@ -374,8 +507,50 @@ async fn on_call_event(ctx: &Ctx, handle: &CallHandle, event: CallEvent) {
             failed("Couldn't reach WhatsApp's call server.");
             handle.hangup().await;
         }
+        CallEvent::VideoStateChanged { state, upgrade_token, .. } => peer_video(ctx, handle, state, upgrade_token),
+        // They lost part of your picture and ask for a whole one.
+        CallEvent::RtcpReceived { feedback, .. } if feedback.iter().any(|f| f.packet_type == RTCP_FEEDBACK && matches!(f.fmt, 1 | 4)) => {
+            ctx.send(Out::CallVideoState { state: "keyframe" });
+        }
+        CallEvent::OutboundMediaDropped { video_access_units, .. } if video_access_units > 0 => {
+            ctx.send(Out::CallVideoState { state: "keyframe" });
+        }
         _ => {}
     }
+}
+
+/// The other side's video changed: they ask to switch to it, turned theirs on or off, or refused yours.
+fn peer_video(ctx: &Ctx, handle: &CallHandle, state: VideoState, request: Option<VideoUpgradeToken>) {
+    info!("call: {} their video is {state:?}", handle.call_id());
+    let mut calls = ctx.calls();
+    let Some(active) = calls.active.as_mut().filter(|a| a.call_id == handle.call_id()) else { return };
+    let told = if state.is_upgrade_request() {
+        match request {
+            Some(token) => {
+                active.video_request = Some(token);
+                "request"
+            }
+            None => "on",   // both asked at once: it's a video call now
+        }
+    } else {
+        match state {
+            VideoState::Enabled | VideoState::UpgradeAccept => "on",
+            VideoState::Paused | VideoState::Stopped => "off",
+            VideoState::UpgradeReject | VideoState::UpgradeRejectByTimeout => {
+                active.camera_state = Camera::Off;
+                "declined"
+            }
+            VideoState::Disabled | VideoState::UpgradeCancel | VideoState::UpgradeCancelByTimeout | VideoState::Error => {
+                active.camera_state = Camera::Off;
+                active.video_request = None;
+                "ended"
+            }
+            _ => return,
+        }
+    };
+    active.video |= told == "on";
+    drop(calls);
+    ctx.send(Out::CallVideoState { state: told });
 }
 
 /// The call is over: tell the app, and leave a line in the chat.
@@ -394,16 +569,21 @@ fn finish(ctx: &Ctx, call_id: &str) {
         (None, false) => "missed",
     });
     info!("call: {call_id} over ({reason})");
-    ctx.call(call_id, &active.chat_id, active.outgoing, "ended", Some(reason), active.detail);
+    ctx.call(call_id, &active.chat_id, active.outgoing, active.video, "ended", Some(reason), active.detail);
     let now = store::unix_now();
+    let call = format!("{} call", if active.video { "Video" } else { "Voice" });
     let text = match (active.connected_at, reason) {
-        (Some(at), _) => format!("Voice call · {}", length(now - at)),
+        (Some(at), _) => format!("{call} · {}", length(now - at)),
         (None, "failed") => return,
-        (None, "declined") if active.outgoing => "Voice call · Declined".to_string(),
-        (None, _) if active.outgoing => "Voice call · No answer".to_string(),
-        (None, _) => "Missed voice call".to_string(),
+        (None, "declined") if active.outgoing => format!("{call} · Declined"),
+        (None, _) if active.outgoing => format!("{call} · No answer"),
+        (None, _) => format!("Missed {} call", kind(active.video)),
     };
     add_notice(ctx, &active.chat_id, text, now);
+}
+
+fn kind(video: bool) -> &'static str {
+    if video { "video" } else { "voice" }
 }
 
 /// 0:42, 12:05, 1:02:33.

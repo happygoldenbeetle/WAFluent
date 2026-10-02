@@ -8,8 +8,9 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 > stickers (your favourites synced from the phone, and recents) and GIFs (recents and GIPHY search).
 > Right-click a chat for WhatsApp Desktop's menu (archive, mute, pin, mark unread, favourites, block, clear, delete, add to contacts)
 > and a message to forward, pin, star, select, report or delete it. Emoji: in-app keyboard and :shortcode: autocomplete.
-> Voice calls with one person work: call from a chat, answer or decline one that rings (with Windows' incoming-call
-> notification), mute, pick the microphone, hang up. Video and group calls aren't wired up yet.
+> Voice and video calls with one person: call from a chat, answer or decline one that rings (with Windows' incoming-call
+> notification), mute, turn the camera on or off, switch a voice call to video, pick the microphone and camera, hang up.
+> Group calls aren't wired up yet.
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
 
@@ -60,9 +61,11 @@ Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
 | `core/src/avatars.rs` | Profile-picture fetch queue and disk cache |
 | `src/Services/CoreClient.cs` | Starts the core and translates its events |
 | `src/MainWindow.xaml` | Rail, chat list, conversation pane, link screen |
-| `core/src/calls.rs` | Voice calls: whatsapp-rust's voip stack, with sound passed to and from the app |
-| `src/CallWindow.xaml` | The call window (calling, ringing, in a call) |
+| `core/src/calls.rs` | Calls: whatsapp-rust's voip stack, with sound and H.264 video passed to and from the app |
+| `src/CallWindow.xaml` | The call window (calling, ringing, in a call; video in `CallWindow.Video.cs`) |
 | `src/Services/CallAudio.cs` | A call's microphone and speakers (16 kHz frames, AudioGraph) |
+| `src/Services/CallCamera.cs`, `H264Encoder.cs` | Your camera in a video call, encoded with Windows' H.264 encoder |
+| `src/Services/CallVideoPlayer.cs` | The other side's picture, decoded and drawn by a MediaPlayer |
 | `src/Controls/` | `Avatar` (with status ring), `Bubble`, `ChatLayout` (conversation list layout), `DeliveryTicks`, `VoicePlayer`, `QuoteBlock`, `TiledBackground` (chat wallpaper) |
 | `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
 | `src/MainWindow.Reactions.cs` | Reaction row in the message menu, emoji flight into the pill |
