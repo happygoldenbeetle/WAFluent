@@ -36,6 +36,9 @@ public sealed class UiSettings
     /// <summary>The microphone voice notes record from (its device id; empty: Windows' default).</summary>
     public string MicrophoneId { get; set; } = "";
 
+    /// <summary>When the Calls page was last looked at (Unix seconds): missed calls after it are counted on the rail.</summary>
+    public long CallsSeenAt { get; set; }
+
     /// <summary>The camera video calls use ("" = Windows' default).</summary>
     public string CameraId { get; set; } = "";
 

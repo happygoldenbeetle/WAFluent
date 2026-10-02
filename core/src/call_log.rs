@@ -200,11 +200,21 @@ pub(crate) fn resync_once(ctx: &Ctx, client: &Arc<Client>) {
 /// A link to a call anyone with WhatsApp can join.
 pub(crate) fn create_link(ctx: &Ctx, client: &Arc<Client>, video: bool) {
     use whatsapp_rust::voip::CallLinkMedia;
+    info!("call link: asked for (video: {video})");
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
     tokio::spawn(async move {
         let media = if video { CallLinkMedia::Video } else { CallLinkMedia::Audio };
         match client.voip().create_call_link(media).await {
-            Ok(link) => ctx.send(Out::CallLink { url: link.url(), video }),
+            Ok(link) => {
+                // WhatsApp's links say "voice" where its protocol (and the library's own url()) says "audio".
+                let url = format!("https://call.whatsapp.com/{}/{}", if video { "video" } else { "voice" }, link.token);
+                // Asked back, to know the link is one WhatsApp recognises (the log says, for when one doesn't work).
+                match client.voip().preview_call_link(&link.token, media).await {
+                    Ok(preview) => info!("call link: made ({} characters, video: {video}); WhatsApp knows it (waiting room: {})", link.token.len(), preview.waiting_room_enabled),
+                    Err(e) => warn!("call link: made ({} characters, video: {video}), but WhatsApp didn't recognise it: {e}", link.token.len()),
+                }
+                ctx.send(Out::CallLink { url, video });
+            }
             Err(e) => {
                 warn!("call link: {e}");
                 ctx.send(Out::Notice { ok: false, text: "Couldn't create a call link. Try again in a moment.".into() });

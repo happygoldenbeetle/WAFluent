@@ -31,6 +31,29 @@ public sealed partial class MainViewModel
     /// <summary>The call link that was asked for: the link, and whether it's for video.</summary>
     public event Action<string, bool>? CallLinkReceived;
 
+    private int _missedCalls;
+    private long _callsSeenAt;
+
+    /// <summary>Calls you missed since you last looked at the Calls page (the number on the rail's phone).</summary>
+    public int MissedCalls { get => _missedCalls; private set => Set(ref _missedCalls, value); }
+
+    /// <summary>When the Calls page was last looked at (the window keeps it in ui.json).</summary>
+    public void UseCallsSeen(long unixSeconds)
+    {
+        _callsSeenAt = unixSeconds;
+        CountMissedCalls();
+    }
+
+    /// <summary>The Calls page is being looked at: nothing is new any more. Returns the time to remember.</summary>
+    public long MarkCallsSeen()
+    {
+        _callsSeenAt = DateTimeOffset.Now.ToUnixTimeSeconds();
+        MissedCalls = 0;
+        return _callsSeenAt;
+    }
+
+    private void CountMissedCalls() => MissedCalls = CallLog.Count(c => CallRow.Missed(c) && c.Ts > _callsSeenAt);
+
     public void LoadCalls()
     {
         if (_core is not null)
@@ -39,6 +62,7 @@ public sealed partial class MainViewModel
             return;
         }
         if (CallLog.Count == 0) CallLog = SampleCalls();
+        CountMissedCalls();
         CallsChanged?.Invoke();
     }
 

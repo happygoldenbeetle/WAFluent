@@ -20,6 +20,13 @@ public sealed partial class MainWindow
     private void SetupCalls()
     {
         ViewModel.CallChanged += OnCall;
+        // Missed calls count from the first time this runs, not from the whole history.
+        if (_ui.CallsSeenAt == 0)
+        {
+            _ui.CallsSeenAt = DateTimeOffset.Now.ToUnixTimeSeconds();
+            _ui.Save();
+        }
+        ViewModel.UseCallsSeen(_ui.CallsSeenAt);
         Notifications.CallAnswered += (callId, accept) => DispatcherQueue.TryEnqueue(() =>
         {
             if (_call is not { } call || call.CallId != callId) return;
@@ -100,6 +107,26 @@ public sealed partial class MainWindow
 #if DEBUG
         var test = Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST");
         if (test is null || !(test.StartsWith("call-") || test.StartsWith("calls"))) return;
+        if (test == "call-link-live")
+        {
+            // On the linked account (no --sample): both kinds of link, their shape to the file. Nobody is rung.
+            var got = new List<string>();
+            ViewModel.CallLinkReceived += (url, video) =>
+            {
+                var cut = url.LastIndexOf('/') + 1;
+                got.Add($"video={video} {url[..cut]}<{url.Length - cut} characters>");
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), got);
+            };
+            _ = Task.Run(async () =>
+            {
+                for (var i = 0; i < 40 && ViewModel.State != ConnectionState.Connected; i++) await Task.Delay(1000);
+                await Task.Delay(4000);
+                DispatcherQueue.TryEnqueue(() => ViewModel.CreateCallLink(true));
+                await Task.Delay(5000);
+                DispatcherQueue.TryEnqueue(() => ViewModel.CreateCallLink(false));
+            });
+            return;
+        }
         Messages.Loaded += async (_, _) =>
         {
             await Task.Delay(2000);
@@ -127,6 +154,11 @@ public sealed partial class MainWindow
                         case "calls-fav": FavouritesEdit.IsChecked = true; ShowCallsPage(CallsPage.Favourites); break;
                         case "calls-search": CallsSearch.Text = "a"; break;
                     }
+                    break;
+                case "calls-badge":
+                    // The rail's missed-call count, as if the Calls page had never been looked at (nothing is saved).
+                    ViewModel.UseCallsSeen(1);
+                    ViewModel.LoadCalls();
                     break;
                 case "call-video":
                     CallCamera.TestPictures = TestPicture;

@@ -43,7 +43,12 @@ public sealed partial class MainWindow
     {
         if (_callsWired) return;
         _callsWired = true;
-        ViewModel.CallsChanged += () => { if (_callsOpen) FillCalls(); };
+        ViewModel.CallsChanged += () =>
+        {
+            if (!_callsOpen) return;
+            FillCalls();
+            SeenCalls();   // a call missed while you're looking at the page isn't news
+        };
         ViewModel.FavouritesChanged += () => { if (_callsOpen) FillFavourites(); };
         ViewModel.ChatOpened += chat =>
         {
@@ -73,8 +78,17 @@ public sealed partial class MainWindow
         FillFavourites();
         FillCalls();
         ShowCallInfo(_callInfo);
+        SeenCalls();
         ViewModel.LoadCalls();
         ViewModel.LoadContacts();
+    }
+
+    /// <summary>The rail's missed-call count clears: the page is in front of you.</summary>
+    private void SeenCalls()
+    {
+        if (ViewModel.MissedCalls == 0 && _ui.CallsSeenAt > 0) return;
+        _ui.CallsSeenAt = ViewModel.MarkCallsSeen();
+        _ui.Save();
     }
 
     // ───── Recent ─────

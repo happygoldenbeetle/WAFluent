@@ -1029,6 +1029,11 @@
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE717;" />
                     </NavigationViewItem.Icon>
+                    <!-- Calls missed since the page was last looked at (MainWindow.CallsPage.cs). -->
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge Value="{x:Bind ViewModel.MissedCalls, Mode=OneWay}" Background="{ThemeResource ChatAccentBrush}"
+                                   Visibility="{x:Bind helpers:Ui.Positive(ViewModel.MissedCalls), Mode=OneWay}" />
+                    </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
                 <NavigationViewItem Content="Status" Tag="Status">
                     <NavigationViewItem.Icon>
