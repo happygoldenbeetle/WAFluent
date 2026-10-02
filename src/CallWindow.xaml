@@ -13,6 +13,10 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- Takes the focus the window opens with, so no button is one stray Enter away
+             (Decline, when someone is calling) and none starts with a focus ring. -->
+        <ContentControl x:Name="FocusRest" Width="0" Height="0" IsTabStop="True" UseSystemFocusVisuals="False" />
+
         <!-- Title bar -->
         <Grid x:Name="CallTitleBar" Background="Transparent">
             <StackPanel Orientation="Horizontal" Spacing="10" Margin="14,0,0,0" VerticalAlignment="Center">
@@ -34,22 +38,65 @@
                                       TileOpacity="{ThemeResource WallpaperTileOpacity}" Opacity="0.7"
                                       TileWidth="{ThemeResource WallpaperTileWidth}" TileHeight="{ThemeResource WallpaperTileHeight}" />
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
-                <controls:Avatar x:Name="CallerAvatar" Size="96" HorizontalAlignment="Center" />
-                <TextBlock x:Name="CallerName" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"
-                           TextTrimming="CharacterEllipsis" MaxWidth="360" />
-                <!-- Voice level: bars are sized from code while connected. -->
+                <controls:Redact VeilRadius="48" HorizontalAlignment="Center">
+                    <controls:Avatar x:Name="CallerAvatar" Size="96" HorizontalAlignment="Center" />
+                </controls:Redact>
+                <controls:Redact HorizontalAlignment="Center">
+                    <TextBlock x:Name="CallerName" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxWidth="360" />
+                </controls:Redact>
+                <!-- Voice level: the bars follow the two voices while connected. -->
                 <StackPanel x:Name="Wave" Height="30" Orientation="Horizontal" Spacing="3" HorizontalAlignment="Center" />
-                <TextBlock x:Name="CallStatus" FontSize="18" HorizontalAlignment="Center"
+                <TextBlock x:Name="CallStatus" FontSize="18" HorizontalAlignment="Center" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="360"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <!-- Something you should know (the microphone couldn't be opened). -->
+                <TextBlock x:Name="CallNote" FontSize="12" HorizontalAlignment="Center" TextAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="340" Visibility="Collapsed"
+                           Foreground="{ThemeResource SystemFillColorCautionBrush}" />
             </StackPanel>
         </Grid>
 
-        <!-- Controls -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,18,0,20">
-            <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Add participant" AutomationProperties.Name="Add participant">
+        <!-- Someone is calling: decline or answer. -->
+        <StackPanel x:Name="RingButtons" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="36"
+                    Margin="0,18,0,20" Visibility="Collapsed">
+            <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"
+                    ToolTipService.ToolTip="Decline" AutomationProperties.Name="Decline" Click="Decline_Click">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#E0463C" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#CC3D34" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#B3352D" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
+                </Button.Resources>
+                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5">
+                    <FontIcon.RenderTransform>
+                        <RotateTransform Angle="135" />
+                    </FontIcon.RenderTransform>
+                </FontIcon>
+            </Button>
+            <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"
+                    ToolTipService.ToolTip="Accept" AutomationProperties.Name="Accept" Click="Accept_Click">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#1DAA61" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#199655" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#15824A" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
+                </Button.Resources>
+                <FontIcon Glyph="&#xE717;" FontSize="18" />
+            </Button>
+        </StackPanel>
+
+        <!-- In a call -->
+        <StackPanel x:Name="CallButtons" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,18,0,20">
+            <Button Style="{StaticResource CallButtonStyle}" IsEnabled="False"
+                    ToolTipService.ToolTip="Add participant" AutomationProperties.Name="Add participant">
                 <FontIcon Glyph="&#xE8FA;" FontSize="16" />
             </Button>
-            <ToggleButton x:Name="CameraToggle" Style="{StaticResource CallToggleStyle}"
+            <ToggleButton x:Name="CameraToggle" Style="{StaticResource CallToggleStyle}" IsEnabled="False"
                           ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera">
                 <FontIcon Glyph="&#xE714;" FontSize="16" />
             </ToggleButton>
@@ -58,7 +105,9 @@
                           Checked="Mute_Changed" Unchecked="Mute_Changed">
                 <FontIcon x:Name="MuteIcon" Glyph="&#xE720;" FontSize="16" />
             </ToggleButton>
-            <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="More" AutomationProperties.Name="More options">
+            <!-- More: which microphone the call uses. -->
+            <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Microphone" AutomationProperties.Name="Microphone"
+                    Click="More_Click">
                 <FontIcon Glyph="&#xE712;" FontSize="16" />
             </Button>
             <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"

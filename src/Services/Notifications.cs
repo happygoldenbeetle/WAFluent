@@ -26,7 +26,11 @@ public static class Notifications
     /// <summary>A reply was typed in a notification: send this text to this chat.</summary>
     public static event Action<string, string>? Replied;
 
+    /// <summary>An incoming call's notification was answered: the call, and Accept (true) or Decline.</summary>
+    public static event Action<string, bool>? CallAnswered;
+
     private static ToastNotifier? _notifier;
+    private static readonly Dictionary<string, ToastNotification> Calls = [];
 
     /// <summary>Registers the app's name and icon for notifications; call once at startup.</summary>
     public static void Register()
@@ -91,6 +95,62 @@ public static class Notifications
         {
             Helpers.AppLog.Write("showing a notification failed", e);
         }
+    }
+
+    /// <summary>
+    /// Someone is calling: Windows' incoming-call notification (it stays up and rings, with
+    /// Windows' own call sound, until it's answered or <see cref="ClearCall"/> takes it away).
+    /// </summary>
+    public static void ShowCall(string callId, string title, bool video, string? picture)
+    {
+        if (_notifier is null) return;
+        try
+        {
+            string E(string s) => SecurityElement.Escape(s) ?? "";
+            var logo = picture is { } p && File.Exists(p)
+                ? $"<image placement='appLogoOverride' hint-crop='circle' src='{E(new Uri(p).AbsoluteUri)}'/>"
+                : "";
+            var id = E(Uri.EscapeDataString(callId));
+            var xml = $@"<toast scenario='incomingCall' launch='action=showCall&amp;call={id}'>
+  <visual><binding template='ToastGeneric'>
+    <text hint-maxLines='1'>{E(title)}</text>
+    <text>{(video ? "Incoming video call" : "Incoming voice call")}</text>
+    {logo}
+  </binding></visual>
+  <actions>
+    <action content='Decline' arguments='action=declineCall&amp;call={id}' activationType='foreground'/>
+    <action content='Accept' arguments='action=acceptCall&amp;call={id}' activationType='foreground'/>
+  </actions>
+  <audio src='ms-winsoundevent:Notification.Looping.Call' loop='true'/>
+</toast>";
+            var doc = new XmlDocument();
+            doc.LoadXml(xml);
+            var toast = new ToastNotification(doc) { Group = "calls", Tag = Key(callId) };
+            toast.Activated += (_, e) =>
+            {
+                if (e is not ToastActivatedEventArgs activated) return;
+                if (activated.Arguments.Contains("action=acceptCall")) CallAnswered?.Invoke(callId, true);
+                else if (activated.Arguments.Contains("action=declineCall")) CallAnswered?.Invoke(callId, false);
+            };
+            lock (Calls) Calls[callId] = toast;
+            _notifier.Show(toast);
+        }
+        catch (Exception e)
+        {
+            Helpers.AppLog.Write("showing a call notification failed", e);
+        }
+    }
+
+    /// <summary>The call was answered, declined or is over: its notification (and the ringing) stops.</summary>
+    public static void ClearCall(string callId)
+    {
+        ToastNotification? toast;
+        lock (Calls)
+        {
+            if (!Calls.Remove(callId, out toast)) return;
+        }
+        try { _notifier?.Hide(toast); }
+        catch (Exception) { }
     }
 
     /// <summary>The chat was opened: its notifications go from the Action Center.</summary>

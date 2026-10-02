@@ -16,7 +16,6 @@ namespace WhatsAppNative;
 public sealed partial class MainWindow : Window
 {
     private readonly CoreClient? _core;
-    private CallWindow? _call;
 
     public MainViewModel ViewModel { get; }
 
@@ -100,6 +99,7 @@ public sealed partial class MainWindow : Window
             if (_windowActive && ViewModel.SelectedChat is { } open) Notifications.Clear(open.Id);
         };
         SetupNotifications();
+        SetupCalls();
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
@@ -803,19 +803,6 @@ public sealed partial class MainWindow : Window
     private void VoiceCall_Click(object sender, RoutedEventArgs e) => StartCall(video: false);
 
     private void VideoCall_Click(object sender, RoutedEventArgs e) => StartCall(video: true);
-
-    private void StartCall(bool video)
-    {
-        if (ViewModel.SelectedChat is not { } chat) return;
-        if (_call is not null)
-        {
-            _call.Activate();   // one call at a time
-            return;
-        }
-        _call = new CallWindow(chat, video, Root.RequestedTheme, this);
-        _call.Closed += (_, _) => _call = null;
-        _call.Activate();
-    }
 
     // ───────────── Composer ─────────────
 

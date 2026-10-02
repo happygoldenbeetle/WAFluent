@@ -7,6 +7,7 @@
 
 mod actions;
 mod avatars;
+mod calls;
 mod media;
 mod extract;
 mod protocol;
@@ -56,6 +57,8 @@ pub(crate) struct Ctx {
     backfill_gate: Arc<tokio::sync::Mutex<()>>,
     /// When a media refill was last asked for, per chat: its answer isn't "nothing older".
     backfill_sent: Arc<Mutex<HashMap<String, std::time::Instant>>>,
+    /// The call that's ringing or in progress (see calls.rs).
+    pub(crate) calls: Arc<Mutex<calls::Calls>>,
 }
 
 impl Ctx {
@@ -74,7 +77,8 @@ impl Ctx {
 
 fn main() {
     env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info,whatsapp_rust=warn,wacore=warn"),
+        // Call signalling is logged (ids only): a call that fails can only be understood from it.
+        env_logger::Env::default().default_filter_or("info,whatsapp_rust=warn,wacore=warn,whatsapp_rust::handlers::call=debug"),
     )
     .target(env_logger::Target::Stderr)
     .init();
@@ -139,6 +143,7 @@ async fn run(dir: PathBuf) {
         backfill: Arc::default(),
         backfill_gate: Arc::default(),
         backfill_sent: Arc::default(),
+        calls: Arc::default(),
     };
     ctx.status("starting", None);
     whatsapp_rust::wafluent_hooks::on_sticker_mutation({
@@ -308,6 +313,12 @@ pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &st
 
 async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     match cmd {
+        Command::CallAudio { data } => calls::microphone(ctx, &data),
+        Command::StartCall { chat_id, video } => calls::start(ctx, client, chat_id, video),
+        Command::AcceptCall { call_id } => calls::accept(ctx, client, call_id),
+        Command::RejectCall { call_id } => calls::reject(ctx, client, call_id).await,
+        Command::EndCall => calls::end(ctx, client, "ended").await,
+        Command::MuteCall { muted } => calls::mute(ctx, muted),
         Command::LoadMessages { chat_id, limit } => {
             let messages = ctx.db().messages(&chat_id, limit.unwrap_or(300));
             ctx.send(Out::Messages { chat_id, messages });
@@ -1101,6 +1112,9 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         }
         Event::PairSuccess(_) => ctx.status("syncing", Some("Linked. Loading your chatsâ€¦".into())),
         Event::Disconnected(_) => ctx.status("connecting", None),
+        Event::IncomingCall(call) => calls::signal(ctx, client, call).await,
+        Event::MissedCall(missed) => calls::missed(ctx, client, &missed.from, &missed.call_id, missed.timestamp.timestamp()).await,
+        Event::CallEndedElsewhere(ended) => calls::elsewhere(ctx, &ended.call_id),
         Event::LoggedOut(_) => forget_everything(ctx),
         Event::ChatPresence(update) => {
             use whatsapp_rust::wacore::types::presence::{ChatPresence, ChatPresenceMedia};

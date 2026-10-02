@@ -22,6 +22,12 @@ public sealed record ContactDto(string ChatId, string Name, string Phone, string
 /// <summary>A pinned message: its id, a one-line preview, its time (to load back to it) and when the pin runs out.</summary>
 public sealed record PinnedDto(string Id, string Preview, long Ts = 0, long ExpiresAt = 0);
 
+/// <summary>
+/// A call's state: ringing (someone is calling you) | calling (yours is ringing there) | connecting |
+/// connected | ended. Reason (ended): ended | declined | noAnswer | missed | elsewhere | failed.
+/// </summary>
+public sealed record CallDto(string CallId, string ChatId, string State, bool Video, bool Outgoing, string? Reason = null, string? Detail = null);
+
 public sealed record StarredDto(string ChatId, string ChatName, MessageDto Message);
 
 public sealed record MessageDto(
@@ -86,6 +92,9 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? ChatRemoved;                                // chat deleted
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
+    public event Action<CallDto>? CallChanged;
+    /// <summary>The other side's voice in a call: 16-bit samples, or an Opus packet. Raised off the UI thread.</summary>
+    public event Action<byte[], bool>? CallAudio;
     public event Action<string, string>? Me;                                 // your name, number
     public event Action? FavoritesChanged;                                   // starred/unstarred on the phone
     public event Action<IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>, IReadOnlyList<StickerDto>>? Stickers;   // favourites, recent stickers, GIFs
@@ -271,6 +280,16 @@ public sealed class CoreClient : IDisposable
     /// <summary>A chat's Media, links and docs; answered by <see cref="ChatMediaReceived"/>.</summary>
     public void LoadChatMedia(string chatId) => Send(new { cmd = "loadChatMedia", chatId });
 
+    /// <summary>Calls a chat (voice); answered by <see cref="CallChanged"/>.</summary>
+    public void StartCall(string chatId, bool video) => Send(new { cmd = "startCall", chatId, video });
+    public void AcceptCall(string callId) => Send(new { cmd = "acceptCall", callId });
+    public void RejectCall(string callId) => Send(new { cmd = "rejectCall", callId });
+    /// <summary>Hangs up, or stops calling.</summary>
+    public void EndCall() => Send(new { cmd = "endCall" });
+    public void MuteCall(bool muted) => Send(new { cmd = "muteCall", muted });
+    /// <summary>Your microphone in a call: 960 samples (60 ms at 16 kHz), 16-bit.</summary>
+    public void SendCallAudio(byte[] pcm) => Send(new { cmd = "callAudio", data = Convert.ToBase64String(pcm) });
+
     public void Logout() => Send(new { cmd = "logout" });
 
     private void Send(object command)
@@ -446,6 +465,14 @@ public sealed class CoreClient : IDisposable
                 var myName = root.GetProperty("name").GetString() ?? "";
                 var myPhone = root.GetProperty("phone").GetString() ?? "";
                 Post(() => Me?.Invoke(myName, myPhone));
+                break;
+            case "callAudio":
+                // Straight to the player: the UI thread's queue would make the voice stutter.
+                var sound = root.GetProperty("data").GetBytesFromBase64();
+                CallAudio?.Invoke(sound, root.TryGetProperty("opus", out var op) && op.ValueKind == JsonValueKind.True);
+                break;
+            case "call":
+                if (root.Deserialize<CallDto>(Json) is { } call) Post(() => CallChanged?.Invoke(call));
                 break;
             case "opened":
                 var openedChat = root.GetProperty("chatId").GetString() ?? "";

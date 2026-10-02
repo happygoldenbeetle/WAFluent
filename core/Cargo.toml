@@ -6,8 +6,9 @@ description = "WhatsApp connection for WAFluent: speaks JSON lines over stdin/st
 publish = false
 
 [dependencies]
-# Defaults minus "simd" (nightly-only portable_simd) and "signal" (we shut down on stdin EOF).
-whatsapp-rust = { version = "0.7", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "tokio-native", "ureq-client"] }
+# Defaults minus "simd" (nightly-only portable_simd) and "signal" (we shut down on stdin EOF),
+# plus "voip-mlow": calls, with the pure-Rust voice codec (calls.rs).
+whatsapp-rust = { version = "0.7", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "tokio-native", "ureq-client", "voip-mlow"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "sync", "time"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -22,6 +23,15 @@ phonenumber = "0.3"
 sha2 = { version = "0.11", default-features = false }
 # Poll secrets (already in whatsapp-rust's tree).
 getrandom = "0.4"
+# Calls: the channels whatsapp-rust's voip takes sound through, and base64 for the frames
+# that cross the pipe to the app (both already in its tree).
+async-channel = "2"
+base64 = "0.22"
+
+# The voice codec for calls is pure Rust inside wacore: unoptimized it can't keep up with a
+# live call, so debug builds optimize that one crate.
+[profile.dev.package.wacore]
+opt-level = 3
 
 [profile.release]
 opt-level = 3

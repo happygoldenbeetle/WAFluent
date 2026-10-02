@@ -77,6 +77,27 @@ pub enum Event {
     /// Reply to `loadChatMedia`, each newest first: photos, videos and GIFs; documents;
     /// messages with links.
     ChatMedia { chat_id: String, media: Vec<MessageDto>, docs: Vec<MessageDto>, links: Vec<MessageDto> },
+    /// A call's state. `state`: ringing (someone is calling you) | calling (yours is ringing
+    /// there) | connecting | connected | ended. `reason` (ended): ended | declined | noAnswer |
+    /// missed | elsewhere | busy | failed. `detail`: why it failed, for the call window.
+    Call {
+        call_id: String,
+        chat_id: String,
+        state: &'static str,
+        video: bool,
+        outgoing: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<&'static str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+    /// The other side's voice: 60 ms of 16 kHz mono 16-bit PCM (base64), or with `opus` one
+    /// standard Opus packet for the app to decode.
+    CallAudio {
+        data: String,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        opus: bool,
+    },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -413,6 +434,17 @@ pub enum Command {
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.
     React { chat_id: String, message_id: String, emoji: String },
+    /// Call this chat (voice). Answered by `call` events.
+    StartCall { chat_id: String, #[serde(default)] video: bool },
+    /// Answer the call that's ringing.
+    AcceptCall { call_id: String },
+    /// Decline the call that's ringing.
+    RejectCall { call_id: String },
+    /// Hang up (or stop calling).
+    EndCall,
+    MuteCall { muted: bool },
+    /// Your microphone: 60 ms of 16 kHz mono 16-bit PCM (960 samples), base64.
+    CallAudio { data: String },
     /// Local only for now: clears the unread badge, sends no read receipts.
     MarkRead { chat_id: String },
     Logout,
