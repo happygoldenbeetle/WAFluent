@@ -42,7 +42,17 @@ pub(crate) struct Calls {
     /// Call links of yours that someone has entered, ringing here: call id -> the link.
     link_rings: HashMap<String, LinkRing>,
     /// Joining a call link (it can wait a long time to be let in): stopped by hanging up.
-    joining: Option<tokio::task::AbortHandle>,
+    joining: Option<Joining>,
+}
+
+/// A call link being joined: the task to stop, and what its call is known by so far (the id
+/// is empty until WhatsApp has said which call the link leads to).
+struct Joining {
+    task: tokio::task::AbortHandle,
+    call_id: String,
+    chat_id: String,
+    outgoing: bool,
+    video: bool,
 }
 
 struct Ringing {
@@ -80,6 +90,8 @@ struct Active {
     /// Where the library puts their picture.
     view: async_channel::Sender<VideoFrame>,
     camera_state: Camera,
+    /// Pictures from your camera handed to the library, and how many of them it had no room for.
+    camera_count: (u32, u32),
     /// They asked to switch to video and you haven't answered.
     video_request: Option<VideoUpgradeToken>,
     /// It was (or became) a video call: what the line left in the chat says.
@@ -122,6 +134,7 @@ impl Media {
             camera_feed: self.camera.1.clone(),
             view: self.view.0.clone(),
             camera_state: if video { Camera::On } else { Camera::Off },
+            camera_count: (0, 0),
             video_request: None,
             video,
             outgoing,
@@ -268,6 +281,7 @@ fn join(ctx: &Ctx, client: &Arc<Client>, token: String, video: bool, answering: 
     use whatsapp_rust::voip::CallLinkMedia;
     let outgoing = answering.is_none();
     let (rung_id, chat_id) = answering.unwrap_or_default();
+    let (joining_id, joining_chat) = (rung_id.clone(), chat_id.clone());
     let (task_ctx, client) = (ctx.clone(), Arc::clone(client));
     {
         let mut calls = ctx.calls();
@@ -313,7 +327,7 @@ fn join(ctx: &Ctx, client: &Arc<Client>, token: String, video: bool, answering: 
     });
     let mut calls = ctx.calls();
     if calls.starting && calls.active.is_none() {
-        calls.joining = Some(task.abort_handle());
+        calls.joining = Some(Joining { task: task.abort_handle(), call_id: joining_id, chat_id: joining_chat, outgoing, video });
     }
 }
 
@@ -367,7 +381,7 @@ pub(crate) async fn end(ctx: &Ctx, client: &Arc<Client>, reason: &'static str) {
             None => {
                 if let Some(joining) = calls.joining.take() {
                     // Still waiting to be let into a call link: stop waiting.
-                    joining.abort();
+                    joining.task.abort();
                     calls.starting = false;
                 } else {
                     calls.cancelled = calls.starting;
@@ -405,8 +419,17 @@ pub(crate) fn microphone(ctx: &Ctx, data: &str) {
 /// A picture from your camera (one H.264 access unit).
 pub(crate) fn camera(ctx: &Ctx, data: &str) {
     let Ok(unit) = BASE64.decode(data) else { return };
-    let dropped = match ctx.calls().active.as_ref() {
-        Some(active) if active.camera_state == Camera::On => active.camera.try_send(unit).is_err(),
+    let dropped = match ctx.calls().active.as_mut() {
+        Some(active) if active.camera_state == Camera::On => {
+            let dropped = active.camera.try_send(unit).is_err();
+            active.camera_count.0 += 1;
+            active.camera_count.1 += dropped as u32;
+            // Every five seconds or so (15 pictures a second), for when yours doesn't show there.
+            if active.camera_count.0 % 75 == 0 {
+                info!("call: your camera: {} pictures handed to the call so far, {} of them dropped", active.camera_count.0, active.camera_count.1);
+            }
+            dropped
+        }
         _ => false,
     };
     if dropped {
@@ -525,6 +548,21 @@ pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall)
         CallAction::Reject { reason, .. } if reason.as_deref() != Some("busy") => set_reason(ctx, call_id, "declined"),
         CallAction::Terminate { reason, .. } => {
             info!("call: {call_id} ended by the other side ({reason:?})");
+            // The call of a link you were still joining ended (everyone left): stop waiting.
+            let joining = {
+                let mut calls = ctx.calls();
+                let this_one = calls.active.is_none() && calls.joining.as_ref().is_some_and(|j| j.call_id.is_empty() || j.call_id == call_id);
+                if this_one {
+                    calls.starting = false;
+                    calls.joining.take()
+                } else {
+                    None
+                }
+            };
+            if let Some(joining) = joining {
+                joining.task.abort();
+                ctx.call(call_id, &joining.chat_id, joining.outgoing, joining.video, "ended", Some("ended"), None);
+            }
             // The call in a link of yours ended before you joined it: stop ringing.
             let waiting = ctx.calls().link_rings.remove(call_id);
             if let Some(ring) = waiting {
@@ -629,6 +667,7 @@ async fn drive(ctx: Ctx, handle: CallHandle, media: Media) {
             // came first, until they've sent nothing for two seconds.
             let mut shown: Option<String> = None;
             let mut last = std::time::Instant::now();
+            let (mut count, mut bytes, mut since) = (0u32, 0usize, std::time::Instant::now());
             while let Ok(frame) = view.recv().await {
                 let sender = frame.sender.as_ref().map(|j| j.to_string());
                 if sender != shown {
@@ -638,6 +677,12 @@ async fn drive(ctx: Ctx, handle: CallHandle, media: Media) {
                     shown = sender;
                 }
                 last = std::time::Instant::now();
+                count += 1;
+                bytes += frame.data.len();
+                if since.elapsed() >= Duration::from_secs(5) {
+                    info!("call: their picture: {count} in the last 5 s ({} kbit/s)", bytes * 8 / 5000);
+                    (count, bytes, since) = (0, 0, std::time::Instant::now());
+                }
                 ctx.send(Out::CallVideo { data: BASE64.encode(&frame.data), key: frame.keyframe, rotation: frame.orientation });
             }
         }
@@ -697,9 +742,11 @@ async fn on_call_event(ctx: &Ctx, handle: &CallHandle, event: CallEvent) {
         CallEvent::GroupUpdated(update) => group_updated(ctx, handle, &update),
         // They lost part of your picture and ask for a whole one.
         CallEvent::RtcpReceived { feedback, .. } if feedback.iter().any(|f| f.packet_type == RTCP_FEEDBACK && matches!(f.fmt, 1 | 4)) => {
+            info!("call: they asked for a whole picture");
             ctx.send(Out::CallVideoState { state: "keyframe" });
         }
-        CallEvent::OutboundMediaDropped { video_access_units, .. } if video_access_units > 0 => {
+        CallEvent::OutboundMediaDropped { video_access_units, packets } if video_access_units > 0 => {
+            warn!("call: {video_access_units} of your pictures ({packets} packets) couldn't be sent in time and were dropped");
             ctx.send(Out::CallVideoState { state: "keyframe" });
         }
         _ => {}

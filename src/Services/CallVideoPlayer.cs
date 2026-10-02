@@ -29,6 +29,22 @@ public sealed class CallVideoPlayer : IDisposable
     /// <summary>Pictures handed to the player so far (the self-test reads it).</summary>
     internal int Played { get; private set; }
 
+    private int _received, _skipped;
+
+    /// <summary>
+    /// How the picture is doing, for the log: pictures in, handed on, skipped, waiting, and how
+    /// far the player's clock is behind the arrivals (that gap is the delay you'd see).
+    /// </summary>
+    internal string Report()
+    {
+        int received, played, skipped, waiting;
+        TimeSpan clock;
+        lock (_gate) (received, played, skipped, waiting, clock) = (_received, Played, _skipped, _waiting.Count, _clock.Elapsed);
+        var session = Player.PlaybackSession;
+        return $"{received} in, {played} to the player, {skipped} skipped, {waiting} waiting; {session.NaturalVideoWidth}x{session.NaturalVideoHeight} {session.PlaybackState}, "
+               + $"player at {session.Position.TotalSeconds:0.0} s of {clock.TotalSeconds:0.0} s";
+    }
+
     public CallVideoPlayer()
     {
         // The size is only a starting point: the stream says its own, and it may change mid-call.
@@ -54,9 +70,10 @@ public sealed class CallVideoPlayer : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
+            _received++;
             if (!_started)
             {
-                if (!key) return;
+                if (!key) { _skipped++; return; }
                 _started = true;
                 _clock.Restart();
             }
@@ -72,6 +89,7 @@ public sealed class CallVideoPlayer : IDisposable
             if (_waiting.Count >= MostWaiting)
             {
                 // The player isn't keeping up: skip to the next whole picture.
+                _skipped += _waiting.Count;
                 _waiting.Clear();
                 if (!key) { _started = false; return; }
             }

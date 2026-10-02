@@ -272,6 +272,10 @@ public sealed partial class MainWindow
                 case "call-group-ask":
                     if (ViewModel.ForwardTargets().FirstOrDefault(c => c.IsGroup) is { } askGroup) _ = CallGroupAsync(askGroup, video: false);
                     break;
+                case "call-audio-probe":
+                    // Which ways of opening the speakers and the microphone Windows accepts right now (nothing is played or recorded).
+                    File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), await CallAudio.ProbeAsync());
+                    break;
                 case "call-contact-info":
                     OpenInfo();   // the round buttons under the name
                     break;
@@ -299,6 +303,7 @@ public sealed partial class MainWindow
                             report.Add($"{n}: {(unit is null ? "nothing" : $"{unit.Length} bytes, NALs {string.Join(",", NalTypes(unit))}")}");
                         }
                         report.Add($"45 pictures in {watch.ElapsedMilliseconds} ms");
+                        report.Add($"stream: {SpsSummary(encoder.Encode(TestPicture(640, 360, 99)), encoder)}");
                     }
                     catch (Exception ex)
                     {
@@ -357,6 +362,17 @@ public sealed partial class MainWindow
                 picture[chroma + y * width + x * 2 + 1] = (byte)(200 - y * 120 / (height / 2)); // V
             }
         return picture;
+    }
+
+    /// <summary>The profile, constraint flags and level of the stream (from a forced whole picture's SPS).</summary>
+    private static string SpsSummary(byte[]? ignored, H264Encoder encoder)
+    {
+        encoder.RequestKeyFrame();
+        var unit = encoder.Encode(TestPicture(640, 360, 100)) ?? [];
+        for (var i = 0; i + 6 < unit.Length; i++)
+            if (unit[i] == 0 && unit[i + 1] == 0 && unit[i + 2] == 1 && (unit[i + 3] & 0x1F) == 7)
+                return $"profile {unit[i + 4]}, constraints 0x{unit[i + 5]:X2}, level {unit[i + 6]}";
+        return "no SPS found";
     }
 
     /// <summary>The NAL unit types in an Annex-B access unit (7 SPS, 8 PPS, 5 a whole picture, 1 a partial one).</summary>

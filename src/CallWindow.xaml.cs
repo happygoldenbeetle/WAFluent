@@ -44,6 +44,7 @@ public sealed partial class CallWindow : Window
     private Phase _phase;
     /// <summary>The call is a call link's (joined, not rung): it starts as soon as you're in.</summary>
     private bool _linkCall;
+    private DispatcherQueueTimer? _aloneTimer;
     private DateTime _connectedAt;
     private double _loudness;
 
@@ -123,7 +124,8 @@ public sealed partial class CallWindow : Window
                 _vm.JoinCallLink(link, video);
                 _ = OpenSoundAsync();
                 // In, with nobody else there yet (WhatsApp connects the call when a second person joins).
-                var alone = DispatcherQueue.CreateTimer();
+                // Kept in a field: a timer nothing refers to can be collected before it fires.
+                var alone = _aloneTimer = DispatcherQueue.CreateTimer();
                 alone.Interval = TimeSpan.FromSeconds(3);
                 alone.IsRepeating = false;
                 alone.Tick += (_, _) => { if (_phase is Phase.Calling or Phase.Connecting) CallStatus.Text = "Waiting for others to join…"; };
@@ -233,6 +235,7 @@ public sealed partial class CallWindow : Window
         {
             await _audio.OpenAsync();
             if (_phase == Phase.Ended) _audio.Dispose();
+            else if (!_audio.HasSpeakers) Note("No speakers could be opened: you won't hear the call.");
         }
         catch (Exception ex)
         {
@@ -407,6 +410,8 @@ public sealed partial class CallWindow : Window
     private void UpdateClock()
     {
         var elapsed = DateTime.Now - _connectedAt;
+        // While their picture shows, how it's doing goes to the log every five seconds (for when it lags).
+        if (_live && (int)elapsed.TotalSeconds % 5 == 4) LogVideo();
         CallStatus.Text = VideoClock.Text = elapsed.TotalHours >= 1 ? elapsed.ToString(@"h\:mm\:ss") : elapsed.ToString(@"mm\:ss");
     }
 

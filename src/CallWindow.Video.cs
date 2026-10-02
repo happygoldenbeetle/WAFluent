@@ -316,11 +316,16 @@ public sealed partial class CallWindow
         }
     }
 
+    private void LogVideo()
+    {
+        if (_peerVideo && !_videoStopped) AppLog.Write($"call video: their picture: {_remote.Report()}");
+    }
+
     /// <summary>What the player has done so far (the self-test).</summary>
     internal string VideoReport()
     {
         var session = _remote.Player.PlaybackSession;
         return $"given={_remote.Played} size={session.NaturalVideoWidth}x{session.NaturalVideoHeight} state={session.PlaybackState} " +
-               $"position={session.Position.TotalSeconds:0.0}s showing={_peerVideo} preview={PreviewFrame.Visibility}";
+               $"position={session.Position.TotalSeconds:0.0}s showing={_peerVideo} preview={PreviewFrame.Visibility} | {_remote.Report()}";
     }
 }

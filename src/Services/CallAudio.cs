@@ -72,25 +72,98 @@ public sealed class CallAudio : IDisposable
     internal static string? TestInput { get; set; }
 
     public bool IsOpen => _graph is not null;
+
+    /// <summary>
+    /// Self-test: which ways of opening the speakers and the microphone Windows accepts right
+    /// now. Graphs are made and closed without being started: nothing is played or recorded.
+    /// </summary>
+    internal static async Task<List<string>> ProbeAsync()
+    {
+        var lines = new List<string>();
+        string Id(Func<string> get)
+        {
+            try { return string.IsNullOrEmpty(get()) ? "none" : "set"; }
+            catch (Exception e) { return e.GetType().Name; }
+        }
+        lines.Add($"default output: {Id(() => Windows.Media.Devices.MediaDevice.GetDefaultAudioRenderId(Windows.Media.Devices.AudioDeviceRole.Default))}, "
+                  + $"communications output: {Id(() => Windows.Media.Devices.MediaDevice.GetDefaultAudioRenderId(Windows.Media.Devices.AudioDeviceRole.Communications))}, "
+                  + $"default microphone: {Id(() => Windows.Media.Devices.MediaDevice.GetDefaultAudioCaptureId(Windows.Media.Devices.AudioDeviceRole.Default))}, "
+                  + $"communications microphone: {Id(() => Windows.Media.Devices.MediaDevice.GetDefaultAudioCaptureId(Windows.Media.Devices.AudioDeviceRole.Communications))}");
+        var outputs = await Windows.Devices.Enumeration.DeviceInformation.FindAllAsync(Windows.Media.Devices.MediaDevice.GetAudioRenderSelector());
+        lines.Add($"outputs: {outputs.Count} ({outputs.Count(d => d.IsEnabled)} enabled)");
+        foreach (var category in new[] { AudioRenderCategory.Communications, AudioRenderCategory.Media, AudioRenderCategory.Speech, AudioRenderCategory.Other })
+        {
+            try
+            {
+                var created = await AudioGraph.CreateAsync(new AudioGraphSettings(category));
+                if (created.Status != AudioGraphCreationStatus.Success)
+                {
+                    lines.Add($"{category}: graph {created.Status}");
+                    continue;
+                }
+                using var graph = created.Graph;
+                var output = await graph.CreateDeviceOutputNodeAsync();
+                var input = await graph.CreateDeviceInputNodeAsync(category == AudioRenderCategory.Communications ? MediaCategory.Communications : MediaCategory.Speech);
+                lines.Add($"{category}: graph ok, speakers {output.Status}, microphone {input.Status}, rate {graph.EncodingProperties.SampleRate}");
+            }
+            catch (Exception e)
+            {
+                lines.Add($"{category}: {e.GetType().Name} {e.Message}");
+            }
+        }
+        // The Communications graph on the ordinary default output, named explicitly.
+        try
+        {
+            var id = Windows.Media.Devices.MediaDevice.GetDefaultAudioRenderId(Windows.Media.Devices.AudioDeviceRole.Default);
+            var device = await Windows.Devices.Enumeration.DeviceInformation.CreateFromIdAsync(id);
+            var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Communications) { PrimaryRenderDevice = device });
+            if (created.Status == AudioGraphCreationStatus.Success)
+            {
+                using var graph = created.Graph;
+                lines.Add($"Communications on the default output: speakers {(await graph.CreateDeviceOutputNodeAsync()).Status}");
+            }
+            else
+            {
+                lines.Add($"Communications on the default output: graph {created.Status}");
+            }
+        }
+        catch (Exception e)
+        {
+            lines.Add($"Communications on the default output: {e.GetType().Name} {e.Message}");
+        }
+        return lines;
+    }
     public bool HasMicrophone => _capture is not null;
+
+    /// <summary>Speakers were opened (false: the call is silent on this side, the microphone still works).</summary>
+    public bool HasSpeakers { get; private set; } = true;
 
     /// <summary>Opens the speakers (ringing tones and the other side's voice). The microphone opens separately.</summary>
     public async Task OpenAsync()
     {
         if (_graph is not null) return;
-        var created = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Communications));
-        if (created.Status != AudioGraphCreationStatus.Success) throw new InvalidOperationException($"audio: {created.Status}");
-        var graph = created.Graph;
+        var (graph, output) = await OpenGraphAsync();
         _graphRate = (int)graph.EncodingProperties.SampleRate;
-        var output = await graph.CreateDeviceOutputNodeAsync();
-        if (output.Status != AudioDeviceNodeCreationStatus.Success)
+        HasSpeakers = output is not null;
+        if (output is null)
         {
-            graph.Dispose();
-            throw new InvalidOperationException($"speakers: {output.Status}");
+            // No speakers at all: the microphone still works through this graph.
+            graph.QuantumStarted += (_, _) =>
+            {
+                try { Collect(); }
+                catch (Exception ex)
+                {
+                    if (!_captureFailed) Helpers.AppLog.Write("reading the microphone in a call failed", ex);
+                    _captureFailed = true;
+                }
+            };
+            _graph = graph;
+            graph.Start();
+            return;
         }
         _speaker = graph.CreateFrameInputNode(Mono());
         if (Silent) _speaker.OutgoingGain = 0;
-        _speaker.AddOutgoingConnection(output.DeviceOutputNode);
+        _speaker.AddOutgoingConnection(output);
         _speaker.QuantumStarted += (node, e) =>
         {
             if (e.RequiredSamples <= 0) return;
@@ -118,6 +191,47 @@ public sealed class CallAudio : IDisposable
         };
         _graph = graph;
         graph.Start();
+    }
+
+    /// <summary>
+    /// A graph with speakers, trying in turn: Windows' communications output (what a call should
+    /// use, with its echo cancelling); the ordinary default output, still as a call (the
+    /// communications device can be one that isn't there, like a headset's call mode when it's
+    /// disconnected); the ordinary output as plain media. With none of them, a graph without
+    /// speakers, so the microphone still works.
+    /// </summary>
+    private static async Task<(AudioGraph Graph, AudioDeviceOutputNode? Speakers)> OpenGraphAsync()
+    {
+        async Task<(AudioGraph, AudioDeviceOutputNode)?> TryAsync(AudioGraphSettings settings)
+        {
+            var created = await AudioGraph.CreateAsync(settings);
+            if (created.Status != AudioGraphCreationStatus.Success) return null;
+            var output = await created.Graph.CreateDeviceOutputNodeAsync();
+            if (output.Status == AudioDeviceNodeCreationStatus.Success) return (created.Graph, output.DeviceOutputNode);
+            created.Graph.Dispose();
+            return null;
+        }
+        if (await TryAsync(new AudioGraphSettings(AudioRenderCategory.Communications)) is { } call) return call;
+        try
+        {
+            var id = Windows.Media.Devices.MediaDevice.GetDefaultAudioRenderId(Windows.Media.Devices.AudioDeviceRole.Default);
+            var device = await Windows.Devices.Enumeration.DeviceInformation.CreateFromIdAsync(id);
+            if (await TryAsync(new AudioGraphSettings(AudioRenderCategory.Communications) { PrimaryRenderDevice = device }) is { } onDefault)
+            {
+                Helpers.AppLog.Write("call audio: the communications output isn't available; using the default speakers");
+                return onDefault;
+            }
+        }
+        catch (Exception) { }
+        if (await TryAsync(new AudioGraphSettings(AudioRenderCategory.Media)) is { } media)
+        {
+            Helpers.AppLog.Write("call audio: using the default speakers as plain media");
+            return media;
+        }
+        var bare = await AudioGraph.CreateAsync(new AudioGraphSettings(AudioRenderCategory.Media));
+        if (bare.Status != AudioGraphCreationStatus.Success) throw new InvalidOperationException($"audio: {bare.Status}");
+        Helpers.AppLog.Write("call audio: no speakers could be opened");
+        return (bare.Graph, null);
     }
 
     /// <summary>

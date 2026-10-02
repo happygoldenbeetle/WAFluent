@@ -77,6 +77,12 @@ pub(crate) fn settle_pids(update: &mut wacore::types::group_call::GroupCallUpdat
             device.pid = None;
         }
     }
+    // The relay block counts its own transactions (2 when the group's is at 10); upstream
+    // wants the two equal and drops the snapshot that carries the relay, so a link call with
+    // someone in it never connected. The number isn't used for anything else.
+    if let Some(relay) = update.relay.as_mut() {
+        relay.transaction_id = None;
+    }
     log::info!(
         target: "wafluent_core",
         "call: snapshot {} of a group-style call: {} people, participant ids {:?}, relay: {}",

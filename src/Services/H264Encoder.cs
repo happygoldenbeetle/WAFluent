@@ -33,6 +33,7 @@ public sealed unsafe class H264Encoder : IDisposable
     private static readonly Guid GopSize = new("95f31b26-95a4-41aa-9303-246a7fc6eef1");
     private static readonly Guid BFrames = new("8d390aac-dc5c-4200-b57f-814d04babab2");
     private static readonly Guid ForceKeyFrame = new("398c1b98-8353-475a-9ef2-8f265d260345");
+    private static readonly Guid WorkerThreads = new("b0c8bf60-16f7-4951-a30b-1db1609293d6");
 
     private const uint MfVersion = 0x00020070;
     private const int NeedMoreInput = unchecked((int)0xC00D6D72);
@@ -113,6 +114,9 @@ public sealed unsafe class H264Encoder : IDisposable
                 Set(MeanBitrate, new Variant { Type = VtUi4, UInt = (uint)bitrate });
                 Set(GopSize, new Variant { Type = VtUi4, UInt = (uint)(framesPerSecond * 2) });
                 Set(BFrames, new Variant { Type = VtUi4, UInt = 0 });
+                // One thread: one slice a picture (it cuts a picture into a slice per thread), the
+                // plain shape phones send each other. A 360-line picture doesn't need more.
+                Set(WorkerThreads, new Variant { Type = VtUi4, UInt = 1 });
             }
 
             var size = ((ulong)width << 32) | (uint)height;
@@ -125,8 +129,15 @@ public sealed unsafe class H264Encoder : IDisposable
             SetUInt64On(output, FrameRate, rate);
             SetUInt64On(output, PixelAspectRatio, (1UL << 32) | 1);
             SetUInt32On(output, InterlaceMode, 2);     // progressive
-            SetUInt32On(output, Mpeg2Profile, 66);     // Baseline
+            // Constrained Baseline, what WhatsApp's calls use (avc1.42E01F); plain Baseline where
+            // the encoder doesn't offer it.
+            SetUInt32On(output, Mpeg2Profile, 256);
             var hr = Call(_transform, SetOutputType, 0u, output, 0u);
+            if (hr < 0)
+            {
+                SetUInt32On(output, Mpeg2Profile, 66);
+                hr = Call(_transform, SetOutputType, 0u, output, 0u);
+            }
             Marshal.Release(output);
             Check(hr, "setting the encoder's output");
 
