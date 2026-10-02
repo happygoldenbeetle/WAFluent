@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using WhatsAppNative.Controls;
 using WhatsAppNative.Models;
 using WhatsAppNative.Services;
@@ -41,6 +42,12 @@ public sealed partial class MainWindow
             }
         });
         Closed += (_, _) => _call?.Close();
+        Controls.LinkText.Intercept = uri =>
+        {
+            if (!uri.StartsWith("https://call.whatsapp.com/", StringComparison.OrdinalIgnoreCase)) return false;
+            AskJoinCallLink(uri);
+            return true;
+        };
         SetupCallSelfTests();
     }
 
@@ -73,9 +80,47 @@ public sealed partial class MainWindow
         OpenCall(chat, null, video);
     }
 
-    private void OpenCall(Chat chat, CallDto? incoming, bool video = false)
+    /// <summary>Joins the call behind a WhatsApp call link (yours from the Calls page, or one someone sent).</summary>
+    private void JoinCallLink(string url)
     {
-        _call = new CallWindow(chat, Root.RequestedTheme, this, ViewModel, _ui, incoming, video);
+        if (_call is not null)
+        {
+            _call.Activate();
+            return;
+        }
+        if (!ViewModel.IsLive || ViewModel.State != ConnectionState.Connected)
+        {
+            ShowToast(false, "You're not connected to WhatsApp right now.");
+            return;
+        }
+        var video = url.Contains("/video/", StringComparison.OrdinalIgnoreCase);
+        OpenCall(new Chat { Name = "Call link", IsGroup = true }, null, video, url);
+    }
+
+    /// <summary>A call link clicked in a message: join it here, after asking.</summary>
+    private async void AskJoinCallLink(string url)
+    {
+        var video = url.Contains("/video/", StringComparison.OrdinalIgnoreCase);
+        var ask = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = video ? "Join video call?" : "Join voice call?",
+            Content = new TextBlock
+            {
+                Text = "This is a WhatsApp call link. Joining calls whoever is in it" + (video ? ", with your camera on." : "."),
+                TextWrapping = TextWrapping.Wrap,
+            },
+            PrimaryButtonText = "Join",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            RequestedTheme = Root.ActualTheme,
+        };
+        if (await ask.ShowAsync() == ContentDialogResult.Primary) JoinCallLink(url);
+    }
+
+    private void OpenCall(Chat chat, CallDto? incoming, bool video = false, string? link = null)
+    {
+        _call = new CallWindow(chat, Root.RequestedTheme, this, ViewModel, _ui, incoming, video, link);
         var window = _call;
         window.Closed += (_, _) => { if (_call == window) _call = null; };
         window.Activate();
@@ -87,7 +132,8 @@ public sealed partial class MainWindow
         {
             if (_call is not null || ViewModel.ChatById(call.ChatId) is not { } chat) return;
             OpenCall(chat, call);
-            Notifications.ShowCall(call.CallId, Redact.Enabled ? "WhatsApp" : chat.Name, call.Video, Redact.Enabled ? null : chat.AvatarPath);
+            Notifications.ShowCall(call.CallId, Redact.Enabled ? "WhatsApp" : chat.Name, call.Video, Redact.Enabled ? null : chat.AvatarPath,
+                                   call.Link ? "Waiting in your call link" : null);
             return;
         }
         if (call.State == "ended") Notifications.ClearCall(call.CallId);
@@ -107,6 +153,39 @@ public sealed partial class MainWindow
 #if DEBUG
         var test = Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST");
         if (test is null || !(test.StartsWith("call-") || test.StartsWith("calls"))) return;
+        if (test == "call-link-join-live")
+        {
+            // On the linked account: a voice link is made and joined (nobody else has it), silently, with a
+            // recorded clip for the microphone; what the window says goes to the file, then it hangs up.
+            CallAudio.Silent = true;
+            CallAudio.TestInput = Environment.GetEnvironmentVariable("WAFLUENT_TEST_WAV");
+            var said = new List<string>();
+            void Say(string line)
+            {
+                said.Add($"{DateTime.Now:HH:mm:ss} {line}");
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), said);
+            }
+            ViewModel.CallChanged += call => Say($"call event: {call.State} reason={call.Reason} detail={call.Detail}");
+            ViewModel.CallLinkReceived += async (url, video) =>
+            {
+                Say("link made; joining");
+                JoinCallLink(url);
+                for (var i = 0; i < 3; i++)
+                {
+                    await Task.Delay(4000);
+                    Say($"window: {_call?.StatusText ?? "closed"} | frames sent {_call?.Audio.FramesCaptured} played {_call?.Audio.SamplesPlayed}");
+                }
+                _call?.Close();
+                Say("hung up");
+            };
+            _ = Task.Run(async () =>
+            {
+                for (var i = 0; i < 40 && ViewModel.State != ConnectionState.Connected; i++) await Task.Delay(1000);
+                await Task.Delay(4000);
+                DispatcherQueue.TryEnqueue(() => ViewModel.CreateCallLink(false));
+            });
+            return;
+        }
         if (test == "call-link-live")
         {
             // On the linked account (no --sample): both kinds of link, their shape to the file. Nobody is rung.
@@ -139,7 +218,7 @@ public sealed partial class MainWindow
                 case "call-in":
                     OpenCall(chat, new CallDto("selftest", chat.Id, "ringing", Video: false, Outgoing: false));
                     break;
-                case "calls" or "calls-info" or "calls-number" or "calls-new" or "calls-addfav" or "calls-fav" or "calls-search":
+                case "calls" or "calls-info" or "calls-number" or "calls-new" or "calls-addfav" or "calls-fav" or "calls-search" or "calls-share" or "calls-link":
                     // The Calls page on the sample data, and its pages.
                     if (test is "calls-fav" or "calls-info")
                         foreach (var person in ViewModel.ForwardTargets().Where(c => !c.IsGroup).Take(2)) person.IsFavourite = true;   // not saved
@@ -153,6 +232,8 @@ public sealed partial class MainWindow
                         case "calls-addfav": OpenAddFavourites(fromFavourites: false); await Task.Delay(300); CallsPickList.SelectRange(new Microsoft.UI.Xaml.Data.ItemIndexRange(0, 2)); break;
                         case "calls-fav": FavouritesEdit.IsChecked = true; ShowCallsPage(CallsPage.Favourites); break;
                         case "calls-search": CallsSearch.Text = "a"; break;
+                        case "calls-share": SendTextToChats("Share call link with", "https://call.whatsapp.com/voice/Example"); break;
+                        case "calls-link": NewCallLink(demo: true); break;
                     }
                     break;
                 case "calls-badge":

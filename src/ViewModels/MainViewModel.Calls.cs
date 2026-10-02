@@ -118,5 +118,8 @@ public sealed partial class MainViewModel
 
     public void SetCallVideo(bool on) => _core?.SetCallVideo(on);
 
+    /// <summary>Joins the call behind a call link.</summary>
+    public void JoinCallLink(string url, bool video) => _core?.JoinCallLink(url, video);
+
     public void SendCallVideo(byte[] unit) => _core?.SendCallVideo(unit);
 }

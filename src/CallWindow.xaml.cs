@@ -42,6 +42,8 @@ public sealed partial class CallWindow : Window
     private readonly CallAudio _audio = new();
     private readonly bool _live, _outgoing;
     private Phase _phase;
+    /// <summary>The call is a call link's (joined, not rung): it starts as soon as you're in.</summary>
+    private bool _linkCall;
     private DateTime _connectedAt;
     private double _loudness;
 
@@ -50,9 +52,14 @@ public sealed partial class CallWindow : Window
 
     internal CallAudio Audio => _audio;
 
+    /// <summary>What the window says right now (the self-test reads it).</summary>
+    internal string StatusText => $"{CallStatus.Text} | {CallNote.Text}";
+
     /// <param name="incoming">Someone calling you; null when you're the one calling.</param>
     /// <param name="video">Your call is a video call (theirs says so itself).</param>
-    public CallWindow(Chat chat, ElementTheme theme, Window owner, MainViewModel vm, UiSettings ui, CallDto? incoming, bool video = false)
+    /// <param name="link">A call link to join instead of calling <paramref name="chat"/>.</param>
+    public CallWindow(Chat chat, ElementTheme theme, Window owner, MainViewModel vm, UiSettings ui, CallDto? incoming, bool video = false,
+                      string? link = null)
     {
         InitializeComponent();
         if (theme != ElementTheme.Default) Root.RequestedTheme = theme;
@@ -99,15 +106,28 @@ public sealed partial class CallWindow : Window
         {
             _phase = Phase.Ringing;
             CallId = incoming.CallId;
-            CallStatus.Text = incoming.Video ? "Incoming video call" : "Incoming voice call";
+            CallStatus.Text = incoming.Link ? (incoming.Video ? "Waiting in your video call link" : "Waiting in your call link")
+                : incoming.Video ? "Incoming video call" : "Incoming voice call";
             RingButtons.Visibility = Visibility.Visible;
             CallButtons.Visibility = Visibility.Collapsed;
         }
         else
         {
             _phase = Phase.Calling;
-            CallStatus.Text = video ? "Video calling…" : "Calling…";
-            if (_live)
+            CallStatus.Text = link is not null ? "Joining…" : video ? "Video calling…" : "Calling…";
+            _linkCall = link is not null;
+            if (_live && link is not null)
+            {
+                _vm.JoinCallLink(link, video);
+                _ = OpenSoundAsync();
+                // In, with nobody else there yet (WhatsApp connects the call when a second person joins).
+                var alone = DispatcherQueue.CreateTimer();
+                alone.Interval = TimeSpan.FromSeconds(3);
+                alone.IsRepeating = false;
+                alone.Tick += (_, _) => { if (_phase is Phase.Calling or Phase.Connecting) CallStatus.Text = "Waiting for others to join…"; };
+                alone.Start();
+            }
+            else if (_live)
             {
                 _vm.StartCall(chat, video);
                 _ = OpenSoundAsync();
@@ -128,6 +148,9 @@ public sealed partial class CallWindow : Window
         if (call.CallId.Length > 0) CallId = call.CallId;
         switch (call.State)
         {
+            case "connecting" when _linkCall:
+                CallStatus.Text = "Joining…";   // may sit in the link's waiting room
+                break;
             case "calling":
                 _phase = Phase.Calling;
                 CallStatus.Text = "Ringing…";
@@ -255,7 +278,8 @@ public sealed partial class CallWindow : Window
     /// <summary>Their voice (the core's reader thread).</summary>
     private void OnAudio(byte[] data, bool opus)
     {
-        if (_phase == Phase.Connected) _audio.Play(data, opus);
+        if (_phase != Phase.Connected) return;
+        _audio.Play(data, opus);
     }
 
     // ───── Buttons ─────

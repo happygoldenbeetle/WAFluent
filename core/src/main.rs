@@ -11,6 +11,7 @@ mod call_log;
 mod calls;
 mod media;
 mod extract;
+mod favorites;
 mod protocol;
 mod store;
 
@@ -153,6 +154,14 @@ async fn run(dir: PathBuf) {
     whatsapp_rust::wafluent_hooks::on_sticker_mutation({
         let ctx = ctx.clone();
         move |m| favorite_sticker(&ctx, m)
+    });
+    whatsapp_rust::wafluent_hooks::on_link_call({
+        let ctx = ctx.clone();
+        move |m| calls::link_call(&ctx, m)
+    });
+    whatsapp_rust::wafluent_hooks::on_favorites({
+        let ctx = ctx.clone();
+        move |m| favorites::mutation(&ctx, m)
     });
     whatsapp_rust::wafluent_hooks::on_call_log({
         let ctx = ctx.clone();
@@ -325,6 +334,8 @@ pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &st
 async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     match cmd {
         Command::CallAudio { data } => calls::microphone(ctx, &data),
+        Command::SetFavourites { ids } => favorites::set(ctx, client, ids),
+        Command::JoinCallLink { url, video } => calls::join_link(ctx, client, url, video),
         Command::LoadCalls => call_log::send(ctx),
         Command::DeleteCall { id } => {
             if ctx.db().remove_call(&id) {
@@ -1129,6 +1140,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
             call_log::resync_once(ctx, client);
+            favorites::resync_once(ctx, client);
             ctx.calls_dirty.notify_one();   // the call list's pictures are asked for now that there's a connection
             resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);

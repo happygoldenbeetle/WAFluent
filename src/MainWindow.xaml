@@ -1554,6 +1554,164 @@
                     </Grid>
                 </Grid>
 
+                    <!-- ───── Send contacts and Create poll: cards over a dimmed conversation (or Calls page) ───── -->
+                    <Grid x:Name="AttachSheet" Grid.Column="1" Canvas.ZIndex="3" Visibility="Collapsed" Background="#66000000" Tapped="AttachSheet_Tapped"
+                          KeyboardAcceleratorPlacementMode="Hidden">
+                        <Grid.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="Escape" Invoked="AttachSheetEscape_Invoked" />
+                        </Grid.KeyboardAccelerators>
+
+                        <!-- Send contacts; also Forward message to (MainWindow.MessageMenu.cs) -->
+                        <Grid x:Name="ContactsCard" Width="440" MaxHeight="680" Margin="24" VerticalAlignment="Center" CornerRadius="8"
+                              Background="{ThemeResource SheetBackgroundBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
+                              Tapped="Card_Tapped" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="56" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="12" Padding="8,0,0,0" VerticalAlignment="Center">
+                                <Button Style="{StaticResource IconButtonStyle}" Click="AttachSheetClose_Click" ToolTipService.ToolTip="Close (Esc)"
+                                        AutomationProperties.Name="Close">
+                                    <FontIcon Glyph="&#xE711;" FontSize="15" />
+                                </Button>
+                                <TextBlock x:Name="ContactsTitle" Text="Send contacts" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBox x:Name="ContactSearch" Grid.Row="1" Margin="16,4,16,8" PlaceholderText="Search name or number"
+                                     Padding="38,6,12,6" TextChanged="ContactSearch_TextChanged" />
+                            <FontIcon Grid.Row="1" Glyph="&#xE721;" FontSize="14" HorizontalAlignment="Left" Margin="30,0,0,4"
+                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
+                            <ListView x:Name="ContactList" Grid.Row="2" SelectionMode="None" IsItemClickEnabled="True" ItemClick="ContactList_ItemClick"
+>
+                                <ListView.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.HeaderTemplate>
+                                            <DataTemplate x:DataType="models:ContactGroup">
+                                                <TextBlock Text="{x:Bind Key}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </DataTemplate>
+                                        </GroupStyle.HeaderTemplate>
+                                    </GroupStyle>
+                                </ListView.GroupStyle>
+                                <ListView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ContactRow">
+                                        <Grid Height="64" ColumnSpacing="14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox IsChecked="{x:Bind Picked, Mode=TwoWay}" MinWidth="0" IsHitTestVisible="False" VerticalAlignment="Center" />
+                                            <controls:Redact Grid.Column="1" VeilRadius="22" VerticalAlignment="Center">
+                                                <controls:Avatar DisplayName="{x:Bind Name}" Source="{x:Bind AvatarPath}" Size="44" />
+                                            </controls:Redact>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
+                                                <controls:Redact HorizontalAlignment="Left">
+                                                    <TextBlock Text="{x:Bind Name}" FontSize="15" TextTrimming="CharacterEllipsis" />
+                                                </controls:Redact>
+                                                <TextBlock Text="{x:Bind Subtitle}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasSubtitle}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <Grid Grid.Row="3" Height="72" Padding="20,0,12,0" Background="{ThemeResource SheetFooterBrush}" CornerRadius="0,0,8,8">
+                                <TextBlock x:Name="ContactsPicked" VerticalAlignment="Center" Margin="0,0,80,0" TextTrimming="CharacterEllipsis" FontSize="15" />
+                                <Button x:Name="ContactsSend" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center" IsEnabled="False"
+                                        ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click" />
+                            </Grid>
+                        </Grid>
+
+                        <!-- Create poll -->
+                        <Grid x:Name="PollCard" Width="440" MaxHeight="760" Margin="24" VerticalAlignment="Center" CornerRadius="8"
+                              Background="{ThemeResource SheetBackgroundBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
+                              Tapped="Card_Tapped" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="56" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Orientation="Horizontal" Spacing="12" Padding="8,0,0,0" VerticalAlignment="Center">
+                                <Button Style="{StaticResource IconButtonStyle}" Click="AttachSheetClose_Click" ToolTipService.ToolTip="Close (Esc)"
+                                        AutomationProperties.Name="Close">
+                                    <FontIcon Glyph="&#xE711;" FontSize="15" />
+                                </Button>
+                                <TextBlock Text="Create poll" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <ScrollViewer Grid.Row="1" Padding="24,4,24,8">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="Question" FontSize="16" FontWeight="SemiBold" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="PollQuestion" Style="{StaticResource UnderlineTextBoxStyle}" PlaceholderText="Ask question"
+                                                 MaxLength="255" TextWrapping="Wrap" TextChanged="PollInput_Changed" />
+                                        <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Tag="{x:Bind PollQuestion}"
+                                                Click="PollEmoji_Click" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji">
+                                            <FontIcon Glyph="&#xE76E;" FontSize="17" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Text="Options" FontSize="16" FontWeight="SemiBold" Margin="0,18,0,0" />
+                                    <!-- Drag an option by its handle to reorder; a new box appears as the last one fills. -->
+                                    <ListView x:Name="PollOptionsList" SelectionMode="None" CanReorderItems="True" CanDragItems="True" AllowDrop="True"
+                                              ItemsSource="{x:Bind PollOptions}" Padding="0" Margin="-12,0,-12,0">
+                                        <ListView.ItemContainerStyle>
+                                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                                <Setter Property="Padding" Value="12,0,12,0" />
+                                                <Setter Property="MinHeight" Value="0" />
+                                            </Style>
+                                        </ListView.ItemContainerStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate x:DataType="models:PollOptionDraft">
+                                                <Grid ColumnSpacing="4" Margin="0,4,0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Style="{StaticResource UnderlineTextBoxStyle}" PlaceholderText="Add text" MaxLength="100"
+                                                             Text="{x:Bind Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             TextChanged="PollInput_Changed" LostFocus="PollOption_LostFocus" />
+                                                    <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Click="PollEmoji_Click"
+                                                            ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji">
+                                                        <FontIcon Glyph="&#xE76E;" FontSize="17" />
+                                                    </Button>
+                                                    <FontIcon Grid.Column="2" Glyph="&#xE700;" FontSize="14" Width="28"
+                                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                              ToolTipService.ToolTip="Drag to reorder" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <Grid Margin="0,20,0,0">
+                                        <TextBlock Text="Allow multiple answers" FontSize="15" VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="PollMultiple" IsOn="True" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <Grid>
+                                        <TextBlock Text="Hide voter names" FontSize="15" VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="PollHideVoters" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <Grid>
+                                        <TextBlock Text="Set end time" FontSize="15" VerticalAlignment="Center" />
+                                        <ToggleSwitch x:Name="PollEnds" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"
+                                                      Toggled="PollEnds_Toggled" />
+                                    </Grid>
+                                    <!-- Date, then time, each full width: side by side the time's AM/PM didn't fit. -->
+                                    <StackPanel x:Name="PollEndRow" Spacing="8" Visibility="Collapsed">
+                                        <CalendarDatePicker x:Name="PollEndDate" HorizontalAlignment="Stretch" DateFormat="{}{day.integer} {month.full} {year.full}" />
+                                        <TimePicker x:Name="PollEndTime" HorizontalAlignment="Stretch" MinWidth="0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
+                            <Button x:Name="PollSend" Grid.Row="2" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" Margin="0,4,20,20"
+                                    IsEnabled="False" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send poll" Click="PollSend_Click" />
+                        </Grid>
+                    </Grid>
+
                 <!-- ───────────── Calls: the right side (MainWindow.CallsPage.cs) ───────────── -->
                 <Grid x:Name="CallsPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
                       Background="{ThemeResource ChatPaneBackgroundBrush}"
@@ -2118,163 +2276,6 @@
                         </ScrollViewer>
                     </Grid>
 
-                    <!-- ───── Send contacts and Create poll: cards over a dimmed conversation ───── -->
-                    <Grid x:Name="AttachSheet" Grid.RowSpan="4" Visibility="Collapsed" Background="#66000000" Tapped="AttachSheet_Tapped"
-                          KeyboardAcceleratorPlacementMode="Hidden">
-                        <Grid.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="Escape" Invoked="AttachSheetEscape_Invoked" />
-                        </Grid.KeyboardAccelerators>
-
-                        <!-- Send contacts; also Forward message to (MainWindow.MessageMenu.cs) -->
-                        <Grid x:Name="ContactsCard" Width="440" MaxHeight="680" Margin="24" VerticalAlignment="Center" CornerRadius="8"
-                              Background="{ThemeResource SheetBackgroundBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
-                              Tapped="Card_Tapped" Visibility="Collapsed">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="56" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <StackPanel Orientation="Horizontal" Spacing="12" Padding="8,0,0,0" VerticalAlignment="Center">
-                                <Button Style="{StaticResource IconButtonStyle}" Click="AttachSheetClose_Click" ToolTipService.ToolTip="Close (Esc)"
-                                        AutomationProperties.Name="Close">
-                                    <FontIcon Glyph="&#xE711;" FontSize="15" />
-                                </Button>
-                                <TextBlock x:Name="ContactsTitle" Text="Send contacts" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBox x:Name="ContactSearch" Grid.Row="1" Margin="16,4,16,8" PlaceholderText="Search name or number"
-                                     Padding="38,6,12,6" TextChanged="ContactSearch_TextChanged" />
-                            <FontIcon Grid.Row="1" Glyph="&#xE721;" FontSize="14" HorizontalAlignment="Left" Margin="30,0,0,4"
-                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
-                            <ListView x:Name="ContactList" Grid.Row="2" SelectionMode="None" IsItemClickEnabled="True" ItemClick="ContactList_ItemClick"
->
-                                <ListView.GroupStyle>
-                                    <GroupStyle>
-                                        <GroupStyle.HeaderTemplate>
-                                            <DataTemplate x:DataType="models:ContactGroup">
-                                                <TextBlock Text="{x:Bind Key}" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                            </DataTemplate>
-                                        </GroupStyle.HeaderTemplate>
-                                    </GroupStyle>
-                                </ListView.GroupStyle>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="models:ContactRow">
-                                        <Grid Height="64" ColumnSpacing="14">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <CheckBox IsChecked="{x:Bind Picked, Mode=TwoWay}" MinWidth="0" IsHitTestVisible="False" VerticalAlignment="Center" />
-                                            <controls:Redact Grid.Column="1" VeilRadius="22" VerticalAlignment="Center">
-                                                <controls:Avatar DisplayName="{x:Bind Name}" Source="{x:Bind AvatarPath}" Size="44" />
-                                            </controls:Redact>
-                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="1">
-                                                <controls:Redact HorizontalAlignment="Left">
-                                                    <TextBlock Text="{x:Bind Name}" FontSize="15" TextTrimming="CharacterEllipsis" />
-                                                </controls:Redact>
-                                                <TextBlock Text="{x:Bind Subtitle}" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                           TextTrimming="CharacterEllipsis" Visibility="{x:Bind HasSubtitle}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                            <Grid Grid.Row="3" Height="72" Padding="20,0,12,0" Background="{ThemeResource SheetFooterBrush}" CornerRadius="0,0,8,8">
-                                <TextBlock x:Name="ContactsPicked" VerticalAlignment="Center" Margin="0,0,80,0" TextTrimming="CharacterEllipsis" FontSize="15" />
-                                <Button x:Name="ContactsSend" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right"
-                                        VerticalAlignment="Center" IsEnabled="False"
-                                        ToolTipService.ToolTip="Send" AutomationProperties.Name="Send contacts" Click="ContactsSend_Click" />
-                            </Grid>
-                        </Grid>
-
-                        <!-- Create poll -->
-                        <Grid x:Name="PollCard" Width="440" MaxHeight="760" Margin="24" VerticalAlignment="Center" CornerRadius="8"
-                              Background="{ThemeResource SheetBackgroundBrush}" BorderBrush="{ThemeResource SurfaceStrokeColorFlyoutBrush}" BorderThickness="1"
-                              Tapped="Card_Tapped" Visibility="Collapsed">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="56" />
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <StackPanel Orientation="Horizontal" Spacing="12" Padding="8,0,0,0" VerticalAlignment="Center">
-                                <Button Style="{StaticResource IconButtonStyle}" Click="AttachSheetClose_Click" ToolTipService.ToolTip="Close (Esc)"
-                                        AutomationProperties.Name="Close">
-                                    <FontIcon Glyph="&#xE711;" FontSize="15" />
-                                </Button>
-                                <TextBlock Text="Create poll" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <ScrollViewer Grid.Row="1" Padding="24,4,24,8">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Question" FontSize="16" FontWeight="SemiBold" Margin="0,6,0,0" />
-                                    <Grid ColumnSpacing="4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox x:Name="PollQuestion" Style="{StaticResource UnderlineTextBoxStyle}" PlaceholderText="Ask question"
-                                                 MaxLength="255" TextWrapping="Wrap" TextChanged="PollInput_Changed" />
-                                        <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Tag="{x:Bind PollQuestion}"
-                                                Click="PollEmoji_Click" ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji">
-                                            <FontIcon Glyph="&#xE76E;" FontSize="17" />
-                                        </Button>
-                                    </Grid>
-                                    <TextBlock Text="Options" FontSize="16" FontWeight="SemiBold" Margin="0,18,0,0" />
-                                    <!-- Drag an option by its handle to reorder; a new box appears as the last one fills. -->
-                                    <ListView x:Name="PollOptionsList" SelectionMode="None" CanReorderItems="True" CanDragItems="True" AllowDrop="True"
-                                              ItemsSource="{x:Bind PollOptions}" Padding="0" Margin="-12,0,-12,0">
-                                        <ListView.ItemContainerStyle>
-                                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
-                                                <Setter Property="Padding" Value="12,0,12,0" />
-                                                <Setter Property="MinHeight" Value="0" />
-                                            </Style>
-                                        </ListView.ItemContainerStyle>
-                                        <ListView.ItemTemplate>
-                                            <DataTemplate x:DataType="models:PollOptionDraft">
-                                                <Grid ColumnSpacing="4" Margin="0,4,0,4">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBox Style="{StaticResource UnderlineTextBoxStyle}" PlaceholderText="Add text" MaxLength="100"
-                                                             Text="{x:Bind Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                             TextChanged="PollInput_Changed" LostFocus="PollOption_LostFocus" />
-                                                    <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" Click="PollEmoji_Click"
-                                                            ToolTipService.ToolTip="Emoji" AutomationProperties.Name="Emoji">
-                                                        <FontIcon Glyph="&#xE76E;" FontSize="17" />
-                                                    </Button>
-                                                    <FontIcon Grid.Column="2" Glyph="&#xE700;" FontSize="14" Width="28"
-                                                              Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                              ToolTipService.ToolTip="Drag to reorder" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ListView.ItemTemplate>
-                                    </ListView>
-                                    <Grid Margin="0,20,0,0">
-                                        <TextBlock Text="Allow multiple answers" FontSize="15" VerticalAlignment="Center" />
-                                        <ToggleSwitch x:Name="PollMultiple" IsOn="True" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right" />
-                                    </Grid>
-                                    <Grid>
-                                        <TextBlock Text="Hide voter names" FontSize="15" VerticalAlignment="Center" />
-                                        <ToggleSwitch x:Name="PollHideVoters" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right" />
-                                    </Grid>
-                                    <Grid>
-                                        <TextBlock Text="Set end time" FontSize="15" VerticalAlignment="Center" />
-                                        <ToggleSwitch x:Name="PollEnds" OnContent="" OffContent="" MinWidth="0" HorizontalAlignment="Right"
-                                                      Toggled="PollEnds_Toggled" />
-                                    </Grid>
-                                    <!-- Date, then time, each full width: side by side the time's AM/PM didn't fit. -->
-                                    <StackPanel x:Name="PollEndRow" Spacing="8" Visibility="Collapsed">
-                                        <CalendarDatePicker x:Name="PollEndDate" HorizontalAlignment="Stretch" DateFormat="{}{day.integer} {month.full} {year.full}" />
-                                        <TimePicker x:Name="PollEndTime" HorizontalAlignment="Stretch" MinWidth="0" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </ScrollViewer>
-                            <Button x:Name="PollSend" Grid.Row="2" Style="{StaticResource SendFabStyle}" HorizontalAlignment="Right" Margin="0,4,20,20"
-                                    IsEnabled="False" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send poll" Click="PollSend_Click" />
-                        </Grid>
-                    </Grid>
                     <!-- Files dragged over the conversation (MainWindow.Drop.cs): drop to open the send preview. -->
                     <Grid x:Name="DropOverlay" Grid.RowSpan="4" Visibility="Collapsed" IsHitTestVisible="False" Padding="16">
                         <Rectangle Fill="{ThemeResource ChatPaneBackgroundBrush}" Opacity="0.92" Margin="-16" />

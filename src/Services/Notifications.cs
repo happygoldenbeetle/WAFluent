@@ -101,7 +101,8 @@ public static class Notifications
     /// Someone is calling: Windows' incoming-call notification (it stays up and rings, with
     /// Windows' own call sound, until it's answered or <see cref="ClearCall"/> takes it away).
     /// </summary>
-    public static void ShowCall(string callId, string title, bool video, string? picture)
+    /// <param name="line">What's said under the name (default: "Incoming voice call" / "Incoming video call").</param>
+    public static void ShowCall(string callId, string title, bool video, string? picture, string? line = null)
     {
         if (_notifier is null) return;
         try
@@ -114,7 +115,7 @@ public static class Notifications
             var xml = $@"<toast scenario='incomingCall' launch='action=showCall&amp;call={id}'>
   <visual><binding template='ToastGeneric'>
     <text hint-maxLines='1'>{E(title)}</text>
-    <text>{(video ? "Incoming video call" : "Incoming voice call")}</text>
+    <text>{E(line ?? (video ? "Incoming video call" : "Incoming voice call"))}</text>
     {logo}
   </binding></visual>
   <actions>

@@ -80,10 +80,28 @@ impl StanzaHandler for CallHandler {
             // including when parsing fails or the typed send itself fails.
             *cancelled = true;
         }
+        // WAFluent patch: call-link calls with people in them go to the app (it rings you).
+        #[cfg(feature = "voip-runtime")]
+        crate::wafluent_hooks::link_call(nr);
+        // WAFluent patch (diagnostics): a group-style call stanza's structure, names only.
+        #[cfg(feature = "voip-runtime")]
+        if nr.children().is_some_and(|c| c.iter().any(|a| matches!(&*a.tag, "group_update" | "offer" | "offer_notice" | "waiting_room_update"))) {
+            log::info!(target: "wafluent_core", "call: stanza {}", crate::wafluent_hooks::shape(nr));
+        }
         match parse_call_stanza(nr) {
             Ok(Some(call)) => {
                 #[cfg(feature = "voip-runtime")]
                 let mut call = call;
+                // WAFluent patch: participant id 0 is "none yet" (wafluent_hooks::settle_pids).
+                #[cfg(feature = "voip-runtime")]
+                {
+                    if let CallAction::GroupUpdate { update } = &mut call.action {
+                        crate::wafluent_hooks::settle_pids(update);
+                    }
+                    if let Some(group) = call.group.as_deref_mut() {
+                        crate::wafluent_hooks::settle_pids(group);
+                    }
+                }
                 #[cfg(feature = "voip-runtime")]
                 if matches!(
                     &call.action,
@@ -162,7 +180,8 @@ impl StanzaHandler for CallHandler {
                 #[cfg(feature = "voip-runtime")]
                 if is_group_terminate
                     && !group_transition_generation.is_some_and(|generation| {
-                        client.call_registry().group_creator_authorized_if_current(
+                        crate::wafluent_hooks::group_sender_authorized(
+                            &client.call_registry(),
                             call.action.call_id(),
                             generation,
                             call.action.call_creator(),
@@ -1037,7 +1056,8 @@ fn apply_waiting_room_update(
     generation: u64,
 ) -> bool {
     let registry = client.call_registry();
-    if !registry.group_creator_authorized_if_current(
+    if !crate::wafluent_hooks::group_sender_authorized(
+        &registry,
         &room.call_id,
         generation,
         &room.call_creator,
@@ -1085,7 +1105,8 @@ async fn apply_group_control(client: &Client, call: &IncomingCall, generation: u
     let sender = routed_call_sender(call);
     match &call.action {
         CallAction::GroupUpdate { update } => {
-            if !registry.group_creator_authorized_if_current(
+            if !crate::wafluent_hooks::group_sender_authorized(
+        &registry,
                 &update.call_id,
                 generation,
                 &update.call_creator,
@@ -1168,11 +1189,47 @@ async fn apply_group_control(client: &Client, call: &IncomingCall, generation: u
                     true
                 }
                 GroupStateApply::Stale | GroupStateApply::UnknownCall => false,
-                GroupStateApply::IdentityMismatch | GroupStateApply::InvalidSnapshot => {
+                refused @ (GroupStateApply::IdentityMismatch | GroupStateApply::InvalidSnapshot) => {
                     warn!(
                         "call: rejected invalid group snapshot for {}",
                         update.call_id
                     );
+                    // WAFluent patch (diagnostics): what the snapshot looked like, without ids.
+                    warn!(
+                        "call: that snapshot: {refused:?}; transaction {}, media {:?}, limit {}, {} people ({} connected, {} devices with a pid), states {:?}, relay {} (its transaction {:?}), creator on {:?}, creator is a listed person: {}, group chat: {}",
+                        update.transaction_id,
+                        update.media,
+                        update.connected_limit,
+                        update.participants.len(),
+                        update.participants.iter().filter(|p| p.is_connected()).count(),
+                        update.participants.iter().flat_map(|p| p.devices.iter()).filter(|d| d.pid.is_some()).count(),
+                        update.participants.iter().map(|p| p.state.clone().unwrap_or_default()).collect::<Vec<_>>(),
+                        update.relay.is_some(),
+                        update.relay.as_ref().and_then(|r| r.transaction_id),
+                        update.call_creator.server,
+                        update.participants.iter().any(|p| p.jid.to_non_ad() == update.call_creator.to_non_ad()),
+                        update.group_jid.is_some(),
+                    );
+                    for person in &update.participants {
+                        warn!(
+                            "call: that snapshot's person: on {:?}, number known: {}, type {:?}, devices: {:?}",
+                            person.jid.server,
+                            person.pn.is_some(),
+                            person.participant_type,
+                            person
+                                .devices
+                                .iter()
+                                .map(|d| format!(
+                                    "on {:?} device {} pid {:?} same user as the person: {} or as their number: {}",
+                                    d.jid.server,
+                                    d.jid.device,
+                                    d.pid,
+                                    d.jid.to_non_ad() == person.jid.to_non_ad(),
+                                    person.pn.as_ref().is_some_and(|pn| d.jid.to_non_ad() == pn.to_non_ad())
+                                ))
+                                .collect::<Vec<_>>()
+                        );
+                    }
                     false
                 }
                 _ => false,

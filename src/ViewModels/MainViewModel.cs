@@ -64,6 +64,7 @@ public sealed partial class MainViewModel : Observable
         core.CallChanged += call => CallChanged?.Invoke(call);
         core.CallsReceived += calls => { CallLog = calls; CountMissedCalls(); CallsChanged?.Invoke(); };
         core.CallLinkReceived += (url, video) => CallLinkReceived?.Invoke(url, video);
+        core.FavouritesReceived += OnFavourites;
         core.CallAudio += (data, opus) => CallAudio?.Invoke(data, opus);
         core.CallVideo += (unit, key, rotation) => CallVideo?.Invoke(unit, key, rotation);
         core.CallVideoState += state => CallVideoState?.Invoke(state);

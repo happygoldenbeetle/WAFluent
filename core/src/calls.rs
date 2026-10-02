@@ -39,12 +39,23 @@ pub(crate) struct Calls {
     starting: bool,
     /// ...and was hung up meanwhile: end it as soon as it exists.
     cancelled: bool,
+    /// Call links of yours that someone has entered, ringing here: call id -> the link.
+    link_rings: HashMap<String, LinkRing>,
+    /// Joining a call link (it can wait a long time to be let in): stopped by hanging up.
+    joining: Option<tokio::task::AbortHandle>,
 }
 
 struct Ringing {
     incoming: IncomingCall,
     chat_id: String,
     video: bool,
+}
+
+/// Someone waiting in a call link: answering joins the link's call.
+struct LinkRing {
+    token: String,
+    video: bool,
+    chat_id: String,
 }
 
 /// Your camera in the call.
@@ -129,7 +140,7 @@ impl Ctx {
 
     #[allow(clippy::too_many_arguments)]
     fn call(&self, call_id: &str, chat_id: &str, outgoing: bool, video: bool, state: &'static str, reason: Option<&'static str>, detail: Option<String>) {
-        self.send(Out::Call { call_id: call_id.to_string(), chat_id: chat_id.to_string(), state, video, outgoing, reason, detail });
+        self.send(Out::Call { call_id: call_id.to_string(), chat_id: chat_id.to_string(), state, video, outgoing, reason, detail, link: false });
     }
 }
 
@@ -191,6 +202,11 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
 
 /// Answers the call that's ringing; `video`: with your camera, when it's a video call.
 pub(crate) fn accept(ctx: &Ctx, client: &Arc<Client>, call_id: String, video: bool) {
+    // Someone waiting in a call link of yours: answering is joining that link.
+    let waiting = ctx.calls().link_rings.remove(&call_id);
+    if let Some(ring) = waiting {
+        return join(ctx, client, ring.token, ring.video, Some((call_id, ring.chat_id)));
+    }
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
     tokio::spawn(async move {
         let ring = {
@@ -229,6 +245,70 @@ pub(crate) fn accept(ctx: &Ctx, client: &Arc<Client>, call_id: String, video: bo
     });
 }
 
+/// Joins the call behind a call link (yours or someone's): into its waiting room if it has one,
+/// then the call. Whoever made the link is rung by WhatsApp when someone joins.
+pub(crate) fn join_link(ctx: &Ctx, client: &Arc<Client>, url: String, video: bool) {
+    // The code at the end of the link (its address says "voice" where the library says "audio").
+    let token = url.trim().trim_end_matches('/').rsplit('/').next().unwrap_or("").split(['?', '#']).next().unwrap_or("").to_string();
+    join(ctx, client, token, video, None);
+}
+
+/// Joins a call link's call. `answering`: someone is waiting in it and you were rung (the call
+/// and their chat): told as a call of theirs you answered. Alone in it, this waits (WhatsApp
+/// sets the call's media up once a second person is in) until hung up.
+fn join(ctx: &Ctx, client: &Arc<Client>, token: String, video: bool, answering: Option<(String, String)>) {
+    use whatsapp_rust::voip::CallLinkMedia;
+    let outgoing = answering.is_none();
+    let (rung_id, chat_id) = answering.unwrap_or_default();
+    let (task_ctx, client) = (ctx.clone(), Arc::clone(client));
+    {
+        let mut calls = ctx.calls();
+        if calls.active.is_some() || calls.starting {
+            drop(calls);
+            return ctx.call(&rung_id, &chat_id, outgoing, video, "ended", Some("failed"), Some("You're already in a call.".into()));
+        }
+        calls.starting = true;
+        calls.cancelled = false;
+    }
+    let task = tokio::spawn(async move {
+        let ctx = task_ctx;
+        ctx.call(&rung_id, &chat_id, outgoing, video, "connecting", None, None);
+        let media = Media::new();
+        let voip = client.voip();
+        let kind = if video { CallLinkMedia::Video } else { CallLinkMedia::Audio };
+        let mut call = voip.call_link(&token, kind).audio(media.microphone.1.clone(), media.speaker.0.clone());
+        if video {
+            call = call.video(media.camera.1.clone(), media.view.0.clone());
+        }
+        let handle = match call.start().await {
+            Ok(handle) => handle,
+            Err(e) => {
+                warn!("call link: couldn't join: {e}");
+                let mut calls = ctx.calls();
+                calls.starting = false;
+                calls.joining = None;
+                drop(calls);
+                return ctx.call(&rung_id, &chat_id, outgoing, video, "ended", Some("failed"), Some(format!("The call link couldn't be joined ({e}).")));
+            }
+        };
+        let call_id = handle.call_id().to_string();
+        info!("call link: joined {call_id} (video: {video})");
+        let mut active = media.active(&handle, &chat_id, outgoing, video);
+        active.connected_at = Some(store::unix_now());
+        ctx.calls().joining = None;
+        let cancelled = register(&ctx, active);
+        ctx.call(&call_id, &chat_id, outgoing, video, "connected", None, None);
+        if cancelled {
+            end(&ctx, &client, "ended").await;
+        }
+        drive(ctx.clone(), handle, media).await;
+    });
+    let mut calls = ctx.calls();
+    if calls.starting && calls.active.is_none() {
+        calls.joining = Some(task.abort_handle());
+    }
+}
+
 /// The call exists now; true when it was hung up while it was being set up.
 fn register(ctx: &Ctx, active: Active) -> bool {
     let mut calls = ctx.calls();
@@ -239,6 +319,11 @@ fn register(ctx: &Ctx, active: Active) -> bool {
 
 /// Declines the call that's ringing.
 pub(crate) async fn reject(ctx: &Ctx, client: &Arc<Client>, call_id: String) {
+    // Someone waiting in a call link: nothing to send, they just aren't joined.
+    let waiting = ctx.calls().link_rings.remove(&call_id);
+    if let Some(ring) = waiting {
+        return ctx.call(&call_id, &ring.chat_id, false, ring.video, "ended", Some("declined"), None);
+    }
     let Some(ring) = ctx.calls().ringing.remove(&call_id) else { return };
     if let Err(e) = client.voip().reject(&ring.incoming).await {
         warn!("call: couldn't decline {call_id}: {e}");
@@ -257,8 +342,8 @@ fn log(ctx: &Ctx, call_id: &str, chat_id: &str, ts: i64, duration: i64, incoming
         incoming,
         video,
         result: result.to_string(),
-        group_jid: String::new(),
-        peers: vec![chat_id.to_string()],
+        group_jid: if chat_id.ends_with("@g.us") { chat_id.to_string() } else { String::new() },
+        peers: if chat_id.ends_with("@g.us") { Vec::new() } else { vec![chat_id.to_string()] },
     });
 }
 
@@ -272,7 +357,13 @@ pub(crate) async fn end(ctx: &Ctx, client: &Arc<Client>, reason: &'static str) {
                 Some(active.handle.clone())
             }
             None => {
-                calls.cancelled = calls.starting;
+                if let Some(joining) = calls.joining.take() {
+                    // Still waiting to be let into a call link: stop waiting.
+                    joining.abort();
+                    calls.starting = false;
+                } else {
+                    calls.cancelled = calls.starting;
+                }
                 None
             }
         }
@@ -381,15 +472,26 @@ async fn video_state(client: &Client, handle: &CallHandle, state: VideoState) ->
 pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall) {
     let call_id = call.action.call_id();
     match &call.action {
-        CallAction::Offer { is_video, group_jid, caller_pn, .. } => {
-            if call.group.is_some() || group_jid.is_some() {
-                return;   // group calls keep ringing on the phone
-            }
-            let chat_id = chat_for(ctx, client, caller_pn.as_ref().unwrap_or(&call.from)).await;
-            if ctx.db().ensure_chat(&chat_id, false) {
+        CallAction::Offer { is_video, group_jid, caller_pn, call_creator, .. } => {
+            // A group-style call (someone joined your call link, a call with several people, a
+            // group's call) rings like any other. It's shown as the group's when it belongs to
+            // one, else as whoever started it.
+            let group = call.group.is_some() || group_jid.is_some();
+            let from_call = call.from.to_string().ends_with("@call");
+            let caller = caller_pn.as_ref().unwrap_or(if from_call { call_creator } else { &call.from });
+            let group_chat = group_jid.as_ref().map(|g| ctx.db().canonical(&g.to_non_ad_string())).filter(|g| ctx.db().chat(g).is_some());
+            let chat_id = match group_chat {
+                Some(group_chat) => group_chat,
+                None => chat_for(ctx, client, caller).await,
+            };
+            if ctx.db().ensure_chat(&chat_id, chat_id.ends_with("@g.us")) {
                 send_chat(ctx, &chat_id);
             }
-            info!("call: {call_id} ringing (video: {is_video})");
+            info!(
+                "call: {call_id} ringing (video: {is_video}, group: {group}, of a group chat: {}, people in it: {})",
+                group_jid.is_some(),
+                call.group.as_ref().map_or(0, |g| g.participants.len())
+            );
             ctx.calls().ringing.insert(call_id.to_string(), Ringing { incoming: call.clone(), chat_id: chat_id.clone(), video: *is_video });
             ctx.call(call_id, &chat_id, false, *is_video, "ringing", None, None);
         }
@@ -409,15 +511,54 @@ pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall)
                 ctx.call(call_id, &chat_id, true, video, "connected", None, None);
             }
         }
+        // A call going on that this account could join (a group's): the phone shows it; noted for now.
+        CallAction::OfferNotice { is_video, is_group, .. } => info!("call: {call_id} is going on (video: {is_video}, group: {is_group})"),
         // "busy" is one of their devices that can't take calls; the others keep ringing.
         CallAction::Reject { reason, .. } if reason.as_deref() != Some("busy") => set_reason(ctx, call_id, "declined"),
         CallAction::Terminate { reason, .. } => {
             info!("call: {call_id} ended by the other side ({reason:?})");
+            // The call in a link of yours ended before you joined it: stop ringing.
+            let waiting = ctx.calls().link_rings.remove(call_id);
+            if let Some(ring) = waiting {
+                ctx.call(call_id, &ring.chat_id, false, ring.video, "ended", Some("missed"), None);
+            }
             let answered = ctx.calls().active.as_ref().is_some_and(|a| a.call_id == call_id && a.connected_at.is_some());
             set_reason(ctx, call_id, if answered { "ended" } else { "noAnswer" });
         }
         _ => {}
     }
+}
+
+/// A call-link call with people in it. When it's not one you're in (or joining) and someone
+/// other than you is there, they're waiting in a link of yours: ring, once per call.
+pub(crate) fn link_call(ctx: &Ctx, m: whatsapp_rust::wafluent_hooks::LinkCall) {
+    let (chat_id, new_chat) = {
+        let db = ctx.db();
+        let mut calls = ctx.calls();
+        if calls.active.is_some() || calls.starting || calls.link_rings.contains_key(&m.call_id) {
+            return;
+        }
+        let bare = |jid: &str| jid.parse::<Jid>().map(|j| j.to_non_ad_string()).unwrap_or_else(|_| jid.to_string());
+        // Whoever is in it that isn't you: under their number when there's a chat by it, else their LID.
+        let Some(chat_id) = m.people.iter().find_map(|(lid, pn)| {
+            let (lid, pn) = (bare(lid), pn.as_deref().map(bare));
+            if db.is_me(&lid) || pn.as_ref().is_some_and(|pn| db.is_me(pn)) {
+                return None;
+            }
+            let by_number = pn.map(|pn| db.canonical(&pn)).filter(|c| db.chat(c).is_some());
+            Some(by_number.unwrap_or_else(|| db.canonical(&lid)))
+        }) else {
+            return;
+        };
+        info!("call link: someone is waiting in one of yours ({}, video: {})", m.call_id, m.video);
+        calls.link_rings.insert(m.call_id.clone(), LinkRing { token: m.token.clone(), video: m.video, chat_id: chat_id.clone() });
+        let new_chat = db.ensure_chat(&chat_id, false);
+        (chat_id, new_chat)
+    };
+    if new_chat {
+        send_chat(ctx, &chat_id);
+    }
+    ctx.send(Out::Call { call_id: m.call_id, chat_id, state: "ringing", video: m.video, outgoing: false, reason: None, detail: None, link: true });
 }
 
 fn set_reason(ctx: &Ctx, call_id: &str, reason: &'static str) {
@@ -476,7 +617,19 @@ async fn drive(ctx: Ctx, handle: CallHandle, media: Media) {
     let picture = tokio::spawn({
         let ctx = ctx.clone();
         async move {
+            // With several people their pictures arrive mixed, and the app shows one: whoever
+            // came first, until they've sent nothing for two seconds.
+            let mut shown: Option<String> = None;
+            let mut last = std::time::Instant::now();
             while let Ok(frame) = view.recv().await {
+                let sender = frame.sender.as_ref().map(|j| j.to_string());
+                if sender != shown {
+                    if (shown.is_some() && last.elapsed() < Duration::from_secs(2)) || !frame.keyframe {
+                        continue;
+                    }
+                    shown = sender;
+                }
+                last = std::time::Instant::now();
                 ctx.send(Out::CallVideo { data: BASE64.encode(&frame.data), key: frame.keyframe, rotation: frame.orientation });
             }
         }
@@ -603,9 +756,12 @@ fn finish(ctx: &Ctx, call_id: &str) {
         (None, _) if active.outgoing => "cancelled",
         (None, _) => "missed",
     };
+    if active.chat_id.is_empty() {
+        return;   // a call link you joined: nobody's chat to write it in
+    }
     let talked = active.connected_at.map_or(0, |at| now - at);
     log(ctx, call_id, &active.chat_id, active.started_at, talked, !active.outgoing, active.video, result);
-    if ctx.db().ensure_chat(&active.chat_id, false) {
+    if ctx.db().ensure_chat(&active.chat_id, active.chat_id.ends_with("@g.us")) {
         send_chat(ctx, &active.chat_id);
     }
     let call = format!("{} call", if active.video { "Video" } else { "Voice" });

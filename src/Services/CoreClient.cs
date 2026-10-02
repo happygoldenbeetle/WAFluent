@@ -25,8 +25,10 @@ public sealed record PinnedDto(string Id, string Preview, long Ts = 0, long Expi
 /// <summary>
 /// A call's state: ringing (someone is calling you) | calling (yours is ringing there) | connecting |
 /// connected | ended. Reason (ended): ended | declined | noAnswer | missed | elsewhere | failed.
+/// Link: it rings because someone entered a call link of yours, and answering joins them there.
 /// </summary>
-public sealed record CallDto(string CallId, string ChatId, string State, bool Video, bool Outgoing, string? Reason = null, string? Detail = null);
+public sealed record CallDto(string CallId, string ChatId, string State, bool Video, bool Outgoing, string? Reason = null, string? Detail = null,
+                             bool Link = false);
 
 /// <summary>
 /// One call in the history. Result: connected | missed | rejected | cancelled | elsewhere | failed.
@@ -101,6 +103,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<CallDto>? CallChanged;
     public event Action<IReadOnlyList<CallLogDto>>? CallsReceived;          // the call history, newest first
+    public event Action<IReadOnlyList<string>, bool>? FavouritesReceived;   // the phone's favourite chats; whether it's been heard yet
     public event Action<string, bool>? CallLinkReceived;                    // link, video
     /// <summary>The other side's voice in a call: 16-bit samples, or an Opus packet. Raised off the UI thread.</summary>
     public event Action<byte[], bool>? CallAudio;
@@ -292,6 +295,12 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>A chat's Media, links and docs; answered by <see cref="ChatMediaReceived"/>.</summary>
     public void LoadChatMedia(string chatId) => Send(new { cmd = "loadChatMedia", chatId });
+
+    /// <summary>Your favourite chats, all of them: written to the phone.</summary>
+    public void SetFavourites(IReadOnlyList<string> ids) => Send(new { cmd = "setFavourites", ids });
+
+    /// <summary>Joins the call behind a call link; answered by <see cref="CallChanged"/>.</summary>
+    public void JoinCallLink(string url, bool video) => Send(new { cmd = "joinCallLink", url, video });
 
     /// <summary>The call history; answered by <see cref="CallsReceived"/> (and again whenever it changes).</summary>
     public void LoadCalls() => Send(new { cmd = "loadCalls" });
@@ -494,6 +503,11 @@ public sealed class CoreClient : IDisposable
                 // Straight to the player: the UI thread's queue would make the voice stutter.
                 var sound = root.GetProperty("data").GetBytesFromBase64();
                 CallAudio?.Invoke(sound, root.TryGetProperty("opus", out var op) && op.ValueKind == JsonValueKind.True);
+                break;
+            case "favourites":
+                var favouriteIds = root.GetProperty("ids").Deserialize<List<string>>(Json) ?? [];
+                var favouritesSynced = root.GetProperty("synced").GetBoolean();
+                Post(() => FavouritesReceived?.Invoke(favouriteIds, favouritesSynced));
                 break;
             case "calls":
                 var callLog = root.GetProperty("calls").Deserialize<List<CallLogDto>>(Json) ?? [];

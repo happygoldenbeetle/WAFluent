@@ -90,6 +90,9 @@ pub enum Event {
         reason: Option<&'static str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
+        /// Ringing because someone entered a call link of yours (not because they called you).
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        link: bool,
     },
     /// The other side's voice: 60 ms of 16 kHz mono 16-bit PCM (base64), or with `opus` one
     /// standard Opus packet for the app to decode.
@@ -110,6 +113,9 @@ pub enum Event {
     /// picture is coming) | off (they paused it) | declined (they refused yours) | ended (the
     /// call is voice again) | failed (yours couldn't start) | keyframe (send a whole picture now).
     CallVideoState { state: &'static str },
+    /// Your favourite chats, as the phone has them. `synced`: the phone's list has been heard,
+    /// so the app may merge its own into it and write changes back (`setFavourites`).
+    Favourites { ids: Vec<String>, synced: bool },
     /// The call history, newest first (reply to `loadCalls`, and again whenever it changes).
     Calls { calls: Vec<CallLogDto> },
     /// The call link asked for with `createCallLink`.
@@ -474,6 +480,10 @@ pub enum Command {
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.
     React { chat_id: String, message_id: String, emoji: String },
+    /// Your favourite chats, all of them: kept, and written to the phone.
+    SetFavourites { ids: Vec<String> },
+    /// Join the call behind a call link (`video`: it's a video link). Answered by `call` events.
+    JoinCallLink { url: String, #[serde(default)] video: bool },
     /// The call history; answered by `calls`.
     LoadCalls,
     /// Take one call out of the history (on this PC).

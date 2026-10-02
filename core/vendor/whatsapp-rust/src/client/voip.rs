@@ -434,7 +434,7 @@ impl Client {
         state.active != 0
             && !call_id.is_empty()
             && state.accepts(call_id)
-            && sender.to_non_ad() == call_creator.to_non_ad()
+            && crate::wafluent_hooks::call_sender_ok(sender, call_creator, call_id)
             && self.call_registry.generation_of(call_id).is_none()
     }
 
@@ -480,7 +480,7 @@ impl Client {
         if state.active == 0
             || update.call_id.is_empty()
             || !state.accepts(&update.call_id)
-            || sender.to_non_ad() != update.call_creator.to_non_ad()
+            || !crate::wafluent_hooks::call_sender_ok(sender, &update.call_creator, &update.call_id)
             || self.call_registry.generation_of(&update.call_id).is_some()
         {
             return PendingCallLinkBuffer::NotPending;
@@ -537,7 +537,7 @@ impl Client {
         if state.active == 0
             || call_id.is_empty()
             || !state.accepts(call_id)
-            || sender.to_non_ad() != call_creator.to_non_ad()
+            || !crate::wafluent_hooks::call_sender_ok(sender, call_creator, call_id)
             || self.call_registry.generation_of(call_id).is_some()
         {
             return PendingCallLinkBuffer::NotPending;
@@ -598,7 +598,7 @@ impl Client {
         if state.active == 0
             || call_id.is_empty()
             || !state.accepts(call_id)
-            || sender.to_non_ad() != call_creator.to_non_ad()
+            || !crate::wafluent_hooks::call_sender_ok(sender, call_creator, call_id)
             || self.call_registry.generation_of(call_id).is_some()
         {
             return PendingCallLinkBuffer::NotPending;
@@ -654,7 +654,8 @@ impl Client {
         let Some(generation) = self.call_registry.generation_of(call_id) else {
             return false;
         };
-        if !self.call_registry.group_creator_authorized_if_current(
+        if !crate::wafluent_hooks::group_sender_authorized(
+            &self.call_registry,
             call_id,
             generation,
             call_creator,
@@ -682,7 +683,7 @@ impl Client {
             || room.call_id.is_empty()
             || !state.accepts(&room.call_id)
             || room.link_token.is_empty()
-            || sender.to_non_ad() != room.call_creator.to_non_ad()
+            || !crate::wafluent_hooks::call_sender_ok(sender, &room.call_creator, &room.call_id)
         {
             return PendingCallLinkBuffer::NotPending;
         }
@@ -732,7 +733,11 @@ impl Client {
         if saturated {
             return Err(wacore::voip::GroupStateApply::InvalidSnapshot);
         }
-        let generation = self.call_registry.insert_call_link_checked(session)?;
+        // WAFluent patch (diagnostics): which step of a link join fails, and on what.
+        let generation = self.call_registry.insert_call_link_checked(session).inspect_err(|e| {
+            warn!("call link: the join answer's own snapshot was refused ({e:?})");
+        })?;
+        log::info!("call link: registered, {} staged change(s) to apply", staged.len());
         if let Some(room) = waiting_room {
             let applied = self
                 .call_registry
@@ -751,12 +756,42 @@ impl Client {
                     let mut update = *update;
                     update.rekey_requested |= rekey_pending;
                     let staged_rekey = update.rekey_requested;
+                    let facts = format!(
+                        "transaction {}, media {}, {} people ({} connected), relay: {}, creator is the call: {}, group chat: {}",
+                        update.transaction_id,
+                        update.media,
+                        update.participants.len(),
+                        update.participants.iter().filter(|p| p.state.as_deref() == Some("connected")).count(),
+                        update.relay.is_some(),
+                        update.call_creator.server == Server::Call,
+                        update.group_jid.is_some()
+                    );
+                    let facts = format!(
+                        "{facts}; limit {}; devices: {:?}",
+                        update.connected_limit,
+                        update
+                            .participants
+                            .iter()
+                            .flat_map(|person| person.devices.iter().map(move |d| format!(
+                                "person on {:?} (number known: {}), device on {:?} #{} pid {:?}, same user: {}, same as number: {}",
+                                person.jid.server,
+                                person.pn.is_some(),
+                                d.jid.server,
+                                d.jid.device,
+                                d.pid,
+                                d.jid.to_non_ad() == person.jid.to_non_ad(),
+                                person.pn.as_ref().is_some_and(|pn| d.jid.to_non_ad() == pn.to_non_ad())
+                            )))
+                            .collect::<Vec<_>>()
+                    );
                     match self.apply_pending_call_link_update(update, generation) {
                         wacore::voip::GroupStateApply::Applied => {
+                            log::info!("call link: staged snapshot applied ({facts})");
                             rekey_pending = staged_rekey;
                         }
                         wacore::voip::GroupStateApply::Stale => {}
                         rejected => {
+                            warn!("call link: staged snapshot refused ({rejected:?}; {facts})");
                             self.call_registry.remove_if_current(&call_id, generation);
                             return Err(rejected);
                         }
@@ -807,7 +842,8 @@ impl Client {
                     call_creator: staged_creator,
                     sender,
                 } => {
-                    if !self.call_registry.group_creator_authorized_if_current(
+                    if !crate::wafluent_hooks::group_sender_authorized(
+            &self.call_registry,
                         &call_id,
                         generation,
                         &staged_creator,
@@ -1206,6 +1242,10 @@ impl Voip<'_> {
         let pending_join = self.client.begin_call_link_join();
         let mut join =
             execute_call_link_join_request(self.client, &token, media, capability).await?;
+        // WAFluent patch: participant id 0 is "none yet" (wafluent_hooks::settle_pids).
+        if let Some(group) = join.group.as_mut() {
+            crate::wafluent_hooks::settle_pids(group);
+        }
         if join.media != media {
             return Err(CallError::Response(
                 "call-link response changed the requested media mode".to_string(),
@@ -1231,6 +1271,9 @@ impl Voip<'_> {
                 ));
             }
             join = refreshed;
+            if let Some(group) = join.group.as_mut() {
+                crate::wafluent_hooks::settle_pids(group);
+            }
         }
 
         let mut session = CallSession::new_outgoing(
@@ -1887,6 +1930,8 @@ async fn execute_call_link_join_request(
     let request = build_call_link_join_with_capability(token, media, &request_id, capability)
         .map_err(|error| CallError::Response(error.to_string()))?;
     execute_call_service_request(client, &request_id, request, |response| {
+        // WAFluent patch (diagnostics): the join answer's structure, names only.
+        log::info!(target: "wafluent_core", "call link: join answer {}", crate::wafluent_hooks::shape(response));
         parse_call_link_join_ack(response, token)
     })
     .await

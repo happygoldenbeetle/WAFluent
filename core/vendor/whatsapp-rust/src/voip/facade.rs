@@ -1057,16 +1057,12 @@ impl<'a> CallLinkCall<'a> {
                 if registry.phase_if_current(&join.call_id, generation)
                     == Some(CallPhase::Connecting)
                 {
-                    let update = match wacore::runtime::timeout(
-                        &*self.client.runtime,
-                        OFFER_ACK_RELAY_TIMEOUT,
-                        wait_for_group_relay(&registry, &join.call_id, generation),
-                    )
-                    .await
-                    {
-                        Ok(result) => result?,
-                        Err(_) => return Err(CallError::ResponseTimeout),
-                    };
+                    // WAFluent patch: alone in a call-link call there is no relay yet (WhatsApp
+                    // gives one out when a second person joins). Upstream gave up after ten
+                    // seconds and left, which ended the call for whoever came next; wait as long
+                    // as it takes instead (hanging up drops this future, and its teardown leaves).
+                    let update =
+                        wait_for_group_relay(&registry, &join.call_id, generation).await?;
                     ensure_call_link_admitted_snapshot(&update, &join.call_creator, self.media)?;
                     break update;
                 }

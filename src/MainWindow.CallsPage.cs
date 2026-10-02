@@ -549,19 +549,22 @@ public sealed partial class MainWindow
     // ───── New call link ─────
 
     /// <summary>
-    /// Asks WhatsApp for a call link (video or voice), to copy or to send to chats. Anyone with
-    /// WhatsApp can join the call through it.
+    /// Asks WhatsApp for a call link (voice or video), to copy, share with chats, or join.
+    /// Anyone with WhatsApp can join the call through it; when someone does, you're rung.
     /// </summary>
-    private async void NewCallLink()
+    private void NewCallLink() => NewCallLink(demo: false);
+
+    /// <param name="demo">The self-test: the dialog with a made-up link, nothing asked of WhatsApp.</param>
+    private async void NewCallLink(bool demo)
     {
-        if (!ViewModel.IsLive)
+        if (!ViewModel.IsLive && !demo)
         {
             ShowToast(false, "Call links need your phone linked.");
             return;
         }
         var kind = new ComboBox { MinWidth = 110, VerticalAlignment = VerticalAlignment.Center };
-        kind.Items.Add("Video");
         kind.Items.Add("Voice");
+        kind.Items.Add("Video");
         kind.SelectedIndex = 0;
         var link = new TextBox { IsReadOnly = true, PlaceholderText = "Creating the link…", VerticalAlignment = VerticalAlignment.Center };
         var copy = new Button
@@ -581,7 +584,8 @@ public sealed partial class MainWindow
         line.Children.Add(link);
         Grid.SetColumn(copy, 2);
         line.Children.Add(copy);
-        var body = new StackPanel { Spacing = 14, MinWidth = 420 };
+        // A set width: the link arriving (or a longer one) doesn't resize the dialog.
+        var body = new StackPanel { Spacing = 14, Width = 440 };
         body.Children.Add(line);
         body.Children.Add(new TextBlock
         {
@@ -594,7 +598,9 @@ public sealed partial class MainWindow
             XamlRoot = Content.XamlRoot,
             Title = "New call link",
             Content = body,
-            PrimaryButtonText = "Send link via WhatsApp",
+            PrimaryButtonText = "Share",
+            SecondaryButtonText = "Join call",
+            IsSecondaryButtonEnabled = false,
             CloseButtonText = "Close",
             DefaultButton = ContentDialogButton.Primary,
             IsPrimaryButtonEnabled = false,
@@ -604,14 +610,15 @@ public sealed partial class MainWindow
         void Ask()
         {
             link.Text = "";
-            copy.IsEnabled = dialog.IsPrimaryButtonEnabled = false;
-            ViewModel.CreateCallLink(kind.SelectedIndex == 0);
+            copy.IsEnabled = dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = false;
+            if (demo) Got($"https://call.whatsapp.com/{(kind.SelectedIndex == 1 ? "video" : "voice")}/Example0Link1For2The3Test", kind.SelectedIndex == 1);
+            else ViewModel.CreateCallLink(kind.SelectedIndex == 1);
         }
         void Got(string url, bool video)
         {
-            if (video != (kind.SelectedIndex == 0)) return;   // the answer to the kind picked before
+            if (video != (kind.SelectedIndex == 1)) return;   // the answer to the kind picked before
             link.Text = url;
-            copy.IsEnabled = dialog.IsPrimaryButtonEnabled = true;
+            copy.IsEnabled = dialog.IsPrimaryButtonEnabled = dialog.IsSecondaryButtonEnabled = true;
         }
         copy.Click += (_, _) =>
         {
@@ -626,7 +633,9 @@ public sealed partial class MainWindow
         ContentDialogResult result;
         try { result = await dialog.ShowAsync(); }
         finally { ViewModel.CallLinkReceived -= Got; }
-        if (result == ContentDialogResult.Primary && link.Text.Length > 0) SendTextToChats("Send call link to", link.Text);
+        if (link.Text.Length == 0) return;
+        if (result == ContentDialogResult.Primary) SendTextToChats("Share call link with", link.Text);
+        else if (result == ContentDialogResult.Secondary) JoinCallLink(link.Text);
     }
 
     /// <summary>The contact card, picking chats to send <paramref name="text"/> to.</summary>

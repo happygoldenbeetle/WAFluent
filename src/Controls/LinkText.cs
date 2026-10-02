@@ -101,12 +101,16 @@ public static partial class LinkText
         block.Inlines.Add(new Run { Text = m.TimeSpacer, FontSize = 11, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Transparent) });
     }
 
+    /// <summary>Links the app handles itself (a WhatsApp call link is joined here): true when it took the link.</summary>
+    public static Func<string, bool>? Intercept { get; set; }
+
     /// <summary>
     /// Opens a link the way Explorer would: mailto: starts your mail app, web links your browser.
     /// With no mail app set up, Windows asks which app to use.
     /// </summary>
     public static void Open(Target target)
     {
+        if (Intercept?.Invoke(target.Uri) == true) return;
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(target.Uri) { UseShellExecute = true });

@@ -72,6 +72,9 @@ public sealed class UiSettings
     /// <summary>Favourite chats (ids), kept on this PC.</summary>
     public HashSet<string> Favourites { get; set; } = [];
 
+    /// <summary>The favourites kept here have been joined with the phone's (from then on the phone's list is the list).</summary>
+    public bool FavouritesMerged { get; set; }
+
     /// <summary>Emoji keyboard: most recent first, exactly as used (skin tone included).</summary>
     public List<string> RecentEmoji { get; set; } = [];
 

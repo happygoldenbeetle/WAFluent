@@ -244,9 +244,17 @@ public sealed partial class MainViewModel
         set { if (Set(ref _filter, value)) SyncVisible(); }
     }
 
-    /// <summary>Favourite chats (ids; names for sample chats), kept by the window in ui.json.</summary>
-    public void UseFavourites(HashSet<string> favourites)
+    /// <summary>The favourites kept on this PC have been joined with the phone's.</summary>
+    public bool FavouritesMerged { get; private set; }
+
+    /// <summary>
+    /// Favourite chats (ids; names for sample chats), kept by the window in ui.json and synced
+    /// with the phone: its list replaces this one whenever it changes, and a change made here is
+    /// written to it. The first time, what was kept here is added to the phone's.
+    /// </summary>
+    public void UseFavourites(HashSet<string> favourites, bool merged = false)
     {
+        FavouritesMerged = merged;
         _favourites = favourites;
         foreach (var chat in _allChats) chat.IsFavourite = _favourites.Contains(Key(chat));
     }
@@ -271,11 +279,36 @@ public sealed partial class MainViewModel
     {
         chat.IsFavourite = !chat.IsFavourite;
         if (chat.IsFavourite) _favourites.Add(Key(chat)); else _favourites.Remove(Key(chat));
+        // To the phone too, once its own list has been heard (before that, this one waits to be merged).
+        if (FavouritesMerged) _core?.SetFavourites(_favourites.Where(_byId.ContainsKey).ToList());
         FavouritesChanged?.Invoke();
         SyncVisible();
     }
 
     public event Action? FavouritesChanged;
+
+    /// <summary>The phone's favourites (its list arrives whole each time).</summary>
+    private void OnFavourites(IReadOnlyList<string> ids, bool synced)
+    {
+        if (!synced) return;   // the phone hasn't been heard yet: what's kept here stands
+        var list = ids.ToList();
+        if (!FavouritesMerged)
+        {
+            // The first time: the ones kept here join the phone's, and the phone is told.
+            FavouritesMerged = true;
+            var mine = _favourites.Where(id => _byId.ContainsKey(id) && !list.Contains(id)).ToList();
+            if (mine.Count > 0)
+            {
+                list.AddRange(mine);
+                _core?.SetFavourites(list);
+            }
+        }
+        _favourites.Clear();
+        foreach (var id in list) _favourites.Add(id);
+        foreach (var chat in _allChats) chat.IsFavourite = _favourites.Contains(Key(chat));
+        FavouritesChanged?.Invoke();
+        SyncVisible();
+    }
 
     /// <summary>archive | unarchive | mute | unmute | markRead | markUnread | clear | delete | block | unblock.</summary>
     public void ChatAction(Chat chat, string action, TimeSpan? muteFor = null)

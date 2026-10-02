@@ -20,9 +20,13 @@ public sealed partial class MainWindow
 
     private void SetupChatMenus()
     {
-        ViewModel.UseFavourites(_ui.Favourites);
+        ViewModel.UseFavourites(_ui.Favourites, _ui.FavouritesMerged);
         BuildFilterChips();
-        ViewModel.FavouritesChanged += _ui.Save;
+        ViewModel.FavouritesChanged += () =>
+        {
+            _ui.FavouritesMerged = ViewModel.FavouritesMerged;
+            _ui.Save();
+        };
         ViewModel.Toast += ShowToast;
 
         // Esc leaves select mode wherever the focus is.

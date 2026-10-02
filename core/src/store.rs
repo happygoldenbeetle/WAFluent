@@ -234,6 +234,8 @@ impl Store {
                                                   incoming INTEGER NOT NULL, video INTEGER NOT NULL, result TEXT NOT NULL,
                                                   group_jid TEXT NOT NULL DEFAULT '', peers TEXT NOT NULL DEFAULT '')",
             "CREATE INDEX IF NOT EXISTS call_log_ts ON call_log(ts DESC)",
+            // Favourite chats, as the phone lists them (its ids, in its order).
+            "CREATE TABLE IF NOT EXISTS favorite_chats(jid TEXT PRIMARY KEY, pos INTEGER NOT NULL)",
             // Calls taken out of the Calls page that live on as messages in a chat.
             "CREATE TABLE IF NOT EXISTS call_log_hidden(id TEXT PRIMARY KEY)",
             // Group receipts once saved under the group instead of the person.
@@ -851,6 +853,20 @@ impl Store {
             .collect();
         contacts.sort_by_key(|c| c.name.to_lowercase());
         contacts
+    }
+
+    pub fn favorite_chats(&self) -> Vec<String> {
+        self.db
+            .prepare("SELECT jid FROM favorite_chats ORDER BY pos")
+            .and_then(|mut s| s.query_map([], |r| r.get(0)).map(|r| r.flatten().collect()))
+            .unwrap_or_default()
+    }
+
+    pub fn set_favorite_chats(&self, jids: &[String]) {
+        let _ = self.db.execute("DELETE FROM favorite_chats", []);
+        for (pos, jid) in jids.iter().enumerate() {
+            let _ = self.db.execute("INSERT OR IGNORE INTO favorite_chats(jid, pos) VALUES(?1, ?2)", params![jid, pos as i64]);
+        }
     }
 
     /// Adds a call to the history (or replaces what's known of it). True when something changed.
