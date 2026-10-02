@@ -13,6 +13,9 @@ public sealed record ChatDto(
 
 public sealed record PhoneDto(string Region, string Code, string National);
 
+/// <summary>A group's details: members (you included), how many are contacts, who made it and when, its description.</summary>
+public sealed record GroupInfoDto(int Members, int Contacts, string Creator, long Created, string Description, bool Admin);
+
 /// <summary>A saved contact (New chat): their chat id, name, number (digits), picture, and whether they're blocked.</summary>
 public sealed record ContactDto(string ChatId, string Name, string Phone, string? Avatar = null, bool Blocked = false, bool HasChat = false);
 
@@ -76,7 +79,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, string, IReadOnlyList<string>, string?>? ReactionsReceived;   // chat, message, all, yours
     public event Action<string, IReadOnlyList<string>, int>? ReceiptReceived;
     public event Action<string, IReadOnlyList<string>>? ReceiptsChanged;
-    public event Action<IReadOnlyList<ContactDto>>? ContactsReceived;   // someone's receipt for these was recorded
+    public event Action<IReadOnlyList<ContactDto>>? ContactsReceived;
+    public event Action<string, GroupInfoDto>? GroupInfoReceived;   // someone's receipt for these was recorded
     public event Action<string, MessageDto>? MessageUpdated;                 // chat, message (deleted/edited/starred)
     public event Action<string, string>? MessageRemoved;                     // chat, message id (deleted for me)
     public event Action<string>? ChatRemoved;                                // chat deleted
@@ -248,6 +252,12 @@ public sealed class CoreClient : IDisposable
 
     public void LoadStarred() => Send(new { cmd = "loadStarred" });
 
+    public void SetGroupSubject(string chatId, string subject) => Send(new { cmd = "setGroupSubject", chatId, subject });
+    public void SetGroupDescription(string chatId, string description) => Send(new { cmd = "setGroupDescription", chatId, description });
+    /// <summary><paramref name="path"/>: a square JPEG.</summary>
+    public void SetGroupPicture(string chatId, string path) => Send(new { cmd = "setGroupPicture", chatId, path });
+    public void AddGroupMembers(string chatId, IReadOnlyList<string> members) => Send(new { cmd = "addGroupMembers", chatId, members });
+
     /// <summary>Your saved contacts; answered by <see cref="ContactsReceived"/>.</summary>
     public void LoadContacts() => Send(new { cmd = "loadContacts" });
 
@@ -320,6 +330,11 @@ public sealed class CoreClient : IDisposable
                 var hits = root.GetProperty("results").Deserialize<List<MessageDto>>(Json) ?? [];
                 long? oldestTs = root.TryGetProperty("oldestTs", out var o) && o.ValueKind == JsonValueKind.Number ? o.GetInt64() : null;
                 Post(() => SearchResults?.Invoke(searchChat, searchQuery, hits, oldestTs));
+                break;
+            case "groupInfo":
+                var groupChat = root.GetProperty("chatId").GetString() ?? "";
+                if (root.GetProperty("info").Deserialize<GroupInfoDto>(Json) is { } groupInfo)
+                    Post(() => GroupInfoReceived?.Invoke(groupChat, groupInfo));
                 break;
             case "groupMembers":
                 var membersChat = root.GetProperty("chatId").GetString() ?? "";

@@ -45,6 +45,8 @@ pub enum Event {
     SearchResults { chat_id: String, query: String, results: Vec<MessageDto>, oldest_ts: Option<i64> },
     /// A group's members (without you), for @mentions.
     GroupMembers { chat_id: String, members: Vec<MemberDto> },
+    /// A group's details (sent with `groupMembers`): for its intro card and Group info.
+    GroupInfo { chat_id: String, info: GroupInfoDto },
     /// Receipts for one of your messages (Message info).
     MessageInfo { chat_id: String, message_id: String, receipts: Vec<ReceiptDto> },
     /// The message a date points at (none: nothing on or after it).
@@ -147,6 +149,23 @@ pub struct PinnedDto {
     pub ts: i64,
     /// When the pin runs out, Unix seconds.
     pub expires_at: i64,
+}
+
+/// What a group's intro card and Group info show.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupInfoDto {
+    /// Everyone in it, you included.
+    pub members: u32,
+    /// How many of the others are saved contacts.
+    pub contacts: u32,
+    /// Who made it: "You" or their name ("" when not known).
+    pub creator: String,
+    /// When (Unix seconds; 0 when not known).
+    pub created: i64,
+    pub description: String,
+    /// You're an admin (you can rename it, change its picture and description).
+    pub admin: bool,
 }
 
 /// A saved contact, for New chat and Add group members.
@@ -371,6 +390,14 @@ pub enum Command {
     /// Report a message to WhatsApp as spam.
     Report { chat_id: String, message_id: String },
     LoadStarred,
+    /// Group info: rename a group.
+    SetGroupSubject { chat_id: String, subject: String },
+    /// Group info: set (or clear, when empty) its description.
+    SetGroupDescription { chat_id: String, description: String },
+    /// Group info: its picture, from a JPEG file.
+    SetGroupPicture { chat_id: String, path: String },
+    /// Group info: add these people (their chat ids).
+    AddGroupMembers { chat_id: String, members: Vec<String> },
     /// Your saved contacts (New chat); answered by `contacts`.
     LoadContacts,
     /// Create a group with these members (their chat ids); answers `opened` with the new group.

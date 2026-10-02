@@ -47,6 +47,7 @@ public sealed partial class MainWindow
             BuildNumberPad();
         }
         _groupMembers.Clear();
+        _addingTo = null;
         NewChatSearch.Text = "";
         NewChatPane.Visibility = Visibility.Visible;
         SetChatListHidden(true);
@@ -78,7 +79,7 @@ public sealed partial class MainWindow
         {
             NewChatPage.Number => "Phone number",
             NewChatPage.Contact => "New contact",
-            NewChatPage.Members => "Add group members",
+            NewChatPage.Members => _addingTo is null ? "Add group members" : "Add members",
             NewChatPage.Subject => "New group",
             _ => "New chat",
         };
@@ -102,6 +103,7 @@ public sealed partial class MainWindow
         switch (_newChatPage)
         {
             case NewChatPage.Contacts: CloseNewChat(); break;
+            case NewChatPage.Members when _addingTo is not null: CloseNewChat(); break;
             case NewChatPage.Subject: ShowNewChatPage(NewChatPage.Members); break;
             default:
                 NewChatSearch.Text = "";
@@ -119,8 +121,12 @@ public sealed partial class MainWindow
         var picking = _newChatPage == NewChatPage.Members;
         var query = NewChatSearch.Text.Trim();
         var digits = new string(query.Where(char.IsAsciiDigit).ToArray());
+        // Adding to a group: the people already in it aren't offered.
+        var inGroup = picking && _addingTo is { } group && _members.TryGetValue(group.Id, out var current)
+            ? current.Select(m => m.ChatId).ToHashSet()
+            : [];
         var shown = _newChatContacts
-            .Where(r => !picking || !_groupMembers.Contains(r))
+            .Where(r => !picking || (!_groupMembers.Contains(r) && !inGroup.Contains(r.ChatId)))
             .Where(r => query.Length == 0
                         || r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                         || (digits.Length > 0 && r.Phone.Contains(digits)))
@@ -232,10 +238,17 @@ public sealed partial class MainWindow
         }
         GroupChipsDivider.Visibility = _groupMembers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         GroupNext.Visibility = _groupMembers.Count > 0 && _newChatPage == NewChatPage.Members ? Visibility.Visible : Visibility.Collapsed;
+        GroupNext.Content = _addingTo is null ? "Next" : "Add";
     }
 
     private void GroupNext_Click(object sender, RoutedEventArgs e)
     {
+        if (_addingTo is { } group)
+        {
+            ViewModel.AddGroupMembers(group, _groupMembers.Select(m => m.ChatId).ToList());
+            CloseNewChat();
+            return;
+        }
         GroupSubject.Text = "";
         GroupCreate.IsEnabled = false;
         GroupSubjectMembers.Text = _groupMembers.Count == 1 ? "1 member" : $"{_groupMembers.Count} members";

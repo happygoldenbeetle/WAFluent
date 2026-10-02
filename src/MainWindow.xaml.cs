@@ -540,6 +540,26 @@ public sealed partial class MainWindow : Window
                         break;
                 }
             };
+        // WAFLUENT_SELFTEST=group | groupinfo | groupinfo-name | groupsearch: the sample group at its start (the intro
+        // card), its Group info, Group info with the name being edited, and Search messages.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is { } groupTest && groupTest.StartsWith("group"))
+            Messages.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                ChatList.SelectedItem = ViewModel.Chats.First(c => c.Name == "Baking Club");
+                await Task.Delay(900);
+                switch (groupTest)
+                {
+                    case "group": MessagesScroller.ChangeView(null, 0, null, true); break;
+                    case "groupinfo": OpenInfo(); break;
+                    case "groupinfo-name":
+                        OpenInfo();
+                        await Task.Delay(300);
+                        InfoNameEdit_Click(this, new RoutedEventArgs());
+                        break;
+                    case "groupsearch": OpenSearch(); break;
+                }
+            };
         // WAFLUENT_SELFTEST=drop: shows what dragging files over the conversation looks like.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "drop")
             Messages.Loaded += async (_, _) =>

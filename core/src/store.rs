@@ -321,6 +321,10 @@ impl Store {
         );
     }
 
+    pub fn set_chat_name(&self, chat_id: &str, name: &str) {
+        let _ = self.db.execute("UPDATE chats SET name = ?2 WHERE id = ?1", params![chat_id, name]);
+    }
+
     /// Returns true if the chat is new.
     pub fn ensure_chat(&self, id: &str, is_group: bool) -> bool {
         self.db
@@ -438,6 +442,14 @@ impl Store {
             return Vec::new();
         };
         stmt.query_map([], |r| r.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
+    }
+
+    /// Saved contacts known by phone number (their JIDs), for looking up their LIDs.
+    pub fn contact_number_jids(&self) -> Vec<String> {
+        self.db
+            .prepare("SELECT jid FROM names WHERE full_name != '' AND jid LIKE '%@s.whatsapp.net'")
+            .and_then(|mut s| s.query_map([], |r| r.get(0)).map(|r| r.flatten().collect()))
+            .unwrap_or_default()
     }
 
     pub fn set_number(&self, lid: &str, number: &str) {
@@ -755,6 +767,11 @@ impl Store {
             .optional()
             .ok()
             .flatten()
+    }
+
+    /// In your address book (a saved name is known for them).
+    pub fn is_saved(&self, jid: &str) -> bool {
+        self.has_full_name(jid) || self.has_full_name(&self.canonical(jid))
     }
 
     fn has_full_name(&self, jid: &str) -> bool {

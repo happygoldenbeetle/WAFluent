@@ -478,6 +478,33 @@ public sealed partial class MainViewModel
         Raise(nameof(SelectionText));
     }
 
+    // ───────────── Group info ─────────────
+
+    /// <summary>Shown at once; the core tells WhatsApp, and puts the old name back if it's refused.</summary>
+    public void RenameGroup(Chat chat, string name)
+    {
+        chat.Name = name;
+        _core?.SetGroupSubject(chat.Id, name);
+    }
+
+    public void SetGroupDescription(Chat chat, string description)
+    {
+        if (chat.GroupInfo is { } info) chat.GroupInfo = info with { Description = description };
+        _core?.SetGroupDescription(chat.Id, description);
+    }
+
+    public void SetGroupPicture(Chat chat, string path)
+    {
+        if (_core is null) chat.AvatarPath = path;
+        else _core.SetGroupPicture(chat.Id, path);
+    }
+
+    public void AddGroupMembers(Chat chat, IReadOnlyList<string> members)
+    {
+        if (_core is null) Notify(true, $"{members.Count} would be added to {chat.Name} (sample data).");
+        else _core.AddGroupMembers(chat.Id, members);
+    }
+
     // ───────────── New chat ─────────────
 
     /// <summary>Raised with your saved contacts, by name.</summary>

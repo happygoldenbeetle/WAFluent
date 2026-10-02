@@ -95,7 +95,8 @@ public sealed partial class MainWindow
     private void InfoChat_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(Chat.Ephemeral) && DisappearingView.Visibility == Visibility.Visible) ShowDisappearingChoice();
-        if ((e.PropertyName is nameof(Chat.IsMuted) or nameof(Chat.IsFavourite) or nameof(Chat.IsBlocked) or nameof(Chat.IsSaved) or nameof(Chat.Name) or nameof(Chat.Ephemeral))
+        if ((e.PropertyName is nameof(Chat.IsMuted) or nameof(Chat.IsFavourite) or nameof(Chat.IsBlocked) or nameof(Chat.IsSaved) or nameof(Chat.Name) or nameof(Chat.Ephemeral)
+                or nameof(Chat.GroupInfo))
             && ContactInfoView.Visibility == Visibility.Visible)
             RebuildInfo();
     }
@@ -139,8 +140,13 @@ public sealed partial class MainWindow
             InfoActions.Children.Add(ActionButton(Glyphs.AddContact, "Add", () => OpenNewContact(chat)));
         else if (person && !ViewModel.IsSelf(chat))
             InfoActions.Children.Add(ActionButton("\uE70F", "Edit", () => OpenNewContact(chat, edit: true)));
+        else if (!person)
+            InfoActions.Children.Add(ActionButton(Glyphs.AddContact, "Add", OpenAddMembers));
+        InfoActions.Children.Add(ActionButton("\uE721", "Search", OpenSearch));
+        ShowGroupNameView();
 
         InfoRows.Children.Clear();
+        if (!person) InfoRows.Children.Add(GroupDescriptionRow(chat));
         InfoRows.Children.Add(Divider());
         var gallery = _galleryData?.Chat == chat ? _galleryData : null;
         InfoRows.Children.Add(Row(Glyphs.Media, "Media, links and docs", trailing: gallery?.Count.ToString() ?? ViewModel.MediaCount(chat).ToString(),

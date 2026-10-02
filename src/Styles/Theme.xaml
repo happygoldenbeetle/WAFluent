@@ -40,6 +40,7 @@
             <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="SheetFooterBrush" Color="#F5F5F5" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#F7FFFFFF" />
+            <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="#7A5A00" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14000000" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#0D0B141A" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#6B4EAB" />
@@ -84,6 +85,7 @@
             <SolidColorBrush x:Key="SheetBackgroundBrush" Color="#202020" />
             <SolidColorBrush x:Key="SheetFooterBrush" Color="#2A2A2A" />
             <SolidColorBrush x:Key="DatePillBrush" Color="#1D1F1F" />
+            <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="#FFD279" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#26000000" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#A791FF" />
@@ -127,6 +129,7 @@
             <SolidColorBrush x:Key="SheetBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="SheetFooterBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="DatePillBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="{ThemeResource SystemColorHighlightColor}" />

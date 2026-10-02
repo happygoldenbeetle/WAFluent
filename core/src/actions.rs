@@ -209,6 +209,87 @@ pub async fn create_group(ctx: &Ctx, client: &Arc<Client>, subject: String, memb
     }
 }
 
+// ───────────── Group info ─────────────
+
+pub async fn set_group_subject(ctx: &Ctx, client: &Arc<Client>, chat_id: String, subject: String) {
+    use whatsapp_rust::wacore::iq::groups::GroupSubject;
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let subject = subject.trim().to_string();
+    let result = match GroupSubject::new(subject.clone()) {
+        Ok(valid) => client.groups().set_subject(jid, valid).await.map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    match result {
+        Ok(()) => {
+            ctx.db().set_chat_name(&chat_id, &subject);
+            crate::add_notice(ctx, &chat_id, format!("You changed the group name to \"{subject}\""), store::unix_now());
+        }
+        Err(e) => {
+            warn!("renaming {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't change the group name. Only admins may be allowed to.");
+        }
+    }
+    send_chat(ctx, &chat_id);   // the new name, or the old one back
+}
+
+pub async fn set_group_description(ctx: &Ctx, client: &Arc<Client>, chat_id: String, description: String) {
+    use whatsapp_rust::features::PreviousDescription;
+    use whatsapp_rust::wacore::iq::groups::GroupDescription;
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let text = description.trim().to_string();
+    let wanted = if text.is_empty() { Ok(None) } else { GroupDescription::new(text).map(Some) };
+    let result = match wanted {
+        Ok(value) => client.groups().set_description(jid, value, PreviousDescription::Resolve).await.map_err(|e| e.to_string()),
+        Err(e) => Err(e.to_string()),
+    };
+    match result {
+        Ok(()) => crate::add_notice(ctx, &chat_id, "You changed the group description".into(), store::unix_now()),
+        Err(e) => {
+            warn!("description of {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't change the group description. Only admins may be allowed to.");
+        }
+    }
+    crate::refresh_group(ctx, client, chat_id).await;
+}
+
+pub async fn set_group_picture(ctx: &Ctx, client: &Arc<Client>, chat_id: String, path: String) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let Ok(image) = std::fs::read(&path) else {
+        notice(ctx, false, "That picture couldn't be read.");
+        return;
+    };
+    match client.groups().set_profile_picture(jid, image).await {
+        Ok(_) => {
+            crate::add_notice(ctx, &chat_id, "You changed this group's icon".into(), store::unix_now());
+            let _ = ctx.avatars.send(crate::avatars::Request { chat_id: chat_id.clone(), force: true });
+            send_chat(ctx, &chat_id);
+        }
+        Err(e) => {
+            warn!("picture of {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't change the group picture. Only admins may be allowed to.");
+        }
+    }
+}
+
+pub async fn add_group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String, members: Vec<String>) {
+    let Ok(jid) = chat_id.parse::<Jid>() else { return };
+    let (jids, names): (Vec<Jid>, Vec<String>) = {
+        let db = ctx.db();
+        members.iter().filter_map(|m| Some((m.parse::<Jid>().ok()?, db.person_name(m, "")))).unzip()
+    };
+    if jids.is_empty() {
+        return;
+    }
+    match client.groups().add_participants(jid, &jids).await {
+        Ok(_) => crate::add_notice(ctx, &chat_id, format!("You added {}", names.join(", ")), store::unix_now()),
+        Err(e) => {
+            warn!("adding to {chat_id} failed: {e}");
+            notice(ctx, false, "Couldn't add them to the group. Only admins may be allowed to.");
+        }
+    }
+    crate::refresh_group(ctx, client, chat_id).await;
+}
+
 pub async fn save_contact(ctx: &Ctx, client: &Arc<Client>, chat_id: String, first: String, last: String, sync_to_phone: bool) {
     let full = format!("{} {}", first.trim(), last.trim()).trim().to_string();
     let Some(pn) = ctx.db().phone_jid(&chat_id).and_then(|j| j.parse::<Jid>().ok()) else {

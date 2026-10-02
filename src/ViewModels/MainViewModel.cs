@@ -61,6 +61,7 @@ public sealed partial class MainViewModel : Observable
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
         core.ChatMediaReceived += OnChatMedia;
         core.ContactsReceived += contacts => ContactsLoaded?.Invoke(contacts);
+        core.GroupInfoReceived += (chatId, info) => { if (_byId.TryGetValue(chatId, out var group)) group.GroupInfo = info; };
         core.Sent += OnSent;
         core.SendFailed += (chatId, tempId, _) => { if (Find(chatId, tempId) is { } m) { m.IsUploading = false; m.Delivery = Delivery.Failed; } };
         core.ReceiptReceived += OnReceipt;
@@ -370,9 +371,16 @@ public sealed partial class MainViewModel : Observable
             if (!chat.MessagesLoaded) _core.LoadMessages(chat.Id);
             if (chat.Unread > 0 || chat.MarkedUnread) _core.MarkRead(chat.Id);
             if (!chat.IsGroup) _core.WatchPresence(chat.Id);   // online / last seen / typing
+            else _core.GroupMembers(chat.Id);                  // its members and details (the intro card, Group info)
         }
         chat.Unread = 0;
         chat.MarkedUnread = false;
+        if (_core is null)
+        {
+            chat.HistoryComplete = true;
+            if (chat.IsGroup && chat.GroupInfo is null)
+                chat.GroupInfo = new GroupInfoDto(chat.Status.Split(',').Length, 2, "Rebecca", DateTimeOffset.Now.AddDays(-40).ToUnixTimeSeconds(), "", true);
+        }
     }
 
     private void Track(Chat chat)

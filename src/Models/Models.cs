@@ -434,8 +434,53 @@ public sealed class Chat : Observable
     /// <summary>Unread count when the chat was opened: where the "unread messages" band goes.</summary>
     public int UnreadMark { get; set; }
 
-    /// <summary>Nothing older exists on this device or the phone.</summary>
-    public bool HistoryComplete { get; set; }
+    private bool _historyComplete;
+
+    /// <summary>Nothing older exists on this device or the phone: the conversation's start is on screen.</summary>
+    public bool HistoryComplete { get => _historyComplete; set => Set(ref _historyComplete, value); }
+
+    private Services.GroupInfoDto? _groupInfo;
+
+    /// <summary>A group's details from WhatsApp (null until they arrive).</summary>
+    public Services.GroupInfoDto? GroupInfo
+    {
+        get => _groupInfo;
+        set
+        {
+            _groupInfo = value;
+            Raise(nameof(GroupInfo));
+            Raise(nameof(GroupLine));
+            Raise(nameof(GroupIntroLine));
+            Raise(nameof(GroupDescription));
+            Raise(nameof(GroupIntroDescription));
+        }
+    }
+
+    /// <summary>"Group · 12 members" under the name in Group info.</summary>
+    public string GroupLine => _groupInfo is { } g ? $"Group · {Count(g.Members, "member")}" : "Group";
+
+    /// <summary>"12 members · 3 contacts · Created today by Abdullah" on the card a group starts with.</summary>
+    public string GroupIntroLine
+    {
+        get
+        {
+            if (_groupInfo is not { } g) return "";
+            var parts = new List<string> { Count(g.Members, "member") };
+            if (g.Contacts > 0) parts.Add(Count(g.Contacts, "contact"));
+            if (g.Created > 0)
+            {
+                var when = DateTimeOffset.FromUnixTimeSeconds(g.Created).LocalDateTime;
+                var day = when.Date == DateTime.Today ? "today" : when.Date == DateTime.Today.AddDays(-1) ? "yesterday" : "on " + when.ToString("d MMM yyyy");
+                parts.Add(g.Creator.Length > 0 ? $"Created {day} by {(g.Creator == "You" ? "you" : g.Creator)}" : $"Created {day}");
+            }
+            return string.Join(" · ", parts);
+        }
+    }
+
+    public string GroupDescription => _groupInfo?.Description ?? "";
+    public string GroupIntroDescription => GroupDescription.Length > 0 ? GroupDescription : "Add description…";
+
+    private static string Count(int n, string noun) => n == 1 ? $"1 {noun}" : $"{n} {noun}s";
 
     /// <summary>After an unanswered request for older messages, wait before asking the phone again.</summary>
     public DateTime RetryOlderAfter { get; set; }

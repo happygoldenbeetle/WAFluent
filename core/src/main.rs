@@ -508,8 +508,32 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
             tokio::spawn(async move { actions::set_ephemeral(&ctx, &client, chat_id, seconds).await });
         }
         Command::LoadContacts => {
+            // What's stored, at once; then again with the block list as it is now (someone
+            // blocked on the phone since the app connected).
             let contacts = ctx.db().contacts();
             ctx.send(Out::Contacts { contacts });
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move {
+                update_blocklist(&ctx, &client).await;
+                let contacts = ctx.db().contacts();
+                ctx.send(Out::Contacts { contacts });
+            });
+        }
+        Command::SetGroupSubject { chat_id, subject } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::set_group_subject(&ctx, &client, chat_id, subject).await });
+        }
+        Command::SetGroupDescription { chat_id, description } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::set_group_description(&ctx, &client, chat_id, description).await });
+        }
+        Command::SetGroupPicture { chat_id, path } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::set_group_picture(&ctx, &client, chat_id, path).await });
+        }
+        Command::AddGroupMembers { chat_id, members } => {
+            let (ctx, client) = (ctx.clone(), Arc::clone(client));
+            tokio::spawn(async move { actions::add_group_members(&ctx, &client, chat_id, members).await });
         }
         Command::CreateGroup { subject, members } => {
             let (ctx, client) = (ctx.clone(), Arc::clone(client));
@@ -553,6 +577,11 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
 }
 
 /// A group's members for the @mention list (you left out), named as the chat list names them.
+/// A group changed here: its members and details are read again and sent.
+pub(crate) async fn refresh_group(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
+    group_members(ctx, client, chat_id).await;
+}
+
 async fn group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
     let Ok(jid) = chat_id.parse::<Jid>() else { return };
     let meta = match client.groups().get_metadata(&jid).await {
@@ -562,6 +591,31 @@ async fn group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
             return;
         }
     };
+    let info = {
+        let db = ctx.db();
+        let mine = |p: &whatsapp_rust::features::GroupParticipant| {
+            db.is_me(&p.jid.to_non_ad_string()) || p.phone_number.as_ref().is_some_and(|pn| db.is_me(&pn.to_non_ad_string()))
+        };
+        let creator = meta.creator_pn.as_ref().or(meta.creator.as_ref()).map(|j| j.to_non_ad_string());
+        crate::protocol::GroupInfoDto {
+            members: meta.participants.len() as u32,
+            contacts: meta
+                .participants
+                .iter()
+                .filter(|p| !mine(p))
+                .filter(|p| db.is_saved(&p.phone_number.as_ref().unwrap_or(&p.jid).to_non_ad_string()))
+                .count() as u32,
+            creator: match &creator {
+                Some(c) if db.is_me(c) => "You".to_string(),
+                Some(c) => db.person_name(c, ""),
+                None => String::new(),
+            },
+            created: meta.creation_time.unwrap_or(0) as i64,
+            description: meta.description.clone().unwrap_or_default(),
+            admin: meta.participants.iter().any(|p| mine(p) && p.is_admin()),
+        }
+    };
+    ctx.send(Out::GroupInfo { chat_id: chat_id.clone(), info });
     let members = {
         let db = ctx.db();
         meta.participants
@@ -764,15 +818,60 @@ pub(crate) fn mark_unread(ctx: &Ctx, chat_id: &str) {
 /// Who you blocked, from the server (the phone manages the list too).
 fn refresh_blocklist(ctx: &Ctx, client: &Arc<Client>) {
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
-    tokio::spawn(async move {
+    tokio::spawn(async move { update_blocklist(&ctx, &client).await });
+}
+
+/// Fetches the block list and stores it (with each blocked person's number where known).
+async fn update_blocklist(ctx: &Ctx, client: &Arc<Client>) {
+    {
         let Ok(entries) = client.blocking().get_blocklist().await else { return };
         let mut ids = Vec::new();
+        let (total, mut numbered) = (entries.len(), 0);
         for entry in entries {
+            // WhatsApp lists blocks by LID; contacts are known by number. Keep the number
+            // for each, so a blocked contact is recognised even with no chat.
+            if entry.jid.is_lid()
+                && let Ok(Some(known)) = client.get_lid_pn_entry(&entry.jid).await
+            {
+                ctx.db().set_number(&entry.jid.to_non_ad_string(), &known.phone_number);
+                numbered += 1;
+            }
             ids.push(chat_for(&ctx, &client, &entry.jid).await);
         }
+        // Still unknown: ask WhatsApp for each saved contact's LID (once per contact list),
+        // so the blocked LIDs can be matched to contacts by number.
+        if numbered < total {
+            let contacts = ctx.db().contact_number_jids();
+            let flag = format!("contact_lids_v1_{}", contacts.len());
+            if !ctx.db().flag(&flag) {
+                let mut learned = 0;
+                for chunk in contacts.chunks(100) {
+                    let jids: Vec<Jid> = chunk.iter().filter_map(|j| j.parse().ok()).collect();
+                    match client.contacts().is_on_whatsapp(&jids).await {
+                        Ok(results) => {
+                            let db = ctx.db();
+                            for r in results {
+                                let number = r.pn_jid.as_ref().unwrap_or(&r.jid);
+                                if let Some(lid) = r.lid.as_ref().filter(|_| number.is_pn()) {
+                                    db.set_number(&lid.to_non_ad_string(), &number.user);
+                                    learned += 1;
+                                } else if r.jid.is_lid() && let Some(pn) = &r.pn_jid {
+                                    db.set_number(&r.jid.to_non_ad_string(), &pn.user);
+                                    learned += 1;
+                                }
+                            }
+                        }
+                        Err(e) => warn!("looking up contacts' LIDs failed: {e}"),
+                    }
+                }
+                ctx.db().set_flag(&flag);
+                info!("contact LIDs learned: {learned} of {}", contacts.len());
+            }
+        }
+        info!("blocklist: {total} blocked, {numbered} with a known number");
         ctx.db().set_blocklist(&ids);
         ctx.chats_dirty.notify_one();
-    });
+    }
 }
 
 /// Applies one app-state change to a chat and refreshes the list.
@@ -1308,6 +1407,12 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
         ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: true });
         return;
     };
+    // The chat begins with a notice written here (a group you just made): that's its start,
+    // and the phone couldn't answer for a message it has never seen.
+    if oldest_id.starts_with("notice-") {
+        ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: true });
+        return;
+    }
 
     let pending = Pending { ts, id: oldest_id.clone(), request: None };
     ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), pending);
@@ -1316,6 +1421,23 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
             if let Some(p) = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).get_mut(&chat_id) {
                 p.request = Some(request);
             }
+            // A phone that never answers (offline, or it doesn't know the message) mustn't
+            // leave "Loading older messages…" up for good: after 25 s the wait is over.
+            let (ctx, waiting, asked_for) = (ctx.clone(), chat_id.clone(), oldest_id.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(25)).await;
+                let still = {
+                    let mut pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
+                    let same = pending.get(&waiting).is_some_and(|p| p.id == asked_for);
+                    if same {
+                        pending.remove(&waiting);
+                    }
+                    same
+                };
+                if still {
+                    ctx.send(Out::OlderMessages { chat_id: waiting, messages: Vec::new(), complete: false });
+                }
+            });
         }
         Err(e) => {
             warn!("on-demand history request failed for {chat_id}: {e}");
