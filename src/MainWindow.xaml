@@ -62,6 +62,31 @@
                 </Grid>
             </DataTemplate>
 
+            <!-- ───────────── Calls page: a row of the Recent list (MainWindow.CallsPage.cs) ───────────── -->
+            <DataTemplate x:Key="CallRowTemplate" x:DataType="models:CallRow">
+                <Grid Padding="0,9" ColumnSpacing="12" Background="Transparent" Tag="{x:Bind}" ContextRequested="CallRow_ContextRequested">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <controls:Redact VeilRadius="24" VerticalAlignment="Center">
+                        <controls:Avatar DisplayName="{x:Bind Name}" Source="{x:Bind AvatarPath}" Size="48" IsGroup="{x:Bind IsGroup}" />
+                    </controls:Redact>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                        <controls:Redact HorizontalAlignment="Left">
+                            <TextBlock Text="{x:Bind Name}" FontSize="15" TextTrimming="CharacterEllipsis" />
+                        </controls:Redact>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="{x:Bind Glyph}" FontSize="12" VerticalAlignment="Center" Foreground="{x:Bind helpers:Ui.CallBrush(IsMissed)}" />
+                            <TextBlock Text="{x:Bind Label}" FontSize="13" Foreground="{x:Bind helpers:Ui.CallBrush(IsMissed)}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Text="{x:Bind Time}" FontSize="12" VerticalAlignment="Top" Margin="0,3,6,0"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </Grid>
+            </DataTemplate>
+
             <!-- ───────────── Chat list item ───────────── -->
             <DataTemplate x:Key="ChatItemTemplate" x:DataType="models:Chat">
                 <Grid Padding="0,9" ColumnSpacing="12" Background="Transparent"
@@ -1065,6 +1090,20 @@
                                 <FontIcon Glyph="&#xE932;" FontSize="16" />
                             </Button>
                         </StackPanel>
+                        <!-- Calls: a number pad, and someone to call. -->
+                        <StackPanel x:Name="CallsActions" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2" Visibility="Collapsed">
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Call a number" AutomationProperties.Name="Call a number"
+                                    Click="CallsDialpad_Click">
+                                <FontIcon Glyph="&#xE75F;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="New call" AutomationProperties.Name="New call"
+                                    Click="CallsNew_Click">
+                                <Grid>
+                                    <FontIcon Glyph="&#xE717;" FontSize="16" />
+                                    <TextBlock Text="+" FontSize="12" FontWeight="Bold" Margin="15,-9,-6,0" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
                     </Grid>
 
                     <StackPanel Grid.Row="1">
@@ -1232,6 +1271,140 @@
                             <Button x:Name="LogoutButton" Content="Log out" Visibility="Collapsed" Click="Logout_Click" />
                         </StackPanel>
                     </ScrollViewer>
+                    <!-- ───── Calls (MainWindow.CallsPage.cs): search, Favourites, Recent ───── -->
+                    <Grid x:Name="CallsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <AutoSuggestBox x:Name="CallsSearch" Margin="16,0,16,8" PlaceholderText="Search name or number" QueryIcon="Find"
+                                        AutomationProperties.Name="Search calls" TextChanged="CallsSearch_TextChanged" />
+                        <ListView x:Name="CallsList" Grid.Row="1" Margin="4,0,0,0" Padding="0,0,6,0" SelectionMode="Single"
+                                  SingleSelectionFollowsFocus="False" ItemTemplate="{StaticResource CallRowTemplate}"
+                                  SelectionChanged="CallsList_SelectionChanged">
+                            <ListView.Resources>
+                                <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+                            </ListView.Resources>
+                            <ListView.Header>
+                                <StackPanel Margin="0,0,0,2">
+                                    <Grid x:Name="CallsFavouritesHeader" Margin="12,6,2,6">
+                                        <TextBlock Text="Favourites" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Button x:Name="FavouritesViewAll" Content="View all" HorizontalAlignment="Right" Padding="14,5" CornerRadius="16"
+                                                Background="Transparent" Foreground="{ThemeResource ChatAccentTextBrush}" FontWeight="SemiBold"
+                                                Click="FavouritesViewAll_Click" />
+                                    </Grid>
+                                    <!-- Your favourites (or "Add favourite"), built in code. -->
+                                    <StackPanel x:Name="CallsFavourites" />
+                                    <TextBlock x:Name="CallsRecentTitle" Text="Recent" FontSize="15" FontWeight="SemiBold" Margin="12,18,0,6" />
+                                </StackPanel>
+                            </ListView.Header>
+                        </ListView>
+                        <TextBlock x:Name="CallsEmpty" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                   Margin="24,0,24,140" TextWrapping="Wrap" TextAlignment="Center" IsHitTestVisible="False"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+
+                    <!-- ───── Calls: pages over the list (a number to call, someone to call, favourites) ───── -->
+                    <Grid x:Name="CallsSubPane" Grid.RowSpan="4" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="52" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Padding="8,4,8,0">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Style="{StaticResource IconButtonStyle}" Click="CallsSubBack_Click" ToolTipService.ToolTip="Back"
+                                        AutomationProperties.Name="Back">
+                                    <FontIcon Glyph="&#xE72B;" FontSize="15" />
+                                </Button>
+                                <TextBlock x:Name="CallsSubTitle" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel x:Name="FavouritesActions" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="2" Visibility="Collapsed">
+                                <ToggleButton x:Name="FavouritesEdit" Width="40" Height="36" Padding="0" BorderThickness="0" Background="Transparent"
+                                              ToolTipService.ToolTip="Edit" AutomationProperties.Name="Edit favourites"
+                                              Checked="FavouritesEdit_Changed" Unchecked="FavouritesEdit_Changed">
+                                    <FontIcon Glyph="&#xE70F;" FontSize="15" />
+                                </ToggleButton>
+                                <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Add favourite" AutomationProperties.Name="Add favourite"
+                                        Click="FavouritesAdd_Click">
+                                    <FontIcon Glyph="&#xE710;" FontSize="15" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- A number that isn't saved: type or tap it, then call. -->
+                        <StackPanel x:Name="CallsNumberPage" Grid.Row="1" Visibility="Collapsed" Padding="16,4,16,16" Spacing="14">
+                            <TextBox x:Name="CallNumberBox" PlaceholderText="Phone number" FontSize="16" InputScope="TelephoneNumber"
+                                     TextChanged="CallNumberBox_TextChanged" />
+                            <TextBlock Text="Enter a phone number with its country code to start a call" TextWrapping="Wrap" TextAlignment="Center"
+                                       FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <Grid x:Name="CallNumberPad" MaxWidth="340">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition />
+                                    <ColumnDefinition />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition />
+                                    <RowDefinition />
+                                    <RowDefinition />
+                                    <RowDefinition />
+                                </Grid.RowDefinitions>
+                            </Grid>
+                            <Grid ColumnSpacing="10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition />
+                                    <ColumnDefinition />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="CallNumberVoice" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" IsEnabled="False"
+                                        Click="CallNumberVoice_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE717;" FontSize="14" />
+                                        <TextBlock Text="Voice call" />
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="CallNumberVideo" Grid.Column="1" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch"
+                                        IsEnabled="False" Click="CallNumberVideo_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                        <TextBlock Text="Video call" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- People: tap one to call (New call), or tick several (Add to Favourites). -->
+                        <Grid x:Name="CallsPickPage" Grid.Row="1" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <AutoSuggestBox x:Name="CallsPickSearch" Margin="16,4,16,8" PlaceholderText="Search name or number" QueryIcon="Find"
+                                            AutomationProperties.Name="Search people" TextChanged="CallsPickSearch_TextChanged" />
+                            <Border x:Name="CallsPickNote" Grid.Row="1" Margin="16,0,16,8" Padding="14,10" CornerRadius="8" Visibility="Collapsed"
+                                    Background="{ThemeResource LayerFillColorAltBrush}">
+                                <TextBlock Text="Add as many people or groups as you want. Only you can see who's on your lists." TextWrapping="Wrap"
+                                           FontSize="13" />
+                            </Border>
+                            <ListView x:Name="CallsPickList" Grid.Row="2" Margin="4,0,0,0" Padding="0,0,6,0" SelectionMode="None" IsItemClickEnabled="True"
+                                      ItemTemplate="{StaticResource NewChatRowTemplate}" ItemClick="CallsPickList_ItemClick"
+                                      SelectionChanged="CallsPickList_SelectionChanged" />
+                            <TextBlock x:Name="CallsPickEmpty" Grid.Row="2" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                       Margin="0,60,0,0" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsHitTestVisible="False" />
+                            <Button x:Name="CallsPickDone" Grid.Row="3" Visibility="Collapsed" Content="Add to Favourites" Style="{StaticResource AccentButtonStyle}"
+                                    HorizontalAlignment="Stretch" Margin="16,8,16,16" Click="CallsPickDone_Click" />
+                        </Grid>
+
+                        <!-- Favourites > View all: every favourite, the pencil to take some off, + to add. -->
+                        <ScrollViewer x:Name="FavouritesPage" Grid.Row="1" Visibility="Collapsed">
+                            <StackPanel x:Name="FavouritesRows" Margin="4,4,6,12" />
+                        </ScrollViewer>
+                    </Grid>
+
                     <!-- ───── New chat (MainWindow.NewChat.cs): over the chat list ───── -->
                     <Grid x:Name="NewChatPane" Grid.RowSpan="4" Visibility="Collapsed">
                         <Grid.RowDefinitions>
@@ -1373,6 +1546,50 @@
                             <Button x:Name="GroupCreate" Content="Create group" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch"
                                     IsEnabled="False" Click="GroupCreate_Click" />
                         </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <!-- ───────────── Calls: the right side (MainWindow.CallsPage.cs) ───────────── -->
+                <Grid x:Name="CallsPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
+                      Background="{ThemeResource ChatPaneBackgroundBrush}"
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                    <!-- Nothing picked. -->
+                    <Grid x:Name="CallsIntro">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
+                            <FontIcon Glyph="&#xE714;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="Voice and video calling" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
+                                       TextWrapping="Wrap" Margin="0,14,0,0" />
+                            <TextBlock Text="Call anyone on WhatsApp from this PC, with voice or video." HorizontalAlignment="Center"
+                                       TextAlignment="Center" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <StackPanel x:Name="CallsTiles" Orientation="Horizontal" Spacing="36" HorizontalAlignment="Center" Margin="0,24,0,0" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28">
+                            <FontIcon Glyph="&#xE72E;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="Your personal calls are end-to-end encrypted" FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                    <!-- A person (or a call) picked: who, the buttons, and the calls with them. -->
+                    <Grid x:Name="CallInfo" Visibility="Collapsed">
+                        <Button Style="{StaticResource IconButtonStyle}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,10,0"
+                                Canvas.ZIndex="1" ToolTipService.ToolTip="Close" AutomationProperties.Name="Close" Click="CallInfoClose_Click">
+                            <FontIcon Glyph="&#xE711;" FontSize="13" />
+                        </Button>
+                        <ScrollViewer>
+                            <StackPanel MaxWidth="520" Margin="24,40,24,24" Spacing="4">
+                                <controls:Redact VeilRadius="55" HorizontalAlignment="Center" Margin="0,0,0,10">
+                                    <controls:Avatar x:Name="CallInfoAvatar" Size="110" />
+                                </controls:Redact>
+                                <controls:Redact HorizontalAlignment="Center">
+                                    <TextBlock x:Name="CallInfoName" FontSize="24" TextAlignment="Center" TextWrapping="Wrap" />
+                                </controls:Redact>
+                                <controls:Redact HorizontalAlignment="Center">
+                                    <TextBlock x:Name="CallInfoPhone" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </controls:Redact>
+                                <StackPanel x:Name="CallInfoActions" Orientation="Horizontal" Spacing="20" HorizontalAlignment="Center" Margin="0,16,0,22" />
+                                <StackPanel x:Name="CallInfoEntries" Spacing="2" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
                 </Grid>
 

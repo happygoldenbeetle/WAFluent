@@ -55,6 +55,9 @@ public static class Ui
         new SolidColorBrush(selected ? Windows.UI.Color.FromArgb(0x33, 0x00, 0xA8, 0x84) : Microsoft.UI.Colors.Transparent);
 
     /// <summary>The bubble colour: green for yours (time pills under stickers and big emoji match).</summary>
+    /// <summary>Red for a missed call, the usual grey otherwise.</summary>
+    public static Brush CallBrush(bool missed) => Themed.Brush(missed ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush");
+
     public static Brush BubbleBrush(bool isOutgoing) => Themed.Brush(isOutgoing ? "OutgoingBubbleBrush" : "IncomingBubbleBrush");
 
     public static HorizontalAlignment Align(bool isOutgoing) =>

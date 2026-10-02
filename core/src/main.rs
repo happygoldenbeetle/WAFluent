@@ -7,6 +7,7 @@
 
 mod actions;
 mod avatars;
+mod call_log;
 mod calls;
 mod media;
 mod extract;
@@ -57,6 +58,8 @@ pub(crate) struct Ctx {
     backfill_gate: Arc<tokio::sync::Mutex<()>>,
     /// When a media refill was last asked for, per chat: its answer isn't "nothing older".
     backfill_sent: Arc<Mutex<HashMap<String, std::time::Instant>>>,
+    /// Pinged whenever the call history changed; a debounced task sends the list (call_log.rs).
+    pub(crate) calls_dirty: Arc<Notify>,
     /// The call that's ringing or in progress (see calls.rs).
     pub(crate) calls: Arc<Mutex<calls::Calls>>,
 }
@@ -144,11 +147,16 @@ async fn run(dir: PathBuf) {
         backfill_gate: Arc::default(),
         backfill_sent: Arc::default(),
         calls: Arc::default(),
+        calls_dirty: Arc::new(Notify::new()),
     };
     ctx.status("starting", None);
     whatsapp_rust::wafluent_hooks::on_sticker_mutation({
         let ctx = ctx.clone();
         move |m| favorite_sticker(&ctx, m)
+    });
+    whatsapp_rust::wafluent_hooks::on_call_log({
+        let ctx = ctx.clone();
+        move |m| call_log::mutation(&ctx, m)
     });
 
     // Show what we already have while connecting.
@@ -162,6 +170,7 @@ async fn run(dir: PathBuf) {
 
     spawn_snapshot_debouncer(ctx.clone());
     spawn_expiry(ctx.clone());
+    call_log::spawn_debouncer(ctx.clone());
 
     let session = dir.join("whatsapp.db");
     let backend = match SqliteStore::new(&session.to_string_lossy()).await {
@@ -314,6 +323,13 @@ pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &st
 async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     match cmd {
         Command::CallAudio { data } => calls::microphone(ctx, &data),
+        Command::LoadCalls => call_log::send(ctx),
+        Command::DeleteCall { id } => {
+            if ctx.db().remove_call(&id) {
+                call_log::send(ctx);
+            }
+        }
+        Command::CreateCallLink { video } => call_log::create_link(ctx, client, video),
         Command::StartCall { chat_id, video } => calls::start(ctx, client, chat_id, video),
         Command::AcceptCall { call_id, video } => calls::accept(ctx, client, call_id, video),
         Command::CallVideo { data } => calls::camera(ctx, &data),
@@ -1003,11 +1019,13 @@ fn favorite_sticker(ctx: &Ctx, m: whatsapp_rust::wafluent_hooks::StickerMutation
     ctx.send(Out::FavoritesChanged);
 }
 
+pub(crate) const STICKERS_SYNCED: &str = "favorite_stickers_synced_v3";
+
 /// Favourite stickers were dropped before the library patch; pull the app state once more
 /// so the ones starred earlier arrive too. Later changes come as they happen. v3: every
 /// collection (the critical ones too), in case the phone keeps favourites in one of those.
 fn resync_stickers_once(ctx: &Ctx, client: &Arc<Client>) {
-    const FLAG: &str = "favorite_stickers_synced_v3";
+    const FLAG: &str = STICKERS_SYNCED;
     if ctx.db().flag(FLAG) {
         return;
     }
@@ -1108,6 +1126,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             ctx.send(Out::Me { name: own.push_name.clone(), phone: own.pn.as_ref().map(|j| j.user.to_string()).unwrap_or_default() });
             ctx.chats_dirty.notify_one();
             resync_chat_settings_once(ctx, client);
+            call_log::resync_once(ctx, client);
             resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);
             avatars::queue_stale(ctx);
@@ -1175,6 +1194,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                         answer_pending_history(ctx, &chats, session.as_deref());
                     } else {
                         avatars::queue_stale(ctx);   // new chats from the sync
+                        ctx.calls_dirty.notify_one();   // and its calls
                     }
                 }
                 Ok(Err(e)) => error!("history sync decode failed: {e}"),
@@ -1529,6 +1549,7 @@ fn ingest_history(
             }
         }
         let rest = stream.remainder().map_err(|e| e.to_string())?;
+        call_log::ingest(s, &rest.call_log_records);
         for p in &rest.pushnames {
             if let (Some(id), Some(name)) = (&p.id, &p.pushname) {
                 s.set_push_name(id, name);

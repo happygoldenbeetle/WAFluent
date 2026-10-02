@@ -110,6 +110,10 @@ pub enum Event {
     /// picture is coming) | off (they paused it) | declined (they refused yours) | ended (the
     /// call is voice again) | failed (yours couldn't start) | keyframe (send a whole picture now).
     CallVideoState { state: &'static str },
+    /// The call history, newest first (reply to `loadCalls`, and again whenever it changes).
+    Calls { calls: Vec<CallLogDto> },
+    /// The call link asked for with `createCallLink`.
+    CallLink { url: String, video: bool },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -199,6 +203,30 @@ pub struct GroupInfoDto {
     pub description: String,
     /// You're an admin (you can rename it, change its picture and description).
     pub admin: bool,
+}
+
+/// One call in the history.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CallLogDto {
+    pub id: String,
+    /// When it started, Unix seconds.
+    pub ts: i64,
+    /// Seconds talked (0: never connected).
+    pub duration: i64,
+    pub incoming: bool,
+    pub video: bool,
+    /// connected | missed | rejected | cancelled | elsewhere | failed.
+    pub result: String,
+    /// The person's chat (or the group's); empty for a call with several people outside a group.
+    pub chat_id: String,
+    pub name: String,
+    /// The person's number, digits only ("" for groups, or when only a LID is known).
+    pub phone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    /// More than one other person.
+    pub group: bool,
 }
 
 /// A saved contact, for New chat and Add group members.
@@ -446,6 +474,12 @@ pub enum Command {
     SetPinned { chat_id: String, pinned: bool },
     /// React to a message; an empty `emoji` removes your reaction.
     React { chat_id: String, message_id: String, emoji: String },
+    /// The call history; answered by `calls`.
+    LoadCalls,
+    /// Take one call out of the history (on this PC).
+    DeleteCall { id: String },
+    /// A link anyone with WhatsApp can use to join a call; answered by `callLink`.
+    CreateCallLink { #[serde(default)] video: bool },
     /// Call this chat (voice, or with `video`). Answered by `call` events.
     StartCall { chat_id: String, #[serde(default)] video: bool },
     /// Answer the call that's ringing.

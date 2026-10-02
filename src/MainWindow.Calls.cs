@@ -39,7 +39,12 @@ public sealed partial class MainWindow
 
     private void StartCall(bool video)
     {
-        if (ViewModel.SelectedChat is not { } chat) return;
+        if (ViewModel.SelectedChat is { } chat) StartCallWith(chat, video);
+    }
+
+    /// <summary>Calls <paramref name="chat"/> (the open chat's buttons, or someone picked on the Calls page).</summary>
+    private void StartCallWith(Chat chat, bool video)
+    {
         if (_call is not null)
         {
             _call.Activate();   // one call at a time
@@ -94,7 +99,7 @@ public sealed partial class MainWindow
     {
 #if DEBUG
         var test = Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST");
-        if (test is not ("call-out" or "call-in" or "call-audio" or "call-h264" or "call-video")) return;
+        if (test is null || !(test.StartsWith("call-") || test.StartsWith("calls"))) return;
         Messages.Loaded += async (_, _) =>
         {
             await Task.Delay(2000);
@@ -106,6 +111,22 @@ public sealed partial class MainWindow
                     break;
                 case "call-in":
                     OpenCall(chat, new CallDto("selftest", chat.Id, "ringing", Video: false, Outgoing: false));
+                    break;
+                case "calls" or "calls-info" or "calls-number" or "calls-new" or "calls-addfav" or "calls-fav" or "calls-search":
+                    // The Calls page on the sample data, and its pages.
+                    if (test is "calls-fav" or "calls-info")
+                        foreach (var person in ViewModel.ForwardTargets().Where(c => !c.IsGroup).Take(2)) person.IsFavourite = true;   // not saved
+                    Nav.SelectedItem = Nav.MenuItems[1];
+                    await Task.Delay(600);
+                    switch (test)
+                    {
+                        case "calls-info": CallsList.SelectedIndex = 1; break;
+                        case "calls-number": ShowCallsPage(CallsPage.Number); CallNumberBox.Text = "+92 300 1234567"; break;
+                        case "calls-new": ShowCallsPage(CallsPage.NewCall); break;
+                        case "calls-addfav": OpenAddFavourites(fromFavourites: false); await Task.Delay(300); CallsPickList.SelectRange(new Microsoft.UI.Xaml.Data.ItemIndexRange(0, 2)); break;
+                        case "calls-fav": FavouritesEdit.IsChecked = true; ShowCallsPage(CallsPage.Favourites); break;
+                        case "calls-search": CallsSearch.Text = "a"; break;
+                    }
                     break;
                 case "call-video":
                     CallCamera.TestPictures = TestPicture;

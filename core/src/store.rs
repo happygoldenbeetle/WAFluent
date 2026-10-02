@@ -4,7 +4,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::extract::{Media, Quote};
-use crate::protocol::{ChatDto, ContactDto, MediaDto, MessageDto, PhoneDto, PinnedDto, ReplyDto, StarredDto};
+use crate::protocol::{CallLogDto, ChatDto, ContactDto, MediaDto, MessageDto, PhoneDto, PinnedDto, ReplyDto, StarredDto};
 
 pub struct Store {
     db: Connection,
@@ -27,6 +27,19 @@ pub struct StoredMessage {
 
 /// Pseudo chat id the favourite stickers' files are stored under.
 pub const FAVORITES: &str = "favorites";
+
+/// One call in the history. `peers`: everyone else in it (JIDs); `result`: connected |
+/// missed | rejected | cancelled | elsewhere | failed.
+pub struct CallEntry {
+    pub id: String,
+    pub ts: i64,
+    pub duration: i64,
+    pub incoming: bool,
+    pub video: bool,
+    pub result: String,
+    pub group_jid: String,
+    pub peers: Vec<String>,
+}
 
 pub struct ChatMeta<'a> {
     pub id: &'a str,
@@ -209,6 +222,12 @@ impl Store {
             "INSERT OR IGNORE INTO pins SELECT id, pinned_msg, CAST(strftime('%s','now') AS INTEGER),
                                                CAST(strftime('%s','now') AS INTEGER) + 604800 FROM chats WHERE pinned_msg != ''",
             "UPDATE chats SET pinned_msg = '' WHERE pinned_msg != ''",
+            // The call history: from the phone (history sync, app state) and calls made here.
+            // `peers`: everyone else in the call, comma-separated JIDs.
+            "CREATE TABLE IF NOT EXISTS call_log(id TEXT PRIMARY KEY, ts INTEGER NOT NULL, duration INTEGER NOT NULL DEFAULT 0,
+                                                  incoming INTEGER NOT NULL, video INTEGER NOT NULL, result TEXT NOT NULL,
+                                                  group_jid TEXT NOT NULL DEFAULT '', peers TEXT NOT NULL DEFAULT '')",
+            "CREATE INDEX IF NOT EXISTS call_log_ts ON call_log(ts DESC)",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -824,6 +843,67 @@ impl Store {
             .collect();
         contacts.sort_by_key(|c| c.name.to_lowercase());
         contacts
+    }
+
+    /// Adds a call to the history (or replaces what's known of it). True when something changed.
+    pub fn put_call(&self, c: &CallEntry) -> bool {
+        self.db
+            .execute(
+                "INSERT INTO call_log(id, ts, duration, incoming, video, result, group_jid, peers) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(id) DO UPDATE SET ts = ?2, duration = ?3, incoming = ?4, video = ?5, result = ?6, group_jid = ?7, peers = ?8
+                 WHERE ts != ?2 OR duration != ?3 OR result != ?6 OR peers != ?8 OR video != ?5",
+                params![c.id, c.ts, c.duration, c.incoming, c.video, c.result, c.group_jid, c.peers.join(",")],
+            )
+            .unwrap_or(0)
+            > 0
+    }
+
+    pub fn remove_call(&self, id: &str) -> bool {
+        self.db.execute("DELETE FROM call_log WHERE id = ?1", [id]).unwrap_or(0) > 0
+    }
+
+    /// The call history, newest first, with each call's person (or people) named.
+    pub fn calls(&self, limit: u32) -> Vec<CallLogDto> {
+        type Row = (String, i64, i64, bool, bool, String, String, String);
+        let rows: Vec<Row> = self
+            .db
+            .prepare("SELECT id, ts, duration, incoming, video, result, group_jid, peers FROM call_log ORDER BY ts DESC LIMIT ?1")
+            .and_then(|mut s| {
+                s.query_map([limit], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)))
+                    .map(|r| r.flatten().collect())
+            })
+            .unwrap_or_default();
+        rows.into_iter()
+            .map(|(id, ts, duration, incoming, video, result, group_jid, peers)| {
+                let mut people: Vec<String> = Vec::new();
+                for peer in peers.split(',').filter(|p| !p.is_empty()) {
+                    let chat = self.canonical(peer);
+                    if !self.is_me(&chat) && !self.is_me(peer) && !people.contains(&chat) {
+                        people.push(chat);
+                    }
+                }
+                let named = |jid: &str| self.chat(jid).map(|c| c.name).filter(|n| !n.is_empty()).unwrap_or_else(|| self.person_name(jid, ""));
+                let group = !group_jid.is_empty() || people.len() > 1;
+                let (chat_id, name) = if !group_jid.is_empty() && self.chat(&group_jid).is_some() {
+                    (group_jid.clone(), named(&group_jid))
+                } else if people.len() == 1 {
+                    (people[0].clone(), named(&people[0]))
+                } else if people.is_empty() {
+                    (String::new(), "Unknown".to_string())
+                } else {
+                    // "Iqra & khadija": first names, like WhatsApp.
+                    let first: Vec<String> = people.iter().map(|p| named(p).split_whitespace().next().unwrap_or("").to_string()).collect();
+                    (String::new(), first.join(" & "))
+                };
+                let phone = if group { String::new() } else { self.phone_number(&chat_id).unwrap_or_default() };
+                let avatar: Option<String> = self
+                    .db
+                    .query_row("SELECT path FROM avatars WHERE jid = ?1", [&chat_id], |r| r.get(0))
+                    .ok()
+                    .filter(|p: &String| !p.is_empty());
+                CallLogDto { id, ts, duration, incoming, video, result, chat_id, name, phone, avatar, group }
+            })
+            .collect()
     }
 
     pub fn phone_jid(&self, jid: &str) -> Option<String> {

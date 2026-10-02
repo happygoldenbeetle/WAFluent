@@ -19,7 +19,8 @@ use whatsapp_rust::wacore::stanza::call::{VideoStateParams, build_video_state};
 use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::protocol::Event as Out;
-use crate::{Ctx, add_notice, chat_for, send_chat, store};
+use crate::store::CallEntry;
+use crate::{Ctx, add_notice, call_log, chat_for, send_chat, store};
 
 /// One frame: 60 ms at 16 kHz.
 const FRAME_SAMPLES: usize = 960;
@@ -73,6 +74,8 @@ struct Active {
     /// It was (or became) a video call: what the line left in the chat says.
     video: bool,
     outgoing: bool,
+    /// When it started ringing, Unix seconds.
+    started_at: i64,
     /// When the other side picked up (or you did), Unix seconds.
     connected_at: Option<i64>,
     /// Why it ended, once known.
@@ -111,6 +114,7 @@ impl Media {
             video_request: None,
             video,
             outgoing,
+            started_at: store::unix_now(),
             connected_at: if outgoing { None } else { Some(store::unix_now()) },
             reason: None,
             detail: None,
@@ -240,6 +244,22 @@ pub(crate) async fn reject(ctx: &Ctx, client: &Arc<Client>, call_id: String) {
         warn!("call: couldn't decline {call_id}: {e}");
     }
     ctx.call(&call_id, &ring.chat_id, false, ring.video, "ended", Some("declined"), None);
+    log(ctx, &call_id, &ring.chat_id, ring.incoming.timestamp.timestamp(), 0, true, ring.video, "rejected");
+}
+
+/// Writes a call into the history.
+#[allow(clippy::too_many_arguments)]
+fn log(ctx: &Ctx, call_id: &str, chat_id: &str, ts: i64, duration: i64, incoming: bool, video: bool, result: &str) {
+    call_log::record(ctx, CallEntry {
+        id: call_id.to_string(),
+        ts,
+        duration,
+        incoming,
+        video,
+        result: result.to_string(),
+        group_jid: String::new(),
+        peers: vec![chat_id.to_string()],
+    });
 }
 
 /// Hangs up (or stops calling). `reason` is kept unless one is already known.
@@ -416,7 +436,11 @@ pub(crate) async fn missed(ctx: &Ctx, client: &Arc<Client>, from: &Jid, call_id:
         }
         None => (chat_for(ctx, client, from).await, false),
     };
-    if chat_id.ends_with("@g.us") || ctx.db().chat(&chat_id).is_none() {
+    if chat_id.ends_with("@g.us") {
+        return;
+    }
+    log(ctx, call_id, &chat_id, ts, 0, true, video, "missed");
+    if ctx.db().chat(&chat_id).is_none() {
         return;
     }
     add_notice(ctx, &chat_id, format!("Missed {} call", kind(video)), ts);
@@ -426,6 +450,7 @@ pub(crate) async fn missed(ctx: &Ctx, client: &Arc<Client>, from: &Jid, call_id:
 pub(crate) fn elsewhere(ctx: &Ctx, call_id: &str) {
     if let Some(ring) = ctx.calls().ringing.remove(call_id) {
         ctx.call(call_id, &ring.chat_id, false, ring.video, "ended", Some("elsewhere"), None);
+        log(ctx, call_id, &ring.chat_id, ring.incoming.timestamp.timestamp(), 0, true, ring.video, "elsewhere");
     }
 }
 
@@ -571,6 +596,18 @@ fn finish(ctx: &Ctx, call_id: &str) {
     info!("call: {call_id} over ({reason})");
     ctx.call(call_id, &active.chat_id, active.outgoing, active.video, "ended", Some(reason), active.detail);
     let now = store::unix_now();
+    let result = match (active.connected_at, reason) {
+        (Some(_), _) => "connected",
+        (None, "declined") => "rejected",
+        (None, "failed") => "failed",
+        (None, _) if active.outgoing => "cancelled",
+        (None, _) => "missed",
+    };
+    let talked = active.connected_at.map_or(0, |at| now - at);
+    log(ctx, call_id, &active.chat_id, active.started_at, talked, !active.outgoing, active.video, result);
+    if ctx.db().ensure_chat(&active.chat_id, false) {
+        send_chat(ctx, &active.chat_id);
+    }
     let call = format!("{} call", if active.video { "Video" } else { "Voice" });
     let text = match (active.connected_at, reason) {
         (Some(at), _) => format!("{call} · {}", length(now - at)),

@@ -31,20 +31,8 @@ public sealed partial class MainWindow
         if (!_newChatWired)
         {
             _newChatWired = true;
-            ViewModel.ContactsLoaded += contacts =>
-            {
-                _newChatContacts = contacts.Select(c => new ContactRow
-                {
-                    Name = c.Name,
-                    Phone = c.Phone,
-                    ChatId = c.ChatId,
-                    IsBlocked = c.Blocked,
-                    Subtitle = c.Blocked ? "Contact is blocked" : c.Phone.Length > 0 ? "+" + c.Phone : "",
-                    AvatarPath = c.Avatar,
-                }).ToList();
-                if (NewChatPane.Visibility == Visibility.Visible) FilterNewChat();
-            };
-            BuildNumberPad();
+            EnsureContacts();
+            BuildNumberPad(NumberPad, NumberBox);
         }
         _groupMembers.Clear();
         _addingTo = null;
@@ -55,12 +43,35 @@ public sealed partial class MainWindow
         ViewModel.LoadContacts();
     }
 
-    /// <summary>The chat list stays where it is under the pane, unseen and unclickable.</summary>
+    private bool _contactsWired;
+
+    /// <summary>Keeps your saved contacts (New chat, and the Calls page's New call) as they're loaded.</summary>
+    private void EnsureContacts()
+    {
+        if (_contactsWired) return;
+        _contactsWired = true;
+        ViewModel.ContactsLoaded += contacts =>
+        {
+            _newChatContacts = contacts.Select(c => new ContactRow
+            {
+                Name = c.Name,
+                Phone = c.Phone,
+                ChatId = c.ChatId,
+                IsBlocked = c.Blocked,
+                Subtitle = c.Blocked ? "Contact is blocked" : c.Phone.Length > 0 ? "+" + c.Phone : "",
+                AvatarPath = c.Avatar,
+            }).ToList();
+            if (NewChatPane.Visibility == Visibility.Visible) FilterNewChat();
+            if (CallsSubPane.Visibility == Visibility.Visible && _callsPage == CallsPage.NewCall) FillCallsPick();
+        };
+    }
+
+    /// <summary>The list stays where it is under a pane over it (New chat, a Calls page), unseen and unclickable.</summary>
     private void SetChatListHidden(bool hidden)
     {
         foreach (var child in ChatListPane.Children)
         {
-            if (ReferenceEquals(child, NewChatPane)) continue;
+            if (ReferenceEquals(child, NewChatPane) || ReferenceEquals(child, CallsSubPane)) continue;
             child.Opacity = hidden ? 0 : 1;
             child.IsHitTestVisible = !hidden;
         }
@@ -269,8 +280,8 @@ public sealed partial class MainWindow
 
     // ───── Phone number ─────
 
-    /// <summary>1-9 with their letters, then + 0 ⌫, like a phone's keypad.</summary>
-    private void BuildNumberPad()
+    /// <summary>1-9 with their letters, then + 0 ⌫, like a phone's keypad, typing into <paramref name="box"/>.</summary>
+    private static void BuildNumberPad(Grid pad, TextBox box)
     {
         (string Key, string Letters)[] keys =
         [
@@ -299,13 +310,13 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, back ? "Backspace" : key);
             button.Click += (_, _) =>
             {
-                var text = NumberBox.Text;
-                NumberBox.Text = back ? (text.Length > 0 ? text[..^1] : "") : text + key;
-                NumberBox.SelectionStart = NumberBox.Text.Length;
+                var text = box.Text;
+                box.Text = back ? (text.Length > 0 ? text[..^1] : "") : text + key;
+                box.SelectionStart = box.Text.Length;
             };
             Grid.SetRow(button, i / 3);
             Grid.SetColumn(button, i % 3);
-            NumberPad.Children.Add(button);
+            pad.Children.Add(button);
         }
     }
 

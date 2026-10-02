@@ -509,6 +509,7 @@ public sealed partial class MainWindow
     {
         if (SendTarget is null) return;
         _forwarding = null;
+        _sendText = null;
         ContactsTitle.Text = "Send contacts";
         AutomationProperties.SetName(ContactsSend, "Send contacts");
         var sample = _core is null;   // --sample: no numbers, but the list still shows
@@ -568,6 +569,14 @@ public sealed partial class MainWindow
 
     private void ContactsSend_Click(object sender, RoutedEventArgs e)
     {
+        if (_sendText is { } text)
+        {
+            // A text to several chats (a call link from the Calls page).
+            _sendText = null;
+            foreach (var to in PickedContacts.Select(r => r.Chat).OfType<Chat>()) ViewModel.QuickReply(to.Id, text);
+            CloseSheet();
+            return;
+        }
         if (_forwarding is { } messages)
         {
             var to = PickedContacts.Select(r => r.Chat).OfType<Chat>().ToList();

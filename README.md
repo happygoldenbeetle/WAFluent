@@ -10,7 +10,8 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 > and a message to forward, pin, star, select, report or delete it. Emoji: in-app keyboard and :shortcode: autocomplete.
 > Voice and video calls with one person: call from a chat, answer or decline one that rings (with Windows' incoming-call
 > notification), mute, turn the camera on or off, switch a voice call to video, pick the microphone and camera, hang up.
-> Group calls aren't wired up yet.
+> The Calls page lists your call history (from the phone and this PC) with favourites, a number pad to call any number,
+> and call links to share. Group calls aren't wired up yet.
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
 
@@ -62,6 +63,8 @@ Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
 | `src/Services/CoreClient.cs` | Starts the core and translates its events |
 | `src/MainWindow.xaml` | Rail, chat list, conversation pane, link screen |
 | `core/src/calls.rs` | Calls: whatsapp-rust's voip stack, with sound and H.264 video passed to and from the app |
+| `core/src/call_log.rs` | The call history: the phone's (history sync, app state) and this PC's; call links |
+| `src/MainWindow.CallsPage.cs` | The Calls page: favourites, recent calls, call a number, new call link |
 | `src/CallWindow.xaml` | The call window (calling, ringing, in a call; video in `CallWindow.Video.cs`) |
 | `src/Services/CallAudio.cs` | A call's microphone and speakers (16 kHz frames, AudioGraph) |
 | `src/Services/CallCamera.cs`, `H264Encoder.cs` | Your camera in a video call, encoded with Windows' H.264 encoder |

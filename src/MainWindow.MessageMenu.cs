@@ -250,6 +250,7 @@ public sealed partial class MainWindow
     private Task ForwardAsync(IReadOnlyList<Message> messages)
     {
         _forwarding = messages;
+        _sendText = null;
         _meRow = null;
         ContactsTitle.Text = messages.Count == 1 ? "Forward message to" : $"Forward {messages.Count} messages to";
         AutomationProperties.SetName(ContactsSend, "Forward");

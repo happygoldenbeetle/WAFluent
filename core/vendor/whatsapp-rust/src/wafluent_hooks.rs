@@ -1,5 +1,5 @@
-//! WAFluent patch: app-state mutations the library drops (favourite stickers), handed to
-//! the app. The only change to the vendored crate besides the call in
+//! WAFluent patch: app-state mutations the library drops (favourite stickers, the call
+//! history), handed to the app. The only change to the vendored crate besides the call in
 //! `client/app_state.rs`; see core/vendor/README.md.
 
 use std::collections::BTreeMap;
@@ -23,6 +23,22 @@ pub fn on_sticker_mutation(sink: impl Fn(StickerMutation) + Send + Sync + 'stati
     let _ = STICKERS.set(Box::new(sink));
 }
 
+/// A synced call-history change: `index` as the phone sent it (`["call_log", ...]`),
+/// `removed` for a Remove, `record` for a Set.
+pub struct CallLogMutation {
+    pub index: Vec<String>,
+    pub removed: bool,
+    pub record: Option<wa::CallLogRecord>,
+}
+
+type CallSink = Box<dyn Fn(CallLogMutation) + Send + Sync>;
+static CALLS: OnceLock<CallSink> = OnceLock::new();
+
+/// Receive call-history mutations (set once, at startup).
+pub fn on_call_log(sink: impl Fn(CallLogMutation) + Send + Sync + 'static) {
+    let _ = CALLS.set(Box::new(sink));
+}
+
 static KINDS: Mutex<BTreeMap<String, usize>> = Mutex::new(BTreeMap::new());
 
 /// How many mutations of each kind (index[0]) arrived since launch, for diagnostics.
@@ -38,6 +54,17 @@ pub(crate) fn dispatch(m: &crate::appstate_sync::Mutation, full_sync: bool) -> b
     // Live changes from the phone, one line each (diagnoses what a phone action sends).
     if !full_sync && let Some(kind) = m.index.first() {
         log::info!(target: "wafluent_core", "app state change from the phone: {kind} ({:?})", m.operation);
+    }
+    let record = m.action_value.as_ref().and_then(|v| v.call_log_action.as_option()).and_then(|a| a.call_log_record.as_option().cloned());
+    if m.index.first().map(String::as_str) == Some("call_log") || record.is_some() {
+        if let Some(sink) = CALLS.get() {
+            sink(CallLogMutation {
+                index: m.index.clone(),
+                removed: m.operation == wa::syncd_mutation::SyncdOperation::Remove,
+                record,
+            });
+        }
+        return true;
     }
     let action = m.action_value.as_ref().and_then(|v| v.sticker_action.as_option().cloned());
     if m.index.first().map(String::as_str) != Some("favoriteSticker") && action.is_none() {

@@ -727,6 +727,7 @@ public sealed partial class MainWindow : Window
         if (isStarred) ViewModel.LoadStarred();
 
         ListActions.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
+        ShowCalls(section == "Calls");
         SearchBox.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
         FilterChips.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
         if (section == "Archived" && ViewModel.Filter != ChatFilter.All) SetFilter(ChatFilter.All);
@@ -742,7 +743,7 @@ public sealed partial class MainWindow : Window
     {
         var empty = section switch
         {
-            "Chats" or "Settings" => false,
+            "Chats" or "Settings" or "Calls" => false,
             "Archived" => ViewModel.ArchivedCount == 0,
             "Starred" => !ViewModel.HasStarred,
             _ => true,
@@ -750,7 +751,6 @@ public sealed partial class MainWindow : Window
         SectionPlaceholder.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         (SectionPlaceholderIcon.Glyph, SectionPlaceholderText.Text) = section switch
         {
-            "Calls" => (Glyphs.Phone, "No recent calls"),
             "Status" => (Glyphs.Status, "No status updates"),
             "Starred" => (Glyphs.Star, "No starred messages"),
             "Archived" => (Glyphs.Archive, "No archived chats"),

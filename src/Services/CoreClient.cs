@@ -28,6 +28,13 @@ public sealed record PinnedDto(string Id, string Preview, long Ts = 0, long Expi
 /// </summary>
 public sealed record CallDto(string CallId, string ChatId, string State, bool Video, bool Outgoing, string? Reason = null, string? Detail = null);
 
+/// <summary>
+/// One call in the history. Result: connected | missed | rejected | cancelled | elsewhere | failed.
+/// ChatId is the person's (or group's) chat, empty for a call with several people outside a group.
+/// </summary>
+public sealed record CallLogDto(string Id, long Ts, long Duration, bool Incoming, bool Video, string Result, string ChatId, string Name,
+                                string Phone, string? Avatar = null, bool Group = false);
+
 public sealed record StarredDto(string ChatId, string ChatName, MessageDto Message);
 
 public sealed record MessageDto(
@@ -93,6 +100,8 @@ public sealed class CoreClient : IDisposable
     public event Action<IReadOnlyList<StarredDto>>? StarredReceived;
     public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<CallDto>? CallChanged;
+    public event Action<IReadOnlyList<CallLogDto>>? CallsReceived;          // the call history, newest first
+    public event Action<string, bool>? CallLinkReceived;                    // link, video
     /// <summary>The other side's voice in a call: 16-bit samples, or an Opus packet. Raised off the UI thread.</summary>
     public event Action<byte[], bool>? CallAudio;
     /// <summary>The other side's picture: an H.264 access unit, whether a decoder can start at it, their camera's quarter turns. Raised off the UI thread.</summary>
@@ -283,6 +292,12 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>A chat's Media, links and docs; answered by <see cref="ChatMediaReceived"/>.</summary>
     public void LoadChatMedia(string chatId) => Send(new { cmd = "loadChatMedia", chatId });
+
+    /// <summary>The call history; answered by <see cref="CallsReceived"/> (and again whenever it changes).</summary>
+    public void LoadCalls() => Send(new { cmd = "loadCalls" });
+    public void DeleteCall(string id) => Send(new { cmd = "deleteCall", id });
+    /// <summary>A link anyone with WhatsApp can join a call with; answered by <see cref="CallLinkReceived"/>.</summary>
+    public void CreateCallLink(bool video) => Send(new { cmd = "createCallLink", video });
 
     /// <summary>Calls a chat (voice); answered by <see cref="CallChanged"/>.</summary>
     public void StartCall(string chatId, bool video) => Send(new { cmd = "startCall", chatId, video });
@@ -479,6 +494,15 @@ public sealed class CoreClient : IDisposable
                 // Straight to the player: the UI thread's queue would make the voice stutter.
                 var sound = root.GetProperty("data").GetBytesFromBase64();
                 CallAudio?.Invoke(sound, root.TryGetProperty("opus", out var op) && op.ValueKind == JsonValueKind.True);
+                break;
+            case "calls":
+                var callLog = root.GetProperty("calls").Deserialize<List<CallLogDto>>(Json) ?? [];
+                Post(() => CallsReceived?.Invoke(callLog));
+                break;
+            case "callLink":
+                var linkUrl = root.GetProperty("url").GetString() ?? "";
+                var linkVideo = root.GetProperty("video").GetBoolean();
+                Post(() => CallLinkReceived?.Invoke(linkUrl, linkVideo));
                 break;
             case "callVideo":
                 var picture = root.GetProperty("data").GetBytesFromBase64();
