@@ -59,8 +59,8 @@ public sealed partial class MainWindow
         };
         EnsureContacts();
         BuildNumberPad(CallNumberPad, CallNumberBox);
-        CallsTiles.Children.Add(InfoAction("\uE71B", "New call link", NewCallLink));
-        CallsTiles.Children.Add(InfoAction("\uE75F", "Call a number", () => ShowCallsPage(CallsPage.Number)));
+        CallsTiles.Children.Add(ActionButton("\uE71B", "New call link", NewCallLink));
+        CallsTiles.Children.Add(ActionButton("\uE75F", "Call a number", () => ShowCallsPage(CallsPage.Number)));
     }
 
     /// <summary>The rail's Calls was picked (or left).</summary>
@@ -440,9 +440,9 @@ public sealed partial class MainWindow
 
         CallInfoActions.Children.Clear();
         if (target.Chat is not null || target.ChatId.Length > 0)
-            CallInfoActions.Children.Add(InfoAction("", "Message", () => MessageTarget(target)));
-        CallInfoActions.Children.Add(InfoAction(Glyphs.Phone, "Voice", () => CallTargetNow(target, video: false)));
-        CallInfoActions.Children.Add(InfoAction(Glyphs.VideoCall, "Video", () => CallTargetNow(target, video: true)));
+            CallInfoActions.Children.Add(ActionButton("", "Message", () => MessageTarget(target)));
+        CallInfoActions.Children.Add(ActionButton(Glyphs.Phone, "Voice", () => CallTargetNow(target, video: false)));
+        CallInfoActions.Children.Add(ActionButton(Glyphs.VideoCall, "Video", () => CallTargetNow(target, video: true)));
 
         // Their calls, newest first, under each day.
         CallInfoEntries.Children.Clear();
@@ -489,27 +489,6 @@ public sealed partial class MainWindow
         Grid.SetColumn(trailing, 2);
         row.Children.Add(trailing);
         return row;
-    }
-
-    /// <summary>A round button with its label underneath (Message, Voice, New call link…).</summary>
-    private static StackPanel InfoAction(string glyph, string label, Action action)
-    {
-        var button = new Button
-        {
-            Width = 66,
-            Height = 50,
-            CornerRadius = new CornerRadius(25),
-            Content = new FontIcon { Glyph = glyph, FontSize = 18 },
-            BorderThickness = new Thickness(0),
-            Background = Themed.Brush("SubtleFillColorSecondaryBrush"),
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        AutomationProperties.SetName(button, label);
-        button.Click += (_, _) => action();
-        var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(button);
-        panel.Children.Add(new TextBlock { Text = label, FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center });
-        return panel;
     }
 
     private void CallInfoClose_Click(object sender, RoutedEventArgs e) => ShowCallInfo(null);

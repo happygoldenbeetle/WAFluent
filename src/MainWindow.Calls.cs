@@ -236,6 +236,9 @@ public sealed partial class MainWindow
                         case "calls-link": NewCallLink(demo: true); break;
                     }
                     break;
+                case "call-contact-info":
+                    OpenInfo();   // the round buttons under the name
+                    break;
                 case "calls-badge":
                     // The rail's missed-call count, as if the Calls page had never been looked at (nothing is saved).
                     ViewModel.UseCallsSeen(1);

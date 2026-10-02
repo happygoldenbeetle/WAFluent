@@ -187,6 +187,9 @@ public sealed partial class MainWindow
     }
 
     /// <summary>Round-cornered square with an icon, the label underneath (Voice / Video / Add).</summary>
+    /// <summary>How far down the icon font's glyphs need to go to look centred (they're drawn a little high in their box).</summary>
+    private const double IconNudge = 0;
+
     private static StackPanel ActionButton(string glyph, string label, Action action)
     {
         var button = new Button
@@ -194,9 +197,15 @@ public sealed partial class MainWindow
             Width = 66,
             Height = 50,
             CornerRadius = new CornerRadius(25),
-            Content = new FontIcon { Glyph = glyph, FontSize = 18 },
+            // No padding: the button's default has one more pixel under the icon than over it,
+            // which left every icon sitting high in its pill.
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Content = new FontIcon { Glyph = glyph, FontSize = 18, Margin = new Thickness(0, IconNudge, 0, 0) },
             BorderThickness = new Thickness(0),
             Background = Helpers.Themed.Brush("SubtleFillColorSecondaryBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(button, label);
         button.Click += (_, _) => action();
