@@ -119,11 +119,7 @@
                     <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
                     <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
                 </Button.Resources>
-                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5">
-                    <FontIcon.RenderTransform>
-                        <RotateTransform Angle="135" />
-                    </FontIcon.RenderTransform>
-                </FontIcon>
+                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><RotateTransform Angle="119" /></FontIcon.RenderTransform></FontIcon>
             </Button>
             <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"
                     ToolTipService.ToolTip="Accept" AutomationProperties.Name="Accept" Click="Accept_Click">
@@ -158,7 +154,7 @@
             <!-- More: which microphone and camera the call uses. -->
             <Button Style="{StaticResource CallButtonStyle}" ToolTipService.ToolTip="Microphone and camera" AutomationProperties.Name="Microphone and camera"
                     Click="More_Click">
-                <FontIcon Glyph="&#xE712;" FontSize="16" />
+                <FontIcon Glyph="&#xE70D;" FontSize="14" />
             </Button>
             <Button Width="64" Height="44" Padding="0" CornerRadius="22" BorderThickness="0"
                     ToolTipService.ToolTip="End call" AutomationProperties.Name="End call" Click="EndCall_Click">
@@ -171,11 +167,7 @@
                     <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
                 </Button.Resources>
                 <!-- A phone receiver turned face-down reads as "hang up". -->
-                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5">
-                    <FontIcon.RenderTransform>
-                        <RotateTransform Angle="135" />
-                    </FontIcon.RenderTransform>
-                </FontIcon>
+                <FontIcon Glyph="&#xE717;" FontSize="18" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><RotateTransform Angle="119" /></FontIcon.RenderTransform></FontIcon>
             </Button>
         </StackPanel>
     </Grid>
