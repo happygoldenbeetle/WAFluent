@@ -174,10 +174,10 @@ def mark(mask, fill=INK):
 def icon(bubble_at, bars, corner=10.0):
     cx, cy, r, tail = bubble_at
     return render([
-        # The square: mid green at the top left to deep green at the bottom right.
-        solid(rrect(3.0, 3.0, 45.0, 45.0, corner), ((58, 222, 118), (7, 112, 66)), rim=0.45, rim_width=0.55),
+        # The square: light green at the top left to mid green at the bottom right.
+        solid(rrect(3.0, 3.0, 45.0, 45.0, corner), ((104, 238, 148), (24, 168, 96)), rim=0.5, rim_width=0.55),
         # The glass bubble: the square shows through it, frosted, under a pale body lit from the top left.
-        glass(bubble(cx, cy, r, tail, a=(114, 150)), ((240, 255, 246), (170, 238, 202)), see=0.5, blur=3.0, tint=(0.5, 0.1)),
+        glass(bubble(cx, cy, r, tail, a=(114, 150)), ((248, 255, 251), (206, 247, 226)), see=0.3, blur=3.0, tint=(0.6, 0.22)),
         mark(bar(*bars[0])),
         mark(bar(*bars[1])),
     ])
