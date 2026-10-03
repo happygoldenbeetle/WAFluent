@@ -107,6 +107,98 @@ public sealed partial class MainWindow : Window
                                                             SettingsPanel, ContactInfoView, GalleryScroll })
             SmoothScroll.Attach(scrolling);
 #if DEBUG
+        // WAFLUENT_SELFTEST=scroll-stuck-live: on the linked account, the chat named in %TEMP%\wafluent-test-chat.txt is
+        // scrolled up and down in quick bursts without a wheel (as many notches down as up, so it should end where it
+        // began), a bubble near the middle followed on screen every frame. Frames that move against the way it was
+        // last turned, and how far it ends from where it started, go to the file: positions and counts only.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "scroll-stuck-live")
+            Root.Loaded += async (_, _) =>
+            {
+                var lines = new List<string>();
+                void Save() => File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+                var id = File.ReadAllText(Path.Combine(Path.GetTempPath(), "wafluent-test-chat.txt")).Trim();
+                for (var i = 0; i < 40 && ViewModel.ChatById(id) is null; i++) await Task.Delay(500);
+                if (ViewModel.ChatById(id) is not { } chat)
+                {
+                    lines.Add("the chat isn't listed");
+                    Save();
+                    return;
+                }
+                ViewModel.SelectedChat = chat;
+                await Task.Delay(6000);
+                // Up a long way first (WAFLUENT_TEST_UP notches; a screen and a half when it isn't set): towards the
+                // top, where older messages are fetched and put in above while the list is moving.
+                var far = int.TryParse(Environment.GetEnvironmentVariable("WAFLUENT_TEST_UP"), out var asked) ? asked : 10;
+                for (var notch = 0; notch < far; notch++)
+                {
+                    SmoothScroll.Nudge(MessagesScroller, -110);
+                    await Task.Delay(40);
+                }
+                await Task.Delay(1500);
+                double Top(UIElement el) => el.TransformToVisual(MessagesScroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                var middle = MessagesScroller.ActualHeight / 2;
+                var watched = Enumerable.Range(0, Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(Messages))
+                    .Select(i => Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(Messages, i)).OfType<FrameworkElement>()
+                    .Where(r => r.ActualHeight > 0 && Top(r) > 0 && Top(r) < MessagesScroller.ActualHeight).OrderBy(r => Math.Abs(Top(r) - middle)).FirstOrDefault();
+                if (watched is null)
+                {
+                    lines.Add("no bubble to watch");
+                    Save();
+                    return;
+                }
+                var message = watched.Tag;
+                var start = Top(watched);
+                lines.Add($"{chat.Messages.Count} rows; watching a bubble at {start:0} of {MessagesScroller.ActualHeight:0}, offset {MessagesScroller.VerticalOffset:0} of {MessagesScroller.ScrollableHeight:0}");
+                var (way, since, wrong, worst, frames, lost, stalls) = (0, 0, 0, 0.0, 0, 0, 0);
+                var rowsBefore = chat.Messages.Count;
+                double? before = null;
+                var trace = new List<string>();
+                EventHandler<object> read = (_, _) =>
+                {
+                    frames++;
+                    since++;
+                    if (!ReferenceEquals(watched.Tag, message)) { lost++; before = null; return; }
+                    var top = Top(watched);
+                    if (before is { } was && way != 0 && since > 3)
+                    {
+                        var along = (was - top) * way;   // positive: it moved the way it was turned
+                        // Gliding with room to go, and nothing moved: stuck.
+                        if (Math.Abs(along) < 0.05 && SmoothScroll.IsGliding(MessagesScroller)
+                            && MessagesScroller.VerticalOffset > 1 && MessagesScroller.VerticalOffset < MessagesScroller.ScrollableHeight - 1) stalls++;
+                        if (along < -2)
+                        {
+                            wrong++;
+                            worst = Math.Min(worst, along);
+                            if (trace.Count < 8) trace.Add($"frame {frames}: {along:0} px against the turn (bubble {was:0}->{top:0}, offset {MessagesScroller.VerticalOffset:0} of {MessagesScroller.ScrollableHeight:0})");
+                        }
+                    }
+                    before = top;
+                };
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
+                var random = new Random(7);
+                for (var burst = 0; burst < 14; burst++)
+                {
+                    var notches = 3 + random.Next(6);
+                    foreach (var direction in new[] { -1, 1 })
+                    {
+                        (way, since) = (direction, 0);
+                        for (var notch = 0; notch < notches; notch++)
+                        {
+                            SmoothScroll.Nudge(MessagesScroller, direction * 110);
+                            await Task.Delay(22);
+                        }
+                        await Task.Delay(40 + random.Next(120));
+                    }
+                }
+                way = 0;
+                await Task.Delay(1800);
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
+                lines.Add($"rows now {chat.Messages.Count} (were {rowsBefore}); offset {MessagesScroller.VerticalOffset:0} of {MessagesScroller.ScrollableHeight:0}; frames stuck while gliding: {stalls}");
+                lines.Add($"{frames} frames; {wrong} moved against the turn (worst {worst:0} px); the bubble ended {(ReferenceEquals(watched.Tag, message) ? $"{Top(watched) - start:0} px from where it began" : "recycled")}; "
+                          + $"frames without it: {lost}; real wheel turns: {SmoothScroll.Wheels}; list shifts followed: {SmoothScroll.Shifts} ({SmoothScroll.Shifted:0} px)");
+                lines.AddRange(trace);
+                Save();
+            };
         // WAFLUENT_SELFTEST=scroll-live: on the linked account, the chat named in %TEMP%\wafluent-test-chat.txt (the one
         // with the most pictures) is scrolled up a long way without a wheel. Frame times go to the file, and for each
         // slow frame what kinds of row were built in it: kinds and counts only, nothing of what's in them.

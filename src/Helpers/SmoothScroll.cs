@@ -43,7 +43,7 @@ public static class SmoothScroll
     /// <summary>The views that have it (one handler each, however often they're attached).</summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ScrollViewer, object> Hooked = new();
 
-    /// <summary>For the self-test: turns of a real wheel seen, and times a glide followed the list shifting under it (and by how much in all).</summary>
+    /// <summary>For the self-test: turns of a real wheel seen, and times a glide took hold of a row (and nothing: kept for the test's line).</summary>
     internal static int Wheels, Shifts;
     internal static double Shifted;
 
@@ -58,16 +58,25 @@ public static class SmoothScroll
         /// <summary>Still gliding.</summary>
         public bool Gliding => _running;
 
-        /// <summary>
-        /// Where the glide has the view, kept here rather than read back: a move takes a frame or
-        /// two to show in the view's own offset, and stepping on from a stale reading loses
-        /// distance and jitters backwards.
-        /// </summary>
-        private double _at;
-        /// <summary>The view's offset as read last frame, the last two steps made, and how far the view could scroll then.</summary>
-        private double _read, _step, _before, _height;
         private bool _running;
         private long _then;
+
+        // In a list that builds its rows as they come into view (an ItemsRepeater: the conversation),
+        // offsets aren't a fixed ruler: rows turn out taller or shorter than guessed and every offset
+        // after them moves. So the glide doesn't keep a position there. It holds on to one row that's
+        // on screen and says where on screen that row should be; each frame the view is put wherever
+        // makes that true. However the list renumbers itself, the row is still the row.
+        private ItemsRepeater? _rows;
+        private bool _looked;
+        private FrameworkElement? _held;
+        private object? _heldItem;
+        /// <summary>Where the held row's top should be, measured from the top of the view.</summary>
+        private double _heldAt;
+
+        // Everywhere else (lists whose rows are all alike, plain scrolling panels) offsets are a fixed
+        // ruler, and the glide keeps its own place on it: a move takes a frame or two to show in the
+        // view's own offset, and stepping on from a stale reading loses distance.
+        private double _at;
 
         public void Add(double pixels)
         {
@@ -77,15 +86,47 @@ public static class SmoothScroll
             if (_running) return;
             _running = true;
             _then = System.Diagnostics.Stopwatch.GetTimestamp();
-            (_at, _read, _step, _before, _height) = (view.VerticalOffset, view.VerticalOffset, 0, 0, view.ScrollableHeight);
+            _at = view.VerticalOffset;
+            _held = null;
+            if (!_looked)
+            {
+                _looked = true;
+                _rows = view.Content is DependencyObject content ? FindRows(content) : null;
+            }
             CompositionTarget.Rendering += Frame;
+        }
+
+        private static ItemsRepeater? FindRows(DependencyObject root)
+        {
+            if (root is ItemsRepeater rows) return rows;
+            if (root is ScrollViewer) return null;   // another view's rows aren't this one's
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+                if (FindRows(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
+            return null;
         }
 
         private void Stop()
         {
             if (!_running) return;
-            (_running, _left) = (false, 0);
+            (_running, _left, _held) = (false, 0, null);
             CompositionTarget.Rendering -= Frame;
+        }
+
+        private double Top(UIElement row) => row.TransformToVisual(view).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+
+        /// <summary>The row nearest the middle of the view (rows put aside by the repeater sit far off screen).</summary>
+        private FrameworkElement? Middle()
+        {
+            if (_rows is null) return null;
+            FrameworkElement? best = null;
+            var (middle, nearest) = (view.ViewportHeight / 2, double.MaxValue);
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(_rows); i++)
+            {
+                if (VisualTreeHelper.GetChild(_rows, i) is not FrameworkElement { ActualHeight: > 0 } row) continue;
+                var away = Math.Abs(Top(row) + row.ActualHeight / 2 - middle);
+                if (away < nearest) (best, nearest) = (row, away);
+            }
+            return nearest < view.ViewportHeight * 2 ? best : null;
         }
 
         private void Frame(object? sender, object e)
@@ -98,29 +139,50 @@ public static class SmoothScroll
                 Stop();
                 return;
             }
-            // The list grew or shrank (rows built as they come into view are rarely the height that was
-            // guessed for them). When that happens above what's on screen the view renumbers itself:
-            // every offset moves along by that much while the picture stays put. The glide's own
-            // position has to move along with it, or its next step would aim at the old numbering
-            // and the picture would hop. Which of the two happened is told by which fits what the
-            // offset did: moved by the change in height (plus the glide's step), or just by the step.
-            var actual = view.VerticalOffset;
-            var moved = actual - _read;
-            var grew = view.ScrollableHeight - _height;
-            // (A step shows in the offset a frame or two after it's made: none, one or both of the last two may be in `moved`.)
-            double Off(double by) => new[] { 0, _step, _before, _step + _before }.Min(steps => Math.Abs(moved - by - steps));
-            if (Math.Abs(grew) > 0.5 && Off(grew) + 1 < Off(0))
-            {
-                _at += grew;
-                Shifts++;
-                Shifted += Math.Abs(grew);
-            }
-            (_read, _height) = (actual, view.ScrollableHeight);
-
             var step = Math.Abs(_left) < 0.5 ? _left : _left * (1 - Math.Exp(-seconds / EaseSeconds));
-            var to = Math.Clamp(_at + step, 0, view.ScrollableHeight);
             _left -= step;
-            (_before, _step, _at) = (_step, to - _at, to);
+
+            double to;
+            if (_rows is not null)
+            {
+                // The held row was given to another message, or left the view's neighbourhood: another is taken,
+                // where it is now (what the old one was still owed is carried over when it's still there to ask).
+                var owed = 0.0;
+                var gone = _held is null || !ReferenceEquals(_held.Tag ?? _held.DataContext, _heldItem) || _held.ActualHeight <= 0 || _held.Parent is null;
+                if (!gone)
+                {
+                    var top = Top(_held!);
+                    if (top < -view.ViewportHeight || top > 2 * view.ViewportHeight)
+                    {
+                        (gone, owed) = (true, top - _heldAt);
+                    }
+                }
+                if (gone)
+                {
+                    _held = Middle();
+                    if (_held is null)
+                    {
+                        Stop();
+                        return;
+                    }
+                    _heldItem = _held.Tag ?? _held.DataContext;
+                    _heldAt = Top(_held) - owed;
+                    Shifts++;
+                }
+                // Scrolling down moves the row up the screen. The view goes wherever puts the row there: its
+                // offset and the row's place are read together, so a move that hasn't shown yet is in both
+                // and cancels out.
+                _heldAt -= step;
+                var actual = view.VerticalOffset;
+                to = Math.Clamp(actual + Top(_held!) - _heldAt, 0, view.ScrollableHeight);
+                // Against the top or the bottom: the row can't go where it was wanted, so it's wanted where it'll be.
+                _heldAt = Top(_held!) - (to - actual);
+            }
+            else
+            {
+                to = Math.Clamp(_at + step, 0, view.ScrollableHeight);
+                _at = to;
+            }
             view.ChangeView(null, to, null, disableAnimation: true);
             // Arrived, or against the top or the bottom: nothing more to do.
             if (Math.Abs(_left) < 0.01 || (to <= 0 && _left < 0) || (to >= view.ScrollableHeight && _left > 0)) Stop();
@@ -128,6 +190,9 @@ public static class SmoothScroll
     }
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ScrollViewer, State> States = new();
+
+    /// <summary>Whether a view is gliding right now (the self-test).</summary>
+    internal static bool IsGliding(ScrollViewer view) => States.TryGetValue(view, out var state) && state.Gliding;
 
     /// <summary>What a turn of the wheel does, without a wheel (the self-test): this much further, smoothly.</summary>
     internal static void Nudge(ScrollViewer view, double pixels) => States.GetValue(view, v => new State(v)).Add(pixels);
