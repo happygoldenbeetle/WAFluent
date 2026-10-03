@@ -2,6 +2,17 @@
 
 A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/dark theme, no browser engine.
 
+![WAFluent with a chat open, dark theme](docs/screenshots/chat-dark.jpg)
+
+| | |
+|---|---|
+| ![Light theme](docs/screenshots/chat-light.jpg) | ![Calls: favourites, recent calls and a contact's call history](docs/screenshots/calls.jpg) |
+| Light theme | Calls |
+| ![A channel's posts with reactions and forward counts](docs/screenshots/channels.jpg) | |
+| Channels | |
+
+<sub>Screenshots show the app's built-in sample chats (`--sample`), not a real account.</sub>
+
 > **Status:** links to your phone by QR code, shows your real chats: photos, stickers, voice notes and audio, videos and GIFs,
 > documents, locations, contact cards, polls, link previews and WhatsApp's notices (missed calls, group changes),
 > and sends text messages, replies (drag a message to the right), reactions (right-click or double-click a message),
@@ -11,7 +22,9 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 > Voice and video calls with one person: call from a chat, answer or decline one that rings (with Windows' incoming-call
 > notification), mute, turn the camera on or off, switch a voice call to video, pick the microphone and camera, hang up.
 > The Calls page lists your call history (from the phone and this PC) with favourites, a number pad to call any number,
-> and call links to share. Group calls aren't wired up yet.
+> and call links to share. Calls show in the chat as cards you can click to call again. Group calls are switched off for now.
+> Status: your contacts' updates in a viewer, with seen receipts and replies.
+> Channels: the ones you follow and ones to find, their posts, reactions, follow, unfollow and mute.
 > WAFluent is unofficial and not affiliated with WhatsApp or Meta; unofficial clients can get accounts suspended.
 > Use a spare number while testing.
 
@@ -26,7 +39,7 @@ WAFluent.exe (WinUI 3, C#)  ⇄  JSON lines over stdin/stdout  ⇄  core\wafluen
 - **`src/`** is the WinUI app. It starts the core, shows the QR/link screen until chats are available, then the chat list and conversations.
 
 Data lives in `%LOCALAPPDATA%\WAFluent`: `whatsapp.db` (session keys), `wafluent.db` (chats/messages), `avatars\` (profile pictures, re-checked daily), `core.log`.
-**Settings → Log out** unlinks the device and deletes the local chats.
+**Profile → Log out** unlinks the device and deletes the local chats.
 
 ## Build
 
@@ -47,10 +60,22 @@ dotnet build -p:Platform=x64      # also runs `cargo build` for core/
 
 The app is unpackaged and self-contained (Windows App SDK 2.5), so no MSIX install or runtime download is needed.
 
+### Installer
+
+`tools/installer.iss` ([Inno Setup 6](https://jrsoftware.org/isinfo.php)) makes `dist\WAFluent-<version>-setup.exe` from a release build:
+a per-user install with no admin prompt, Start menu and desktop shortcuts, and an entry in Installed apps to remove it.
+
+```powershell
+cd src
+dotnet build -c Release -p:Platform=x64 --self-contained true -p:Version=0.1.0
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" ..\tools\installer.iss
+```
+
 ## Credits
 
 Emoji names, categories and shortcodes: [emojibase](https://github.com/milesj/emojibase) (MIT), trimmed by `tools/make-emoji-data.py`.
 Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
+Screenshot background: a photo by [Milad Fakurian](https://unsplash.com/@fakurian) on [Unsplash](https://unsplash.com/photos/E8Ufcyxz514), blurred.
 
 ## Layout
 
@@ -73,7 +98,11 @@ Tray icon: [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT).
 | `src/MainWindow.Swipe.cs` | Drag-to-reply gesture |
 | `src/MainWindow.Reactions.cs` | Reaction row in the message menu, emoji flight into the pill |
 | `src/MainWindow.ChatListPane.cs` | Resizable / collapsible chat list (remembered in `ui.json`) |
-| `src/MainWindow.Settings.cs` | Settings (quick reactions, developer mode) |
+| `src/MainWindow.Settings.cs` | Settings (quick reactions, accent colour) |
+| `core/src/status.rs`, `src/MainWindow.Status.cs` | Status: contacts' updates, the viewer, replies |
+| `core/src/channels.rs`, `src/MainWindow.Channels.cs` | Channels: the list, posts, follow, mute, reactions |
+| `tools/installer.iss` | The installer (Inno Setup) |
+| `docs/screenshots/` | The pictures in this README |
 | `src/MainWindow.ChatMenu.cs` | Chat list menu, filters, Starred view, select mode, toast |
 | `src/MainWindow.Emoji.cs`, `src/Controls/EmojiPicker.xaml` | Emoji keyboard and :shortcode: autocomplete |
 | `core/src/actions.rs` | Chat and message actions sent to WhatsApp |
