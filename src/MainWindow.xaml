@@ -1719,7 +1719,7 @@
                                     <ColumnDefinition Width="96" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="NewContactCode" Header="Country" PlaceholderText="+92" TextChanged="NewContact_TextChanged" />
+                                <TextBox x:Name="NewContactCode" Header="Country" PlaceholderText="Code" TextChanged="NewContact_TextChanged" />
                                 <TextBox x:Name="NewContactPhone" Grid.Column="1" Header="Phone" InputScope="TelephoneNumber"
                                          TextChanged="NewContact_TextChanged" />
                             </Grid>

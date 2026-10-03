@@ -150,7 +150,7 @@ async fn followers(client: &Client, id: &str) -> Option<u64> {
     }
 }
 
-/// The two-letter country of your own number ("PK"), for the directory.
+/// The two-letter country of your own number ("GB"), for the directory.
 fn country(client: &Client) -> String {
     let digits = client.persistence_manager().get_device_snapshot().pn.as_ref().map(|j| j.user.to_string()).unwrap_or_default();
     store::phone_region(&digits).unwrap_or_else(|| "US".into())

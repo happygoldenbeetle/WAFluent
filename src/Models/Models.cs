@@ -407,7 +407,7 @@ public sealed class Chat : Observable
     }
     public string PushNameLine => _pushName.Length > 0 && _pushName != Name ? "~" + _pushName : "";
 
-    /// <summary>1:1 chats: the number split for the New contact form ("PK", "+92", "302 9328645").</summary>
+    /// <summary>1:1 chats: the number split for the New contact form ("GB", "+44", "20 7946 0123").</summary>
     public string PhoneRegion { get; set; } = "";
     public string PhoneCode { get; set; } = "";
     public string PhoneNational { get; set; } = "";

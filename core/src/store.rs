@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS reactions(
     ts         INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(chat_id, message_id, reactor)
 );
--- Phone numbers behind LIDs, for showing +92 333 1234567 (display only).
+-- Phone numbers behind LIDs, for showing +44 20 7946 0123 (display only).
 CREATE TABLE IF NOT EXISTS numbers(
     lid    TEXT PRIMARY KEY,
     number TEXT NOT NULL
@@ -2080,7 +2080,7 @@ impl Store {
             .flatten()
     }
 
-    /// Best available name: your address book, then the phone number ("+92 333 1234567"),
+    /// Best available name: your address book, then the phone number ("+44 20 7946 0123"),
     /// then the name they gave themselves (only when WhatsApp hides the number).
     /// One person's receipt: kept when it moves forward (delivered, then read).
     pub fn set_receipt(&self, chat_id: &str, message_id: &str, user: &str, status: u8, ts: i64) {
@@ -2114,7 +2114,7 @@ impl Store {
             .collect()
     }
 
-    /// "@923001234567" (how WhatsApp writes a mention) becomes "@Name", the name set between
+    /// "@442079460123" (how WhatsApp writes a mention) becomes "@Name", the name set between
     /// Unicode isolates (U+2068 U+2069) so the app can colour it. Unknown numbers stay.
     pub fn render_mentions(&self, text: &str) -> String {
         if !text.contains('@') {
@@ -2238,12 +2238,12 @@ pub fn bare_jid(jid: &str) -> String {
     }
 }
 
-/// "923029328645" -> "PK".
+/// "442079460123" -> "GB".
 pub fn phone_region(digits: &str) -> Option<String> {
     phone_parts(digits).map(|p| p.region).filter(|r| r.len() == 2)
 }
 
-/// "923029328645" -> PK / +92 / "302 9328645".
+/// "442079460123" -> GB / +44 / "20 7946 0123".
 fn phone_parts(digits: &str) -> Option<PhoneDto> {
     let number = phonenumber::parse(None, format!("+{digits}")).ok()?;
     let code = format!("+{}", number.country().code());
@@ -2253,7 +2253,7 @@ fn phone_parts(digits: &str) -> Option<PhoneDto> {
     Some(PhoneDto { region, code, national })
 }
 
-/// "923331234567" -> "+92 333 1234567" (international format for the number's country).
+/// "442079460123" -> "+44 20 7946 0123" (international format for the number's country).
 pub fn format_phone(digits: &str) -> String {
     let plus = format!("+{digits}");
     match phonenumber::parse(None, &plus) {

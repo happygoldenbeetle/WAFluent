@@ -188,11 +188,11 @@ pub struct ChatDto {
 #[derive(Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct PhoneDto {
-    /// ISO region ("PK").
+    /// ISO region ("GB").
     pub region: String,
-    /// Calling code with "+" ("+92").
+    /// Calling code with "+" ("+44").
     pub code: String,
-    /// The rest, spaced ("302 9328645").
+    /// The rest, spaced ("20 7946 0123").
     pub national: String,
 }
 

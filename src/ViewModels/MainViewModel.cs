@@ -166,7 +166,7 @@ public sealed partial class MainViewModel : Observable
                                          null, null, [.. poll.Reactions], poll.MyReaction, poll.Starred, poll.Edited, null, extra));
     }
 
-    /// <summary>The 1:1 chat with this phone number (any format: "+92 300 1234567", "923001234567"...).</summary>
+    /// <summary>The 1:1 chat with this phone number (any format: "+44 20 7946 0123", "442079460123"...).</summary>
     public Chat? FindChatByPhone(string phone)
     {
         var digits = new string(phone.Where(char.IsDigit).ToArray());
