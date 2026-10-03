@@ -192,8 +192,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -211,20 +211,20 @@
                                     </Grid.RowDefinitions>
                                     <!-- Group chats: who wrote it. -->
                                     <StackPanel>
-                                        <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="{x:Bind ShowSender}">
+                                        <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="0,0,0,8" x:Load="{x:Bind ShowSender}">
                                             <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                        TextLineBounds="Tight" Foreground="{ThemeResource ChatAccentTextBrush}"
                                                        TextTrimming="CharacterEllipsis" />
                                         </controls:Redact>
                                         <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,-2,0,8" Visibility="{x:Bind IsForwarded}">
+                                        <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="0,-2,0,8" x:Load="{x:Bind IsForwarded}">
                                             <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                             <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                         </StackPanel>
                                     </StackPanel>
                                     <!-- Replies: the quoted message, inset 4 px from the bubble edge. -->
                                     <controls:QuoteBlock Grid.Row="1" Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,10"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="-6,-6,-6,10"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- The transparent TimeSpacer run reserves room for the timestamp on the last line. -->
                                     <!-- Full line spacing between lines; the negative margins trim only the space above the
@@ -233,7 +233,7 @@
                                          wrapped lines overlap.) -->
                                     <!-- Link preview: the sender's card (picture, title, description, site). Click opens the link. -->
                                     <Border Grid.Row="2" Margin="-6,-6,-6,10" CornerRadius="{x:Bind LinkCardCorners}" Background="{ThemeResource FileCardBrush}"
-                                            Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" helpers:HandCursor.On="True" MaxWidth="{x:Bind helpers:Ui.LinkCardWidth(IsPost)}" HorizontalAlignment="Stretch">
+                                            x:Name="LinkPreview" x:Load="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" helpers:HandCursor.On="True" MaxWidth="{x:Bind helpers:Ui.LinkCardWidth(IsPost)}" HorizontalAlignment="Stretch">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -263,18 +263,18 @@
                                         <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
                                                    Margin="8,0,2,0" Visibility="{x:Bind Edited}" />
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                        <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                        <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                x:Load="{x:Bind IsOutgoing}" />
                                     </StackPanel>
                                 </Grid>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -292,8 +292,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -302,12 +302,12 @@
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,4,6,6" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="6,4,6,6" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- Click opens the picture in the viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind PictureCorners}" Background="{ThemeResource FileCardBrush}"
@@ -361,19 +361,19 @@
                                         <TextBlock Text="Edited" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom"
                                                    Margin="8,0,2,0" Visibility="{x:Bind Edited}" />
                                         <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    x:Load="{x:Bind IsOutgoing}" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -391,8 +391,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -400,28 +400,28 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="8,4,10,4">
                                 <StackPanel>
-                                    <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,2" Visibility="{x:Bind ShowSender}">
+                                    <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="0,0,0,2" x:Load="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" />
                                     </controls:Redact>
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,2" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="0,2,0,2" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-4,0,-6,0"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="-4,0,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <controls:VoicePlayer Message="{x:Bind}" />
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -440,8 +440,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -452,7 +452,7 @@
                                            Foreground="{ThemeResource ChatAccentTextBrush}" />
                             </controls:Redact>
                             <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" Visibility="{x:Bind IsForwarded}">
+                            <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" x:Load="{x:Bind IsForwarded}">
                                 <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                 <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                             </StackPanel>
@@ -470,12 +470,12 @@
                                 </StackPanel>
                             </Border>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -494,8 +494,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -506,7 +506,7 @@
                                            Foreground="{ThemeResource ChatAccentTextBrush}" />
                             </controls:Redact>
                             <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" Visibility="{x:Bind IsForwarded}">
+                            <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="0,0,0,2" x:Load="{x:Bind IsForwarded}">
                                 <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                 <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                             </StackPanel>
@@ -521,12 +521,12 @@
                                 </StackPanel>
                             </Border>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -544,8 +544,8 @@
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
                             <!-- Select mode: a circle in the left gutter, ticked when picked. -->
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -554,12 +554,12 @@
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="330" Spacing="4">
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,2,4,2" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="4,2,4,2" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,0"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="-2,-2,-2,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <Border Background="{ThemeResource FileCardBrush}" CornerRadius="{x:Bind FileCardCorners}" Padding="10,12,10,10"
                                             Tag="{x:Bind}" CanDrag="True" DragStarting="Media_DragStarting">
@@ -616,12 +616,12 @@
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -639,8 +639,8 @@
                         <!-- Videos, GIFs and round video messages: the sender's preview frame with a play button. -->
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -648,17 +648,17 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="{x:Bind MediaWidth}">
-                                    <controls:Redact HorizontalAlignment="Left" Margin="6,2,6,6" Visibility="{x:Bind ShowSender}">
+                                    <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="6,2,6,6" x:Load="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- Click: download (first time), then play in the video viewer. -->
                                     <Grid Height="{x:Bind MediaHeight}" CornerRadius="{x:Bind VideoCorners}"
@@ -680,7 +680,7 @@
                                             <ProgressRing Width="52" Height="52" Foreground="White" IsActive="{x:Bind IsMediaLoading, Mode=OneWay}" />
                                         </Grid>
                                         <!-- GIFs play by themselves while on screen, over the preview and its badge. -->
-                                        <controls:GifPlayer Source="{x:Bind MediaPath, Mode=OneWay}" Visibility="{x:Bind IsGif}" />
+                                        <controls:GifPlayer x:Name="Gif" Source="{x:Bind MediaPath, Mode=OneWay}" x:Load="{x:Bind IsGif}" />
                                         <!-- Uploading: a spinning ring around ✕ (cancels), like WhatsApp. -->
                                         <Grid Width="54" Height="54" HorizontalAlignment="Center" VerticalAlignment="Center"
                                               Visibility="{x:Bind IsUploading, Mode=OneWay}">
@@ -721,19 +721,19 @@
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    x:Load="{x:Bind IsOutgoing}" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -751,8 +751,8 @@
                         <!-- Shared locations (and live locations). -->
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -760,17 +760,17 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="4">
                                 <StackPanel Width="300">
-                                    <controls:Redact HorizontalAlignment="Left" Margin="6,2,6,6" Visibility="{x:Bind ShowSender}">
+                                    <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="6,2,6,6" x:Load="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="6,0,6,6" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="0,0,0,4"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="0,0,0,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <!-- A sharp street map (Controls/MapView.cs); click opens the place in Google Maps. -->
                                     <Grid Height="150" CornerRadius="{x:Bind MapCorners}" Background="{ThemeResource FileCardBrush}" Tag="{x:Bind}" Tapped="Location_Tapped" helpers:HandCursor.On="True">
@@ -819,19 +819,19 @@
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    x:Load="{x:Bind IsOutgoing}" />
                                         </StackPanel>
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -849,8 +849,8 @@
                         <!-- Shared contact cards. -->
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -858,17 +858,17 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="6">
                                 <StackPanel Width="280">
-                                    <controls:Redact HorizontalAlignment="Left" Margin="4,2,4,6" Visibility="{x:Bind ShowSender}">
+                                    <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="4,2,4,6" x:Load="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="4,0,4,6" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="4,0,4,6" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-2,-2,-2,4"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="-2,-2,-2,4"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <Grid ColumnSpacing="12" Padding="4,4,4,0">
                                         <Grid.ColumnDefinitions>
@@ -892,8 +892,8 @@
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    x:Load="{x:Bind IsOutgoing}" />
                                         </StackPanel>
                                     </Grid>
                                     <Rectangle Height="1" Margin="-6,4,-6,0" Fill="{ThemeResource FileCardDividerBrush}" />
@@ -910,12 +910,12 @@
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -966,8 +966,8 @@
                         <!-- Polls: tap an option to vote; counts and bars from everyone's votes (synced with the phone). -->
                         <Grid Tag="{x:Bind}" ContextRequested="Message_ContextRequested" Margin="-28,0,-28,0" Padding="28,1,28,1"
                               Background="{x:Bind helpers:Ui.SelectionTint(IsSelected), Mode=OneWay}">
-                            <Grid Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
-                                  Visibility="{x:Bind Selecting, Mode=OneWay}">
+                            <Grid x:Name="SelectCircle" Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-24,0,0,0"
+                                  x:Load="{x:Bind Selecting, Mode=OneWay}">
                                 <Ellipse Stroke="{ThemeResource TextFillColorSecondaryBrush}" StrokeThickness="1.5" />
                                 <Ellipse Fill="{ThemeResource ChatAccentBrush}" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
                                 <FontIcon Glyph="&#xE73E;" FontSize="11" Foreground="White" Visibility="{x:Bind IsSelected, Mode=OneWay}" />
@@ -975,17 +975,17 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="10">
                                 <StackPanel Width="300" Spacing="10">
-                                    <controls:Redact HorizontalAlignment="Left" Margin="0,0,0,-2" Visibility="{x:Bind ShowSender}">
+                                    <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="0,0,0,-2" x:Load="{x:Bind ShowSender}">
                                         <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </controls:Redact>
                                     <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,0,-2" Visibility="{x:Bind IsForwarded}">
+                                    <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="0,0,0,-2" x:Load="{x:Bind IsForwarded}">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                         <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                     </StackPanel>
                                     <controls:QuoteBlock Author="{x:Bind ReplyName}" Preview="{x:Bind ReplyPreview}" Glyph="{x:Bind ReplyGlyph}" Thumb="{x:Bind ReplyThumb}"
-                                                         FromMe="{x:Bind ReplyFromMe}" Visibility="{x:Bind HasReply}" Margin="-6,-6,-6,0"
+                                                         FromMe="{x:Bind ReplyFromMe}" x:Name="Quote" x:Load="{x:Bind HasReply}" Margin="-6,-6,-6,0"
                                                          Tag="{x:Bind}" Tapped="Quote_Tapped" helpers:HandCursor.On="True" />
                                     <TextBlock Text="{x:Bind Text}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                                                ContextFlyout="{x:Null}" Margin="0,-4,0,0" />
@@ -1034,8 +1034,8 @@
                                             <FontIcon Glyph="&#xE735;" FontSize="10" Foreground="{ThemeResource MetaTextBrush}" VerticalAlignment="Bottom"
                                                       Margin="0,0,1,0" Visibility="{x:Bind Starred}" />
                                             <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" TextLineBounds="Tight" VerticalAlignment="Bottom" />
-                                            <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
-                                                                    Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
+                                            <controls:DeliveryTicks x:Name="Ticks" Delivery="{x:Bind Delivery, Mode=OneWay}" VerticalAlignment="Bottom" Margin="0,0,0,-2"
+                                                                    x:Load="{x:Bind IsOutgoing}" />
                                         </StackPanel>
                                     </Grid>
                                     <Rectangle Height="1" Margin="-10,0" Fill="{ThemeResource FileCardDividerBrush}" />
@@ -1044,12 +1044,12 @@
                                 </StackPanel>
                             </controls:Bubble>
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" x:Load="{x:Bind helpers:Ui.Has(Reaction), Mode=OneWay}"
                                         Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
                                     <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
                                 </Border>
                                 <!-- A channel's post: forward it (and how often it has been). -->
-                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                <Border x:Name="ForwardPill" Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" x:Load="{x:Bind IsPost}"
                                         Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
                                         <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
@@ -1097,12 +1097,12 @@
                             <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing, IsPost)}" Width="{x:Bind helpers:Ui.PostWidth(IsPost)}">
                                 <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="3">
                                     <StackPanel>
-                                        <controls:Redact HorizontalAlignment="Left" Margin="7,3,6,5" Visibility="{x:Bind ShowSender}">
+                                        <controls:Redact x:Name="Sender" HorizontalAlignment="Left" Margin="7,3,6,5" x:Load="{x:Bind ShowSender}">
                                             <TextBlock Text="{x:Bind SenderName}" FontSize="12.5" FontWeight="SemiBold"
                                                        Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                                         </controls:Redact>
                                         <!-- Forwarded: an arrow and the words, in grey italics, like WhatsApp. -->
-                                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="7,2,6,5" Visibility="{x:Bind IsForwarded}">
+                                        <StackPanel x:Name="ForwardedLabel" Orientation="Horizontal" Spacing="4" Margin="7,2,6,5" x:Load="{x:Bind IsForwarded}">
                                             <FontIcon Glyph="&#xE97A;" FontSize="11" Foreground="{ThemeResource MetaTextBrush}" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
                                             <TextBlock Text="{x:Bind ForwardedText}" FontSize="12" FontStyle="Italic" Foreground="{ThemeResource MetaTextBrush}" />
                                         </StackPanel>

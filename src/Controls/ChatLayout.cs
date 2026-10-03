@@ -63,8 +63,12 @@ public sealed partial class ChatLayout : VirtualizingLayout
         InvalidateMeasure();
     }
 
+    /// <summary>Set by the self-test: every row that took time to get or measure (kind, ms, ms).</summary>
+    internal static List<(string Kind, double Get, double Measure)>? Profile;
+
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
+        var passBegan = System.Diagnostics.Stopwatch.GetTimestamp();
         var count = context.ItemCount;
         // Events and the source can disagree after a burst of changes; the source wins.
         if (_heights.Count > count) _heights.RemoveRange(count, _heights.Count - count);
@@ -83,7 +87,9 @@ public sealed partial class ChatLayout : VirtualizingLayout
             var height = double.IsNaN(known) ? estimate : known;
             if ((y + height >= window.Y && y <= window.Y + window.Height) || i == anchor)
             {
+                var began = System.Diagnostics.Stopwatch.GetTimestamp();
                 var element = context.GetOrCreateElementAt(i);
+                var made = System.Diagnostics.Stopwatch.GetTimestamp();
                 // A message replaced in place (a vote, an edit, a finished download) still has
                 // the old message's element: the layout, not the repeater, has to swap it.
                 // (Message rows carry their message in Tag; the repeater leaves DataContext unset.)
@@ -93,6 +99,12 @@ public sealed partial class ChatLayout : VirtualizingLayout
                     element = context.GetOrCreateElementAt(i);
                 }
                 element.Measure(new Size(width, double.PositiveInfinity));
+                // What building a row costs, by kind (the self-test reads it): getting the element, and measuring it.
+                if (Profile is { } profile)
+                {
+                    var (get, measure) = (System.Diagnostics.Stopwatch.GetElapsedTime(began, made).TotalMilliseconds, System.Diagnostics.Stopwatch.GetElapsedTime(made).TotalMilliseconds);
+                    if (get + measure > 0.5) profile.Add(((context.GetItemAt(i) as Models.Message)?.Kind.ToString() ?? "?", get, measure));
+                }
                 height = element.DesiredSize.Height;
                 Remember(i, height);
                 arranged.Add((element, y, height));
@@ -122,13 +134,16 @@ public sealed partial class ChatLayout : VirtualizingLayout
         if (arranged.Count > 0 && VisualTreeHelper.GetParent(arranged[0].Item1) is ItemsRepeater repeater)
             repeater.InvalidateArrange();
 
+        Profile?.Add(("#measure pass", System.Diagnostics.Stopwatch.GetElapsedTime(passBegan).TotalMilliseconds, arranged.Count));
         return new Size(width, Math.Max(0, y));
     }
 
     protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
     {
+        var began = System.Diagnostics.Stopwatch.GetTimestamp();
         foreach (var (element, top, height) in _arranged)
             element.Arrange(new Rect(0, top, finalSize.Width, height));
+        Profile?.Add(("#arrange pass", System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalMilliseconds, _arranged.Count));
         return finalSize;
     }
 

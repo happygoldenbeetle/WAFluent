@@ -107,6 +107,201 @@ public sealed partial class MainWindow : Window
                                                             SettingsPanel, ContactInfoView, GalleryScroll })
             SmoothScroll.Attach(scrolling);
 #if DEBUG
+        // WAFLUENT_SELFTEST=scroll-live: on the linked account, the chat named in %TEMP%\wafluent-test-chat.txt (the one
+        // with the most pictures) is scrolled up a long way without a wheel. Frame times go to the file, and for each
+        // slow frame what kinds of row were built in it: kinds and counts only, nothing of what's in them.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "scroll-live")
+            Root.Loaded += async (_, _) =>
+            {
+                var lines = new List<string>();
+                void Save() => File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+                var id = File.ReadAllText(Path.Combine(Path.GetTempPath(), "wafluent-test-chat.txt")).Trim();
+                for (var i = 0; i < 40 && ViewModel.ChatById(id) is null; i++) await Task.Delay(500);
+                if (ViewModel.ChatById(id) is not { } chat)
+                {
+                    lines.Add("the chat isn't listed");
+                    Save();
+                    return;
+                }
+                ViewModel.SelectedChat = chat;
+                await Task.Delay(7000);
+                lines.Add($"{chat.Messages.Count} rows loaded: " + string.Join(", ", chat.Messages.GroupBy(m => m.Kind).Select(g => $"{g.Key} {g.Count()}")));
+                var built = new List<string>();
+                Messages.ElementPrepared += (_, e) => built.Add((e.Element as FrameworkElement)?.Tag is Models.Message m ? m.Kind.ToString() : "?");
+                var slow = new List<string>();
+                var times = new List<double>();
+                long last = 0;
+                EventHandler<object> read = (_, _) =>
+                {
+                    var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (last != 0)
+                    {
+                        var ms = System.Diagnostics.Stopwatch.GetElapsedTime(last, tick).TotalMilliseconds;
+                        times.Add(ms);
+                        if (ms > 20) slow.Add($"{ms:0} ms: {(built.Count == 0 ? "nothing built" : string.Join("+", built.GroupBy(k => k).Select(g => $"{g.Key}x{g.Count()}")))}");
+                    }
+                    built.Clear();
+                    last = tick;
+                };
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
+                for (var notch = 0; notch < 60; notch++)
+                {
+                    SmoothScroll.Nudge(MessagesScroller, -110);
+                    await Task.Delay(60);
+                }
+                await Task.Delay(1500);
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
+                lines.Add($"{times.Count} frames; over 20 ms: {times.Count(t => t > 20)}, over 33 ms: {times.Count(t => t > 33)}, over 50 ms: {times.Count(t => t > 50)}, longest {times.DefaultIfEmpty().Max():0} ms; real wheel turns: {SmoothScroll.Wheels}");
+                lines.AddRange(slow.GroupBy(x => x[(x.IndexOf(':') + 2)..]).OrderByDescending(g => g.Count())
+                    .Select(g => $"slow with {g.Key}: {g.Count()} frames, {g.Average(x => double.Parse(x[..x.IndexOf(' ')])):0} ms on average"));
+                Save();
+            };
+        // WAFLUENT_SELFTEST=bubble-cost: what one text bubble costs, piece by piece, away from the list: plain
+        // TextBlocks in the app's font and in Segoe UI alone, then the message template itself.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "bubble-cost")
+            Root.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var lines = new List<string>();
+                double Time(Action work)
+                {
+                    var began = System.Diagnostics.Stopwatch.GetTimestamp();
+                    work();
+                    return System.Diagnostics.Stopwatch.GetElapsedTime(began).TotalMilliseconds;
+                }
+                var room = new Windows.Foundation.Size(480, double.PositiveInfinity);
+                const string words = "Thanks! Could you send me the photos from Saturday when you get a moment?";
+                foreach (var (name, family) in new (string, FontFamily?)[] { ("the app's font", null), ("Segoe UI alone", new FontFamily("Segoe UI")), ("the app's font again", null) })
+                {
+                    var blocks = new List<TextBlock>();
+                    var make = Time(() =>
+                    {
+                        for (var i = 0; i < 100; i++)
+                        {
+                            var block = new TextBlock { Text = words + i, TextWrapping = TextWrapping.Wrap };
+                            if (family is not null) block.FontFamily = family;
+                            blocks.Add(block);
+                        }
+                    });
+                    var measure = Time(() => { foreach (var block in blocks) block.Measure(room); });
+                    lines.Add($"100 TextBlocks in {name}: made in {make:0.0} ms, measured in {measure:0.0} ms ({measure / 100:0.00} ms each)");
+                }
+                var withEmoji = new List<TextBlock>();
+                for (var i = 0; i < 100; i++) withEmoji.Add(new TextBlock { Text = words + " 😂❤️ " + i, TextWrapping = TextWrapping.Wrap });
+                lines.Add($"100 TextBlocks with two emoji each: measured in {Time(() => { foreach (var block in withEmoji) block.Measure(room); }):0.0} ms");
+
+                if (ViewModel.SelectedChat?.Messages.Where(m => m.Kind == MessageKind.Text && !m.IsJumbo).Take(12).ToList() is { Count: > 0 } messages
+                    && Messages.ItemTemplate is Helpers.MessageTemplateSelector selector)
+                {
+                    var (load, bind, measured, arranged, tag, add) = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+                    var host = new Canvas { Opacity = 0, IsHitTestVisible = false };
+                    Root.Children.Add(host);
+                    var rows = new List<FrameworkElement>();
+                    for (var round = 0; round < 3; round++)
+                        foreach (var message in messages)
+                        {
+                            FrameworkElement? row = null;
+                            load += Time(() => row = (FrameworkElement)selector.SelectTemplate(message).LoadContent());
+                            tag += Time(() => row!.Tag = message);
+                            bind += Time(() => row!.DataContext = message);
+                            add += Time(() => host.Children.Add(row!));
+                            measured += Time(() => row!.Measure(new Windows.Foundation.Size(700, double.PositiveInfinity)));
+                            arranged += Time(() => row!.Arrange(new Windows.Foundation.Rect(0, 0, 700, row.DesiredSize.Height)));
+                            rows.Add(row!);
+                        }
+                    var n = rows.Count;
+                    lines.Add($"{n} text bubbles from the template: load {load / n:0.00} ms, set its message (Tag) {tag / n:0.00} ms, set DataContext {bind / n:0.00} ms, add to the window {add / n:0.00} ms, measure {measured / n:0.00} ms, arrange {arranged / n:0.00} ms each");
+                    // What putting them on screen costs: the frames after they were added.
+                    var frameTimes = new List<double>();
+                    long last = 0;
+                    EventHandler<object> read = (_, _) =>
+                    {
+                        var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+                        if (last != 0) frameTimes.Add(System.Diagnostics.Stopwatch.GetElapsedTime(last, tick).TotalMilliseconds);
+                        last = tick;
+                    };
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
+                    await Task.Delay(700);
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
+                    lines.Add($"the frames after adding {n} bubbles at once: {string.Join(", ", frameTimes.Take(6).Select(t => $"{t:0}"))} ms (then {frameTimes.Skip(6).DefaultIfEmpty().Average():0.0} ms each)");
+                    Root.Children.Remove(host);
+                }
+                // The same steps for every kind of row, and for a bare Grid (no template at all).
+                if (Messages.ItemTemplate is Helpers.MessageTemplateSelector each && ViewModel.SelectedChat is { } open)
+                {
+                    var bench = new Canvas { Opacity = 0, IsHitTestVisible = false };
+                    Root.Children.Add(bench);
+                    foreach (var group in open.Messages.GroupBy(m => m.Kind == MessageKind.Text && m.IsJumbo ? "Jumbo" : m.IsUnreadDivider ? "UnreadDivider" : m.Kind.ToString()))
+                    {
+                        var (bind, add, n) = (0.0, 0.0, 0);
+                        foreach (var message in group.Take(6))
+                        {
+                            var row = (FrameworkElement)each.SelectTemplate(message).LoadContent();
+                            row.Tag = message;
+                            var (b, a) = (Time(() => row.DataContext = message), Time(() => bench.Children.Add(row)));
+                            (bind, add) = (bind + b, add + a);
+                            if (b + a > 8) lines.Add($"  a slow {group.Key}: gif {message.IsGif}, has file {message.MediaPath is not null}, thumb {(message.Thumb?.Length ?? 0) / 1024} KB of text: set DataContext {b:0.0} ms, add {a:0.0} ms");
+                            n++;
+                        }
+                        lines.Add($"{group.Key} x{n}: set DataContext {bind / n:0.0} ms, add to the window {add / n:0.0} ms");
+                    }
+                    var (plainBind, plainAdd) = (0.0, 0.0);
+                    for (var i = 0; i < 10; i++)
+                    {
+                        var plain = new Grid();
+                        plain.Children.Add(new TextBlock { Text = "plain" });
+                        plainBind += Time(() => plain.DataContext = open.Messages[0]);
+                        plainAdd += Time(() => bench.Children.Add(plain));
+                    }
+                    lines.Add($"a bare Grid x10: set DataContext {plainBind / 10:0.00} ms, add to the window {plainAdd / 10:0.00} ms");
+                    Root.Children.Remove(bench);
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+            };
+        // WAFLUENT_SELFTEST=scroll-cost: the sample conversation scrolled to its top and back, and what each kind of
+        // row cost to build (getting the element, measuring it).
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "scroll-cost")
+            Root.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var profile = Controls.ChatLayout.Profile = [];
+                // Per frame: how long it took, how much of that was the list's own measure and arrange passes
+                // (and how many), and how many rows were built in it.
+                var frames = new List<(double Ms, double Measure, int Passes, double Arrange, int Rows, int Built)>();
+                long last = 0;
+                EventHandler<object> read = (_, _) =>
+                {
+                    var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+                    if (last != 0)
+                    {
+                        var measures = profile.Where(p => p.Kind == "#measure pass").ToList();
+                        var arranges = profile.Where(p => p.Kind == "#arrange pass").ToList();
+                        frames.Add((System.Diagnostics.Stopwatch.GetElapsedTime(last, tick).TotalMilliseconds, measures.Sum(p => p.Get), measures.Count, arranges.Sum(p => p.Get),
+                                    (int)measures.Select(p => p.Measure).DefaultIfEmpty().Max(), profile.Count(p => p.Kind[0] != '#')));
+                    }
+                    profile.Clear();
+                    last = tick;
+                };
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
+                foreach (var direction in new[] { -1, 1 })
+                    for (var notch = 0; notch < 45; notch++)
+                    {
+                        SmoothScroll.Nudge(MessagesScroller, direction * 110);
+                        await Task.Delay(50);
+                    }
+                await Task.Delay(1200);
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
+                Controls.ChatLayout.Profile = null;
+                string Line(string what, List<(double Ms, double Measure, int Passes, double Arrange, int Rows, int Built)> of) => of.Count == 0 ? $"{what}: none" :
+                    $"{what}: {of.Count} frames, {of.Average(f => f.Ms):0.0} ms each; the list's measure {of.Average(f => f.Measure):0.0} ms in {of.Average(f => f.Passes):0.0} passes, arrange {of.Average(f => f.Arrange):0.0} ms; {of.Average(f => f.Rows):0} rows kept; the rest {of.Average(f => f.Ms - f.Measure - f.Arrange):0.0} ms";
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"),
+                [
+                    Line("frames with a row built", frames.Where(f => f.Built > 0).ToList()),
+                    Line("frames with none built, list laid out", frames.Where(f => f.Built == 0 && f.Passes > 0).ToList()),
+                    Line("frames where the list wasn't touched", frames.Where(f => f.Passes == 0).ToList()),
+                    Line("slow frames (over 20 ms)", frames.Where(f => f.Ms > 20).ToList()),
+                ]);
+            };
         // WAFLUENT_SELFTEST=scroll: the wheel's glide in the sample conversation, without a wheel: five notches up in
         // quick succession, then five down, the view's position read every frame. What it did goes to the file.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "scroll")

@@ -75,6 +75,9 @@ public static class Ui
     /// <summary>A link's card is at most this wide in a message; in a channel's post it's as wide as the post.</summary>
     public static double LinkCardWidth(bool isPost) => isPost ? double.PositiveInfinity : 420;
 
+    /// <summary>There's something in it (for x:Load: a part of a bubble exists only when it has something to show).</summary>
+    public static bool Has(string? text) => !string.IsNullOrEmpty(text);
+
     /// <summary>The forward pill: beside the reactions, or where they'd be when there are none.</summary>
     public static Thickness ForwardPillMargin(string reaction) => new(reaction.Length > 0 ? 6 : 8, -6, 0, 0);
 
@@ -98,14 +101,22 @@ public static class Ui
     public static ImageSource? Sticker(string? path) =>
         path is null ? null : new BitmapImage(new Uri(path)) { DecodePixelWidth = 320 };
 
-    /// <summary>The sender's base64 JPEG preview (a few KB) as an image.</summary>
+    /// <summary>Previews already turned into images, by the text they came from (a bubble asks more than once).</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, BitmapImage> Thumbs = new();
+
+    /// <summary>
+    /// The sender's base64 JPEG preview (a few KB) as an image. It's decoded off the UI thread
+    /// (the image fills in a moment later), and once per preview.
+    /// </summary>
     public static ImageSource? Thumb(string? base64)
     {
         if (string.IsNullOrEmpty(base64)) return null;
+        if (Thumbs.TryGetValue(base64, out var kept)) return kept;
         try
         {
             var image = new BitmapImage();
-            image.SetSource(new MemoryStream(Convert.FromBase64String(base64)).AsRandomAccessStream());
+            _ = image.SetSourceAsync(new MemoryStream(Convert.FromBase64String(base64)).AsRandomAccessStream());
+            Thumbs.AddOrUpdate(base64, image);
             return image;
         }
         catch (Exception)

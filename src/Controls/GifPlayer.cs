@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -10,9 +11,17 @@ namespace WhatsAppNative.Controls;
 /// A GIF in a bubble (WhatsApp sends GIFs as short MP4s): plays muted and looping while any
 /// part of it is on screen, and lets go of the player as soon as it scrolls out of view,
 /// the chat changes or the bubble is recycled, so only visible GIFs decode.
+///
+/// A player is slow to make and to let go of (tens of milliseconds each), so neither is done
+/// where it would stall a scroll: it's made on another thread, and only once the GIF has
+/// stayed on screen for a moment (one that's only passing through never gets one), and it's
+/// let go of on another thread too. The bubble's still preview shows until it's ready.
 /// </summary>
 public sealed partial class GifPlayer : Grid
 {
+    /// <summary>How long a GIF has to stay on screen before it starts.</summary>
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(280);
+
     public static readonly DependencyProperty SourceProperty = DependencyProperty.Register(
         nameof(Source), typeof(string), typeof(GifPlayer), new PropertyMetadata(null, (d, _) => ((GifPlayer)d).Restart()));
 
@@ -26,6 +35,9 @@ public sealed partial class GifPlayer : Grid
     private MediaPlayer? _player;
     private MediaPlayerElement? _view;
     private bool _inView;
+    private DispatcherQueueTimer? _settle;
+    /// <summary>Goes up with every start and stop: a player that finishes being made for an older one is thrown away.</summary>
+    private int _wanted;
 
     public GifPlayer()
     {
@@ -51,19 +63,43 @@ public sealed partial class GifPlayer : Grid
 
     private void Update()
     {
-        if (!_inView || Source is not { Length: > 0 } path || !File.Exists(path))
+        if (!_inView || Source is not { Length: > 0 })
         {
             Stop();
             return;
         }
-        if (_player is not null) return;
-        _player = new MediaPlayer
+        if (_player is not null || _settle is { IsRunning: true }) return;
+        _settle ??= DispatcherQueue.CreateTimer();
+        _settle.Interval = Settle;
+        _settle.IsRepeating = false;
+        _settle.Tick -= Settled;
+        _settle.Tick += Settled;
+        _settle.Start();
+    }
+
+    /// <summary>Still on screen after a moment: the player is made (off this thread) and shown.</summary>
+    private async void Settled(DispatcherQueueTimer sender, object args)
+    {
+        if (!_inView || _player is not null || Source is not { Length: > 0 } path) return;
+        var wanted = ++_wanted;
+        MediaPlayer? player;
+        try
         {
-            Source = MediaSource.CreateFromUri(new Uri(path)),
-            IsLoopingEnabled = true,
-            IsMuted = true,
-            AutoPlay = true,
-        };
+            player = await Task.Run(() => File.Exists(path)
+                ? new MediaPlayer { Source = MediaSource.CreateFromUri(new Uri(path)), IsLoopingEnabled = true, IsMuted = true, AutoPlay = true }
+                : null);
+        }
+        catch (Exception)
+        {
+            return;   // not a file the player takes: the preview stays
+        }
+        if (player is null) return;
+        if (wanted != _wanted || !_inView || Source != path)
+        {
+            LetGo(player);   // it left (or changed) while this was being made
+            return;
+        }
+        _player = player;
         _view = new MediaPlayerElement { Stretch = Stretch.UniformToFill, AreTransportControlsEnabled = false };
         _view.SetMediaPlayer(_player);
         Children.Add(_view);
@@ -71,12 +107,26 @@ public sealed partial class GifPlayer : Grid
 
     private void Stop()
     {
+        _wanted++;
+        _settle?.Stop();
         if (_player is null) return;
-        _player.Pause();
         _view?.SetMediaPlayer(null);
-        _player.Dispose();
-        _player = null;
         Children.Clear();
         _view = null;
+        LetGo(_player);
+        _player = null;
     }
+
+    private static void LetGo(MediaPlayer player) => Task.Run(() =>
+    {
+        try
+        {
+            player.Pause();
+            player.Dispose();
+        }
+        catch (Exception)
+        {
+            // Already gone.
+        }
+    });
 }
