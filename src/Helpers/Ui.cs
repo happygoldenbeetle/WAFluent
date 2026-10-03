@@ -56,6 +56,9 @@ public static class Ui
 
     /// <summary>The bubble colour: green for yours (time pills under stickers and big emoji match).</summary>
     /// <summary>Red for a missed call, the usual grey otherwise.</summary>
+    /// <summary>The icon on a call's card in a chat: red for one you missed.</summary>
+    public static Brush CallCardBrush(bool missed) => Themed.Brush(missed ? "DangerBrush" : "BubbleTextBrush");
+
     public static Brush CallBrush(bool missed) => Themed.Brush(missed ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush");
 
     public static Brush BubbleBrush(bool isOutgoing) => Themed.Brush(isOutgoing ? "OutgoingBubbleBrush" : "IncomingBubbleBrush");

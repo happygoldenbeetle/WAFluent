@@ -276,6 +276,10 @@ public sealed partial class MainWindow
                     // Which ways of opening the speakers and the microphone Windows accepts right now (nothing is played or recorded).
                     File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), await CallAudio.ProbeAsync());
                     break;
+                case "call-cards":
+                    // Calls as they show in a chat (the sample chat has three).
+                    if (ViewModel.SelectedChat?.Messages.LastOrDefault(m => m.Kind == MessageKind.Call) is { } card) ScrollToMessage(card.Id);
+                    break;
                 case "call-contact-info":
                     OpenInfo();   // the round buttons under the name
                     break;

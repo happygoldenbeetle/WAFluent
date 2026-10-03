@@ -265,15 +265,9 @@ pub fn content(message: &wa::Message) -> Option<Content> {
             Some(CallOutcome::ACCEPTED_ELSEWHERE) => "elsewhere",
             _ => "connected",
         };
-        let what = match (result, video) {
-            ("missed", true) => "Missed video call",
-            ("missed", false) => "Missed voice call",
-            (_, true) => "Video call",
-            (_, false) => "Voice call",
-        };
-        // The details go to the Calls page (store::calls reads them back).
+        // The details draw the call's card in the chat, and go to the Calls page (store::calls reads them back).
         let details = json!({ "call": { "video": video, "result": result, "duration": call.duration_secs.unwrap_or(0).max(0) } });
-        return Some(Content::new("text", format!("📞 {what}")).with_extra(details));
+        return Some(Content::new("call", call_title(video, result == "missed")).with_extra(details));
     }
     if let Some(pack) = m.sticker_pack_message.as_option() {
         return Some(Content::new("text", format!("💟 Sticker pack: {}", pack.name.clone().unwrap_or_default())));
@@ -312,6 +306,16 @@ fn card(contact: &wa::message::ContactMessage) -> Value {
         .filter(|n| !n.is_empty())
         .collect();
     json!({ "name": contact.display_name.clone().unwrap_or_default(), "phones": phones })
+}
+
+/// What a call's card in a chat is headed: "Video call", "Missed voice call".
+pub fn call_title(video: bool, missed: bool) -> &'static str {
+    match (missed, video) {
+        (true, true) => "Missed video call",
+        (true, false) => "Missed voice call",
+        (false, true) => "Video call",
+        (false, false) => "Voice call",
+    }
 }
 
 /// Protocol traffic that changes an existing message.

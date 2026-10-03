@@ -20,6 +20,7 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
     public DataTemplate? Jumbo { get; set; }
     public DataTemplate? UnreadDivider { get; set; }
     public DataTemplate? Album { get; set; }
+    public DataTemplate? Call { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) => item is Message m
         ? m.Kind switch
@@ -37,6 +38,7 @@ public sealed partial class MessageTemplateSelector : DataTemplateSelector
             MessageKind.Contact => Contact,
             MessageKind.Poll => Poll,
             MessageKind.System => System,
+            MessageKind.Call => Call,
             _ => Text,
         }
         : Text;

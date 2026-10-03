@@ -82,6 +82,7 @@ public static class Format
         "location" => Glyphs.Location,
         "contact" => Glyphs.Contact,
         "poll" => Glyphs.Poll,
+        "call" => Glyphs.Phone,
         _ => "",
     };
 
@@ -219,10 +220,44 @@ public static class Format
         }).ToList();
     }
 
+    /// <summary>How long a call lasted, in words: "21 seconds", "1 minute", "12 minutes", "1 hour 5 minutes".</summary>
+    public static string CallLength(long seconds)
+    {
+        static string Some(long n, string unit) => n == 1 ? $"1 {unit}" : $"{n} {unit}s";
+        if (seconds < 60) return Some(Math.Max(seconds, 1), "second");
+        var minutes = (seconds + 30) / 60;
+        return minutes < 60 ? Some(minutes, "minute") : minutes % 60 == 0 ? Some(minutes / 60, "hour") : $"{Some(minutes / 60, "hour")} {Some(minutes % 60, "minute")}";
+    }
+
+    /// <summary>A call card's details from the core's {call: {video, result, duration}}: video, missed, the line under the heading.</summary>
+    private static (bool Video, bool Missed, string Detail) CallCard(MessageDto dto)
+    {
+        if (dto.Kind != "call") return (false, false, "");
+        var (video, result, duration) = (dto.Text.Contains("ideo"), dto.Text.StartsWith("Missed") ? "missed" : "connected", 0L);
+        if (dto.Extra is { ValueKind: JsonValueKind.Object } extra && extra.TryGetProperty("call", out var call))
+        {
+            if (call.TryGetProperty("video", out var v)) video = v.ValueKind == JsonValueKind.True;
+            if (call.TryGetProperty("result", out var r)) result = r.GetString() ?? result;
+            if (call.TryGetProperty("duration", out var d) && d.TryGetInt64(out var s)) duration = s;
+        }
+        var detail = result switch
+        {
+            "connected" when duration > 0 => CallLength(duration),
+            "connected" => "",
+            "missed" => "Not answered",
+            "rejected" => "Declined",
+            "elsewhere" => "Answered on another device",
+            "failed" => "Couldn't connect",
+            _ => "No answer",
+        };
+        return (video, result == "missed", detail);
+    }
+
     private static Message Build(MessageDto dto, bool isGroup)
     {
         var when = FromUnix(dto.Ts);
         var media = dto.Media;
+        var callCard = CallCard(dto);
 
         Message Make(MessageKind kind, string text = "", string fileName = "", string fileDetails = "",
                      double width = 300, double height = 200) => new()
@@ -259,6 +294,9 @@ public static class Format
             Thumb = dto.Thumb,
             IsVoiceNote = dto.Kind != "audio",
             IsGif = dto.Kind == "gif",
+            CallVideo = callCard.Video,
+            CallMissed = callCard.Missed,
+            CallDetail = callCard.Detail,
         };
 
         switch (dto.Kind)
@@ -286,6 +324,8 @@ public static class Format
                 return Make(MessageKind.Poll, dto.Text);
             case "system":
                 return Make(MessageKind.System, dto.Text);
+            case "call":
+                return Make(MessageKind.Call, dto.Text);
         }
 
         var label = dto.Kind switch

@@ -172,6 +172,7 @@ async fn run(dir: PathBuf) {
         move |m| call_log::mutation(&ctx, m)
     });
 
+    ctx.db().call_cards_once();
     // Show what we already have while connecting.
     let cached = ctx.db().chats();
     if !cached.is_empty() {
@@ -324,6 +325,32 @@ pub(crate) fn add_notice(ctx: &Ctx, chat_id: &str, text: String, ts: i64) {
         db.to_dto(chat_id, stored)
     };
     ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto });
+}
+
+/// A call's card in its chat (like the one the phone writes): on your side when you made the
+/// call. `result`: connected | missed | rejected | cancelled; `duration`: seconds talked.
+pub(crate) fn add_call_card(ctx: &Ctx, chat_id: &str, outgoing: bool, video: bool, result: &str, duration: i64, ts: i64) {
+    let stored = StoredMessage {
+        // "notice-": the Calls page has this call from its own log, not from this message.
+        id: format!("notice-{ts}-{:x}", rand_u32()),
+        from_me: outgoing,
+        sender: String::new(),
+        push_name: String::new(),
+        ts,
+        kind: "call".into(),
+        text: extract::call_title(video, result == "missed").into(),
+        file_name: String::new(),
+        status: 0,
+    };
+    let details = serde_json::json!({ "call": { "video": video, "result": result, "duration": duration.max(0) } });
+    let dto = {
+        let db = ctx.db();
+        db.insert_message(chat_id, &stored);
+        db.insert_extra(chat_id, &stored.id, &[], Some(&details));
+        db.to_dto(chat_id, stored)
+    };
+    ctx.send(Out::Message { chat_id: chat_id.to_string(), message: dto });
+    send_chat(ctx, chat_id);
 }
 
 fn rand_u32() -> u32 {

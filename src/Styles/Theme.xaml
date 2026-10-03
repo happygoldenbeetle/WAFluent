@@ -43,6 +43,7 @@
             <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="#7A5A00" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14000000" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#0D0B141A" />
+            <SolidColorBrush x:Key="CallCardDiscBrush" Color="#1A0B141A" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#6B4EAB" />
             <SolidColorBrush x:Key="QuoteSelfBrush" Color="#008069" />
             <!-- WhatsApp's classic doodle tile (beige, drawn in). -->
@@ -88,6 +89,7 @@
             <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="#FFD279" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="#14FFFFFF" />
             <SolidColorBrush x:Key="QuoteBrush" Color="#26000000" />
+            <SolidColorBrush x:Key="CallCardDiscBrush" Color="#59000000" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="#A791FF" />
             <SolidColorBrush x:Key="QuoteSelfBrush" Color="#06CF9C" />
             <!-- White doodles, faint over WhatsApp's dark green-grey. -->
@@ -132,6 +134,7 @@
             <SolidColorBrush x:Key="EncryptionNoticeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="UnreadBandBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="CallCardDiscBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="QuoteOtherBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="QuoteSelfBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="WallpaperColorBrush" Color="{ThemeResource SystemColorWindowColor}" />

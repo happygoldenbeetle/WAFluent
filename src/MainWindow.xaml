@@ -829,6 +829,36 @@
                     </DataTemplate>
                 </helpers:MessageTemplateSelector.Contact>
 
+                <helpers:MessageTemplateSelector.Call>
+                    <DataTemplate x:DataType="models:Message">
+                        <!-- A call: on your side when you made it, with what kind it was and how long (or how it ended). -->
+                        <Grid Margin="-28,0,-28,0" Padding="28,1,28,1">
+                        <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
+                            <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="5">
+                                <StackPanel Width="270">
+                                    <Grid ColumnSpacing="12" Padding="12,10" CornerRadius="8" Background="{ThemeResource QuoteBrush}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Width="40" Height="40" VerticalAlignment="Center">
+                                            <Ellipse Fill="{ThemeResource CallCardDiscBrush}" />
+                                            <FontIcon Glyph="{x:Bind CallGlyph}" FontSize="17" Foreground="{x:Bind helpers:Ui.CallCardBrush(CallMissed)}" />
+                                        </Grid>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{x:Bind Text}" FontWeight="SemiBold" Foreground="{ThemeResource BubbleTextBrush}" />
+                                            <TextBlock Text="{x:Bind CallDetail}" FontSize="13" Foreground="{ThemeResource MetaTextBrush}"
+                                                       Visibility="{x:Bind helpers:Ui.NotEmpty(CallDetail)}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Text="{x:Bind Time}" Style="{StaticResource MetaTextStyle}" HorizontalAlignment="Right" Margin="0,5,4,0" />
+                                </StackPanel>
+                            </controls:Bubble>
+                        </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </helpers:MessageTemplateSelector.Call>
+
                 <helpers:MessageTemplateSelector.Poll>
                     <DataTemplate x:DataType="models:Message">
                         <!-- Polls: tap an option to vote; counts and bars from everyone's votes (synced with the phone). -->

@@ -20,7 +20,7 @@ use whatsapp_rust::wacore::types::call::{CallAction, IncomingCall};
 
 use crate::protocol::Event as Out;
 use crate::store::CallEntry;
-use crate::{Ctx, add_notice, call_log, chat_for, send_chat, store};
+use crate::{Ctx, add_call_card, call_log, chat_for, send_chat, store};
 
 /// One frame: 60 ms at 16 kHz.
 const FRAME_SAMPLES: usize = 960;
@@ -630,7 +630,7 @@ pub(crate) async fn missed(ctx: &Ctx, client: &Arc<Client>, from: &Jid, call_id:
     if ctx.db().chat(&chat_id).is_none() {
         return;
     }
-    add_notice(ctx, &chat_id, format!("Missed {} call", kind(video)), ts);
+    add_call_card(ctx, &chat_id, false, video, "missed", 0, ts);
 }
 
 /// The call was answered or declined on another of your devices: stop ringing here.
@@ -855,25 +855,9 @@ fn finish(ctx: &Ctx, call_id: &str) {
     if ctx.db().ensure_chat(&active.chat_id, active.chat_id.ends_with("@g.us")) {
         send_chat(ctx, &active.chat_id);
     }
-    let call = format!("{} call", if active.video { "Video" } else { "Voice" });
-    let text = match (active.connected_at, reason) {
-        (Some(at), _) => format!("{call} · {}", length(now - at)),
-        (None, "failed") => return,
-        (None, "declined") if active.outgoing => format!("{call} · Declined"),
-        (None, _) if active.outgoing => format!("{call} · No answer"),
-        (None, _) => format!("Missed {} call", kind(active.video)),
-    };
-    add_notice(ctx, &active.chat_id, text, now);
-}
-
-fn kind(video: bool) -> &'static str {
-    if video { "video" } else { "voice" }
-}
-
-/// 0:42, 12:05, 1:02:33.
-fn length(seconds: i64) -> String {
-    let s = seconds.max(0);
-    if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) }
+    if result != "failed" {
+        add_call_card(ctx, &active.chat_id, active.outgoing, active.video, result, talked, now);
+    }
 }
 
 /// What to tell you when a call couldn't be set up.

@@ -7,7 +7,7 @@ namespace WhatsAppNative.Models;
 /// <summary>Sent → Delivered → Read in that order; Pending/Failed are local states before "Sent".</summary>
 public enum Delivery { None, Sent, Delivered, Read, Pending, Failed }
 
-public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System, Album }
+public enum MessageKind { Text, Image, File, DateDivider, Voice, Sticker, Video, Location, Contact, Poll, System, Album, Call }
 
 /// <summary>One poll option: who picked it, and whether you did.</summary>
 public sealed class PollOption
@@ -166,6 +166,14 @@ public sealed class Message : Observable
 
     /// <summary>Videos: a looping GIF, or a round video message.</summary>
     public bool IsGif { get; set; }
+
+    // A call's card (Kind Call): Text is its heading ("Video call", "Missed voice call").
+    public bool CallVideo { get; init; }
+    /// <summary>A call that rang here and wasn't answered: its icon is red.</summary>
+    public bool CallMissed { get; init; }
+    /// <summary>Under the heading: "21 seconds", "No answer", "Declined".</summary>
+    public string CallDetail { get; init; } = "";
+    public string CallGlyph => CallVideo ? Helpers.Glyphs.Video : Helpers.Glyphs.Phone;
     public bool IsVideoNote { get; set; }
     /// <summary>Length on the video pill; none for GIFs (they just loop, like WhatsApp).</summary>
     public string DurationLabel => Seconds > 0 && !IsGif ? Helpers.Format.Duration(TimeSpan.FromSeconds(Seconds)) : "";

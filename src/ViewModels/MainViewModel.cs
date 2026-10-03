@@ -436,7 +436,7 @@ public sealed partial class MainViewModel : Observable
         chat.PreviewSender = dto.LastSender is { Length: > 0 } who ? who + ":" : "";
         chat.Preview = dto.Preview;
         chat.PreviewGlyph = Format.PreviewGlyph(dto.PreviewKind);
-        chat.LastDelivery = dto.LastFromMe ? Format.ToDelivery(dto.LastStatus) : Delivery.None;
+        chat.LastDelivery = dto.LastFromMe && dto.PreviewKind != "call" ? Format.ToDelivery(dto.LastStatus) : Delivery.None;   // a call has no ticks
 
         // Messages arriving in the open chat are read as they come in.
         if (chat == _selectedChat && (dto.Unread > 0 || dto.MarkedUnread)) _core?.MarkRead(chat.Id);

@@ -903,6 +903,52 @@ impl Store {
             .unwrap_or_default()
     }
 
+    /// Calls in chats used to be a grey line (the ones made here) or a "📞" text (the phone's):
+    /// they become call cards (kind "call", with the call's details), once.
+    pub fn call_cards_once(&self) {
+        const FLAG: &str = "call_cards_v1";
+        if self.flag(FLAG) {
+            return;
+        }
+        let _ = self.db.execute("UPDATE messages SET kind = 'call', text = substr(text, 3) WHERE kind = 'text' AND text LIKE '📞 %call'", []);
+        let lines: Vec<(String, String, i64, String)> = self
+            .db
+            .prepare(
+                "SELECT id, chat_id, ts, text FROM messages WHERE id LIKE 'notice-%' AND kind = 'system'
+                 AND (text LIKE 'Voice call ·%' OR text LIKE 'Video call ·%' OR text LIKE 'Missed % call')",
+            )
+            .and_then(|mut s| s.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).map(|r| r.flatten().collect()))
+            .unwrap_or_default();
+        for (id, chat_id, ts, text) in lines {
+            let video = text.contains("ideo call");
+            let detail = text.rsplit_once(" · ").map(|(_, d)| d.trim()).unwrap_or("");
+            // "0:21", "1:02:33": the time talked.
+            let talked = detail.split(':').try_fold(0i64, |sum, part| part.parse::<i64>().ok().map(|n| sum * 60 + n)).filter(|_| detail.contains(':'));
+            let (result, duration) = match talked {
+                _ if text.starts_with("Missed") => ("missed", 0),
+                _ if detail == "Declined" => ("rejected", 0),
+                Some(seconds) => ("connected", seconds),
+                None => ("cancelled", 0),
+            };
+            // Who called is in the call history (the line didn't say); without it, a missed call was theirs.
+            let incoming: bool = self
+                .db
+                .query_row(
+                    "SELECT incoming FROM call_log WHERE ts BETWEEN ?2 - ?3 - 180 AND ?2 + 5
+                     AND ((',' || peers || ',') LIKE '%,' || ?1 || ',%' OR group_jid = ?1) ORDER BY ts DESC LIMIT 1",
+                    params![chat_id, ts, duration],
+                    |r| r.get(0),
+                )
+                .unwrap_or(result == "missed");
+            let _ = self.db.execute(
+                "UPDATE messages SET kind = 'call', from_me = ?3, text = ?4 WHERE chat_id = ?1 AND id = ?2",
+                params![chat_id, id, !incoming, crate::extract::call_title(video, result == "missed")],
+            );
+            self.insert_extra(&chat_id, &id, &[], Some(&serde_json::json!({ "call": { "video": video, "result": result, "duration": duration } })));
+        }
+        self.set_flag(FLAG);
+    }
+
     /// Whether the history has a call with this chat within two minutes of `ts`.
     pub fn call_near(&self, chat_id: &str, ts: i64) -> bool {
         self.db
@@ -924,7 +970,7 @@ impl Store {
                 "SELECT m.id, m.chat_id, m.ts, m.from_me, m.text, COALESCE(e.data, '') FROM messages m
                  LEFT JOIN extras e ON e.chat_id = m.chat_id AND e.message_id = m.id
                  WHERE m.chat_id NOT LIKE '%@g.us' AND m.id NOT LIKE 'notice-%'
-                   AND ((m.kind = 'text' AND m.text LIKE ?2) OR (m.kind = 'system' AND m.text LIKE '%Missed % call'))
+                   AND (m.kind = 'call' OR (m.kind = 'text' AND m.text LIKE ?2) OR (m.kind = 'system' AND m.text LIKE '%Missed % call'))
                  ORDER BY m.ts DESC LIMIT ?1",
             )
             .and_then(|mut s| {
