@@ -4,7 +4,7 @@ A native WhatsApp client for Windows 11, built with WinUI 3. Fluent design, ligh
 
 > [!TIP]
 > **A fraction of the memory.** In use, WAFluent stays around **250 MB** of RAM, app and backend together.
-> WhatsApp Desktop can take up to **1.2 GB**. WAFluent also runs 3 processes instead of 9.
+> WhatsApp Desktop can take up to **1.2 GB**.
 >
 > <sub>Idle on the same Windows 11 PC, each app's whole process tree: 114 MB against 327 MB private memory,
 > 298 MB against 1,029 MB working set. Your numbers will vary.</sub>
