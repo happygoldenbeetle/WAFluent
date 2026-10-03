@@ -76,3 +76,8 @@ Your chats and the link to your phone are stored on your PC in `%LOCALAPPDATA%\W
 - [H.NotifyIcon](https://github.com/HavenDV/H.NotifyIcon) (MIT): the tray icon.
 - Chat wallpaper: WhatsApp's doodle tiles ([source](https://gist.github.com/abdurrahmanekr/2747d704edec93a06e454eba2653e0df)).
 - Screenshot background: a photo by [Milad Fakurian](https://unsplash.com/@fakurian) on [Unsplash](https://unsplash.com/photos/E8Ufcyxz514).
+
+## License
+
+[MIT](LICENSE). The copy of whatsapp-rust in `core/vendor` is MIT too, under its own [licence](core/vendor/whatsapp-rust/LICENSE).
+WhatsApp's name and artwork belong to their owners and are not covered by this licence.
