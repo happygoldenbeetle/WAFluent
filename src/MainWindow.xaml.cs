@@ -107,6 +107,47 @@ public sealed partial class MainWindow : Window
                                                             SettingsPanel, ContactInfoView, GalleryScroll })
             SmoothScroll.Attach(scrolling);
 #if DEBUG
+        // WAFLUENT_SELFTEST=scroll: the wheel's glide in the sample conversation, without a wheel: five notches up in
+        // quick succession, then five down, the view's position read every frame. What it did goes to the file.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "scroll")
+            Root.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2500);
+                var lines = new List<string>();
+                foreach (var direction in new[] { -1, 1 })
+                {
+                    // A bubble that stays on screen for the whole glide: where it is, every frame (what the eye follows).
+                    double Top(UIElement el) => el.TransformToVisual(MessagesScroller).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                    var rows = Enumerable.Range(0, Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(Messages))
+                        .Select(i => Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(Messages, i)).OfType<FrameworkElement>().Where(r => r.ActualHeight > 0).ToList();
+                    var watched = direction < 0 ? rows.Where(r => Top(r) is > -400 and < 260).OrderBy(r => Math.Abs(Top(r) - 100)).FirstOrDefault()
+                                                : rows.Where(r => Top(r) > MessagesScroller.ActualHeight - 500 && Top(r) < MessagesScroller.ActualHeight).OrderBy(r => Math.Abs(Top(r) - (MessagesScroller.ActualHeight - 150))).FirstOrDefault();
+                    if (watched is null)
+                    {
+                        lines.Add($"{(direction < 0 ? "up" : "down")}: no bubble to watch");
+                        continue;
+                    }
+                    var seen = new List<double>();
+                    EventHandler<object> read = (_, _) => seen.Add(Top(watched));
+                    var start = Top(watched);
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
+                    for (var notch = 0; notch < 5; notch++)
+                    {
+                        SmoothScroll.Nudge(MessagesScroller, direction * 110);
+                        await Task.Delay(45);
+                    }
+                    await Task.Delay(1300);
+                    Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
+                    // Scrolling up moves a bubble down the screen, and the other way round.
+                    var steps = seen.Zip(seen.Skip(1), (a, b) => (a - b) * direction).ToList();
+                    var moving = steps.Where(s => Math.Abs(s) > 0.01).ToList();
+                    lines.Add($"{(direction < 0 ? "up" : "down")}: a bubble moved {(start - Top(watched)) * direction:0} px on screen (asked for {5 * 110}); "
+                              + $"{moving.Count} frames moved, {moving.Count(s => s < 0)} the wrong way, biggest step {(moving.Count > 0 ? moving.Max() : 0):0.0}, most backwards {(moving.Count > 0 ? Math.Min(0, moving.Min()) : 0):0.0}");
+                }
+                File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
+            };
+#endif
+#if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
         // WAFLUENT_SELFTEST=poll-dialog | contact-dialog | photo-dialog: opens that attach dialog.
