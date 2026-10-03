@@ -248,6 +248,14 @@ public sealed partial class MainWindow : Window
                     .Select(g => $"slow with {g.Key}: {g.Count()} frames, {g.Average(x => double.Parse(x[..x.IndexOf(' ')])):0} ms on average"));
                 Save();
             };
+        // WAFLUENT_SELFTEST=settings: the Settings page.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "settings")
+            Root.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2000);
+                Nav.SelectedItem = Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>()
+                    .First(item => item.Tag as string == "Settings");
+            };
         // WAFLUENT_SELFTEST=chats-idle: the Chats page with no chat open.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "chats-idle")
             Root.Loaded += async (_, _) =>
