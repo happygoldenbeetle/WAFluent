@@ -102,6 +102,10 @@ public sealed partial class MainWindow : Window
         SetupCalls();
         SetupStatus();
         SetupChannels();
+        // The wheel, without lost notches (Helpers/SmoothScroll.cs), wherever there's a long list.
+        foreach (var scrolling in new FrameworkElement[] { MessagesScroller, ChatList, StarredList, CallsList, CallsPickList, StatusPanel, ChannelsScroll,
+                                                            SettingsPanel, ContactInfoView, GalleryScroll })
+            SmoothScroll.Attach(scrolling);
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };

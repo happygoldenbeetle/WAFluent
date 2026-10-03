@@ -1480,7 +1480,7 @@
                         </Grid.RowDefinitions>
                         <AutoSuggestBox x:Name="ChannelsSearch" Margin="16,0,16,8" PlaceholderText="Search channels" QueryIcon="Find"
                                         AutomationProperties.Name="Search channels" TextChanged="ChannelsSearch_TextChanged" />
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="ChannelsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="ChannelRows" Margin="4,0,6,12" />
                         </ScrollViewer>
                     </Grid>
