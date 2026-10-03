@@ -61,6 +61,7 @@ public sealed partial class MainViewModel : Observable
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
         core.ChatMediaReceived += OnChatMedia;
         WireStatuses(core);
+        WireChannels(core);
         core.ContactsReceived += contacts => ContactsLoaded?.Invoke(contacts);
         core.CallChanged += call => CallChanged?.Invoke(call);
         core.CallsReceived += calls => { CallLog = calls; CountMissedCalls(); CallsChanged?.Invoke(); };
@@ -343,10 +344,14 @@ public sealed partial class MainViewModel : Observable
             CancelReply();   // a quote belongs to its chat
             if (value is not null) Open(value);
             Raise(nameof(HasSelection));
+            Raise(nameof(CanCompose));
         }
     }
 
     public bool HasSelection => _selectedChat is not null;
+
+    /// <summary>The message box shows: a chat is open, and it isn't a channel (those are read-only).</summary>
+    public bool CanCompose => _selectedChat is { IsChannel: false };
 
     public int PinnedCount => _allChats.Count(c => c.IsPinned && !c.IsArchived);
 

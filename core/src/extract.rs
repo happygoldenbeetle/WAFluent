@@ -49,8 +49,8 @@ impl Content {
     }
 
     fn with_media(mut self, media: Media) -> Self {
-        // Without a CDN path there is nothing to download.
-        if !media.direct_path.is_empty() && !media.media_key.is_empty() {
+        // Without a CDN path there is nothing to download. (No key: a channel's post, which isn't encrypted.)
+        if !media.direct_path.is_empty() {
             self.media = Some(media);
         }
         self

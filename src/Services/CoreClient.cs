@@ -40,6 +40,10 @@ public sealed record CallLogDto(string Id, long Ts, long Duration, bool Incoming
 /// <summary>One status update: whose (their chat's id, "" for yours), whether you've looked at it, how many looked at yours, what it shows.</summary>
 public sealed record StatusDto(string Author, string Name, string? Avatar, bool Seen, int Views, MessageDto Message);
 
+/// <summary>A channel: followed or one to follow; the newest post's time and line, and how many are new.</summary>
+public sealed record ChannelDto(string Id, string Name, string Description, long Followers, bool Verified, string? Avatar, bool Followed,
+                                bool Muted, long LastTs, string Preview, int Unread);
+
 public sealed record StarredDto(string ChatId, string ChatName, MessageDto Message);
 
 public sealed record MessageDto(
@@ -106,6 +110,9 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<CallDto>? CallChanged;
     public event Action<IReadOnlyList<string>, int>? CallPeople;            // a group call: who's in it besides you, how many more were rung
+    public event Action<IReadOnlyList<ChannelDto>, IReadOnlyList<ChannelDto>, bool>? ChannelsReceived;   // followed, to follow, fresh from WhatsApp
+    public event Action<string, IReadOnlyList<ChannelDto>>? ChannelSearchReceived;   // the query, its results
+    public event Action<string>? ChannelChanged;                             // a channel you follow posted
     public event Action<IReadOnlyList<StatusDto>>? StatusesReceived;        // status updates, oldest first
     public event Action<IReadOnlyList<CallLogDto>>? CallsReceived;          // the call history, newest first
     public event Action<IReadOnlyList<string>, bool>? FavouritesReceived;   // the phone's favourite chats; whether it's been heard yet
@@ -309,6 +316,11 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>The call history; answered by <see cref="CallsReceived"/> (and again whenever it changes).</summary>
     public void LoadCalls() => Send(new { cmd = "loadCalls" });
+    /// <summary>The channels you follow and ones to follow; answered by <see cref="ChannelsReceived"/>.</summary>
+    public void LoadChannels() => Send(new { cmd = "loadChannels" });
+    public void SearchChannels(string query) => Send(new { cmd = "searchChannels", query });
+    /// <summary>follow | unfollow | mute | unmute.</summary>
+    public void ChannelAction(string chatId, string action) => Send(new { cmd = "channelAction", chatId, action });
     /// <summary>Status updates; answered by <see cref="StatusesReceived"/> (and again whenever they change).</summary>
     public void LoadStatuses() => Send(new { cmd = "loadStatuses" });
     public void StatusSeen(IReadOnlyList<string> ids) => Send(new { cmd = "statusSeen", ids });
@@ -517,6 +529,21 @@ public sealed class CoreClient : IDisposable
                 var favouriteIds = root.GetProperty("ids").Deserialize<List<string>>(Json) ?? [];
                 var favouritesSynced = root.GetProperty("synced").GetBoolean();
                 Post(() => FavouritesReceived?.Invoke(favouriteIds, favouritesSynced));
+                break;
+            case "channels":
+                var followedChannels = root.GetProperty("followed").Deserialize<List<ChannelDto>>(Json) ?? [];
+                var suggestedChannels = root.GetProperty("suggested").Deserialize<List<ChannelDto>>(Json) ?? [];
+                var freshChannels = root.GetProperty("fresh").GetBoolean();
+                Post(() => ChannelsReceived?.Invoke(followedChannels, suggestedChannels, freshChannels));
+                break;
+            case "channelSearch":
+                var channelQuery = root.GetProperty("query").GetString() ?? "";
+                var channelResults = root.GetProperty("results").Deserialize<List<ChannelDto>>(Json) ?? [];
+                Post(() => ChannelSearchReceived?.Invoke(channelQuery, channelResults));
+                break;
+            case "channelChanged":
+                var changedChannel = root.GetProperty("chatId").GetString() ?? "";
+                Post(() => ChannelChanged?.Invoke(changedChannel));
                 break;
             case "statuses":
                 var statuses = root.GetProperty("statuses").Deserialize<List<StatusDto>>(Json) ?? [];

@@ -144,7 +144,7 @@ async fn refresh(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<bool,
     Ok(true)
 }
 
-fn download(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut response = ureq::get(url).call().map_err(|e| e.to_string())?;
     response
         .body_mut()

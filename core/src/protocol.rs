@@ -126,6 +126,13 @@ pub enum Event {
     /// Status updates of the last 24 hours, oldest first (reply to `loadStatuses`, and again
     /// whenever they change).
     Statuses { statuses: Vec<StatusDto> },
+    /// The Channels page's lists (reply to `loadChannels`): the channels you follow, newest
+    /// post first, and ones to follow. `fresh`: WhatsApp's answer (false: what was kept).
+    Channels { followed: Vec<ChannelDto>, suggested: Vec<ChannelDto>, fresh: bool },
+    /// Reply to `searchChannels`.
+    ChannelSearch { query: String, results: Vec<ChannelDto> },
+    /// A channel you follow posted: its posts (and the list) are worth reading again.
+    ChannelChanged { chat_id: String },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -239,6 +246,28 @@ pub struct CallLogDto {
     pub avatar: Option<String>,
     /// More than one other person.
     pub group: bool,
+}
+
+/// A channel. Its posts load like a chat's messages (`loadMessages`, `loadOlder` with its
+/// id); a post's extra has {channel: {serverId, reactions: [[emoji, count]…]}}.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelDto {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub followers: u64,
+    pub verified: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub avatar: Option<String>,
+    pub followed: bool,
+    /// Muted (kept on this PC): its new posts aren't counted.
+    pub muted: bool,
+    /// The newest post: when, and a line of it.
+    pub last_ts: i64,
+    pub preview: String,
+    /// Posts since you last opened it.
+    pub unread: u32,
 }
 
 /// One status update.
@@ -508,6 +537,12 @@ pub enum Command {
     SetFavourites { ids: Vec<String> },
     /// Join the call behind a call link (`video`: it's a video link). Answered by `call` events.
     JoinCallLink { url: String, #[serde(default)] video: bool },
+    /// The channels you follow and ones to follow; answered by `channels` (twice: kept, then fresh).
+    LoadChannels,
+    /// Channels by name; answered by `channelSearch`.
+    SearchChannels { query: String },
+    /// follow | unfollow | mute | unmute a channel.
+    ChannelAction { chat_id: String, action: String },
     /// Status updates; answered by `statuses`.
     LoadStatuses,
     /// You looked at these status updates: remembered, and their authors are told.

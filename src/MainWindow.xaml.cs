@@ -101,6 +101,7 @@ public sealed partial class MainWindow : Window
         SetupNotifications();
         SetupCalls();
         SetupStatus();
+        SetupChannels();
 #if DEBUG
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "attach")
             Messages.Loaded += async (_, _) => { await Task.Delay(3000); Attach_Click(AttachButton, new RoutedEventArgs()); };
@@ -730,6 +731,7 @@ public sealed partial class MainWindow : Window
         ListActions.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
         ShowCalls(section == "Calls");
         ShowStatus(section == "Status");
+        ShowChannels(section == "Channels");
         SearchBox.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
         FilterChips.Visibility = section == "Chats" ? Visibility.Visible : Visibility.Collapsed;
         if (section == "Archived" && ViewModel.Filter != ChatFilter.All) SetFilter(ChatFilter.All);
@@ -745,7 +747,7 @@ public sealed partial class MainWindow : Window
     {
         var empty = section switch
         {
-            "Chats" or "Settings" or "Calls" or "Status" => false,
+            "Chats" or "Settings" or "Calls" or "Status" or "Channels" => false,
             "Archived" => ViewModel.ArchivedCount == 0,
             "Starred" => !ViewModel.HasStarred,
             _ => true,

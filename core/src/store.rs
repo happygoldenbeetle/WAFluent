@@ -240,6 +240,8 @@ impl Store {
             "CREATE TABLE IF NOT EXISTS call_log_hidden(id TEXT PRIMARY KEY)",
             // Status updates you've looked at (status.rs).
             "CREATE TABLE IF NOT EXISTS status_seen(id TEXT PRIMARY KEY)",
+            // The channels you follow (channels.rs): each as its JSON, and when you last opened it.
+            "CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY, data TEXT NOT NULL, seen_ts INTEGER NOT NULL DEFAULT 0, pos INTEGER NOT NULL DEFAULT 0)",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -1049,6 +1051,105 @@ impl Store {
             .collect()
     }
 
+    // ───────────── Channels ─────────────
+
+    /// The channels you follow, as last heard from WhatsApp.
+    pub fn channels(&self) -> Vec<crate::protocol::ChannelDto> {
+        self.db
+            .prepare("SELECT data FROM channels ORDER BY pos")
+            .and_then(|mut s| s.query_map([], |r| r.get::<_, String>(0)).map(|r| r.flatten().collect::<Vec<_>>()))
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|data| serde_json::from_str(data).ok())
+            .collect()
+    }
+
+    pub fn channel(&self, id: &str) -> Option<crate::protocol::ChannelDto> {
+        let data: String = self.db.query_row("SELECT data FROM channels WHERE id = ?1", [id], |r| r.get(0)).ok()?;
+        serde_json::from_str(&data).ok()
+    }
+
+    /// The followed list, whole: ones no longer in it go (when each was last opened is kept).
+    pub fn set_channels(&self, list: &[crate::protocol::ChannelDto]) {
+        for (pos, channel) in list.iter().enumerate() {
+            let _ = self.db.execute(
+                "INSERT INTO channels(id, data, pos) VALUES(?1, ?2, ?3) ON CONFLICT(id) DO UPDATE SET data = excluded.data, pos = excluded.pos",
+                params![channel.id, serde_json::to_string(channel).unwrap_or_default(), pos as i64],
+            );
+        }
+        let kept: Vec<String> = self
+            .db
+            .prepare("SELECT id FROM channels")
+            .and_then(|mut s| s.query_map([], |r| r.get(0)).map(|r| r.flatten().collect()))
+            .unwrap_or_default();
+        for id in kept.iter().filter(|id| !list.iter().any(|c| &c.id == *id)) {
+            let _ = self.db.execute("DELETE FROM channels WHERE id = ?1", [id]);
+        }
+    }
+
+    pub fn forget_channel(&self, id: &str) {
+        let _ = self.db.execute("DELETE FROM channels WHERE id = ?1", [id]);
+    }
+
+    pub fn set_channel_muted(&self, id: &str, muted: bool) {
+        if let Some(mut channel) = self.channel(id) {
+            channel.muted = muted;
+            let _ = self.db.execute("UPDATE channels SET data = ?2 WHERE id = ?1", params![id, serde_json::to_string(&channel).unwrap_or_default()]);
+        }
+    }
+
+    /// When you last opened a channel (0: never), Unix seconds.
+    pub fn channel_seen(&self, id: &str) -> i64 {
+        self.db.query_row("SELECT seen_ts FROM channels WHERE id = ?1", [id], |r| r.get(0)).unwrap_or(0)
+    }
+
+    pub fn set_channel_seen(&self, id: &str, ts: i64) {
+        let _ = self.db.execute("UPDATE channels SET seen_ts = ?2 WHERE id = ?1", params![id, ts]);
+    }
+
+    /// A post that's kept already: its text (it may have been edited) and its details (the reaction counts).
+    pub fn update_post(&self, chat_id: &str, id: &str, text: &str, extra: &serde_json::Value) {
+        let _ = self.db.execute("UPDATE messages SET text = ?3 WHERE chat_id = ?1 AND id = ?2", params![chat_id, id, text]);
+        let _ = self.db.execute("UPDATE extras SET data = ?3 WHERE chat_id = ?1 AND message_id = ?2", params![chat_id, id, extra.to_string()]);
+    }
+
+    /// The server id of the oldest post kept for a channel (where asking for older ones starts).
+    pub fn oldest_post(&self, chat_id: &str) -> Option<u64> {
+        self.db
+            .query_row("SELECT MIN(json_extract(data, '$.channel.serverId')) FROM extras WHERE chat_id = ?1 AND data != ''", [chat_id], |r| {
+                r.get::<_, Option<i64>>(0)
+            })
+            .ok()
+            .flatten()
+            .map(|n| n as u64)
+    }
+
+    pub fn post_server_id(&self, chat_id: &str, id: &str) -> Option<u64> {
+        self.db
+            .query_row("SELECT json_extract(data, '$.channel.serverId') FROM extras WHERE chat_id = ?1 AND message_id = ?2 AND data != ''", [chat_id, id], |r| {
+                r.get::<_, Option<i64>>(0)
+            })
+            .ok()
+            .flatten()
+            .map(|n| n as u64)
+    }
+
+    /// New reaction counts for the post with this server id; its message id when it's kept.
+    pub fn set_post_reactions(&self, chat_id: &str, server_id: u64, reactions: &[(String, u64)]) -> Option<String> {
+        let (id, data): (String, String) = self
+            .db
+            .query_row(
+                "SELECT message_id, data FROM extras WHERE chat_id = ?1 AND data != '' AND json_extract(data, '$.channel.serverId') = ?2",
+                params![chat_id, server_id as i64],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok()?;
+        let mut extra: serde_json::Value = serde_json::from_str(&data).ok()?;
+        extra["channel"]["reactions"] = reactions.iter().map(|(emoji, count)| serde_json::json!([emoji, count])).collect();
+        let _ = self.db.execute("UPDATE extras SET data = ?3 WHERE chat_id = ?1 AND message_id = ?2", params![chat_id, id, extra.to_string()]);
+        Some(id)
+    }
+
     // ───────────── Status updates ─────────────
 
     /// Status updates newer than `since`, oldest first (see status.rs).
@@ -1230,7 +1331,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras; DELETE FROM polls; DELETE FROM poll_votes; DELETE FROM status_seen;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras; DELETE FROM polls; DELETE FROM poll_votes; DELETE FROM status_seen; DELETE FROM channels;",
         );
     }
 
@@ -2058,6 +2159,11 @@ pub fn bare_jid(jid: &str) -> String {
         Some((user, server)) => format!("{}@{server}", user.split(':').next().unwrap_or(user)),
         None => jid.to_string(),
     }
+}
+
+/// "923029328645" -> "PK".
+pub fn phone_region(digits: &str) -> Option<String> {
+    phone_parts(digits).map(|p| p.region).filter(|r| r.len() == 2)
 }
 
 /// "923029328645" -> PK / +92 / "302 9328645".

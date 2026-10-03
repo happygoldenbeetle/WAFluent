@@ -113,7 +113,7 @@ async fn fetch(ctx: &Ctx, client: &Arc<Client>, req: &Request) -> Result<String,
             Err(e) => {
                 let expired = e.chain().find_map(|c| c.downcast_ref::<HttpStatusError>()).is_some_and(|s| matches!(s.status, 403 | 404 | 410));
                 let detail = format!("{e:#}");
-                if expired && !reuploaded {
+                if expired && !reuploaded && !crate::channels::is_channel(&req.chat_id) {
                     reuploaded = true;
                     match reupload(ctx, client, req, &media.media_key).await {
                         Ok(path) => {
@@ -159,6 +159,18 @@ async fn download(client: &Client, media: &Media) -> whatsapp_rust::anyhow::Resu
         "sticker" => MediaType::Sticker,
         _ => MediaType::Document,
     };
+    if media.media_key.is_empty() {
+        // A channel's post: the file is on the CDN as it is.
+        let params = DownloadParams {
+            direct_path: media.direct_path.clone(),
+            media_key: None,
+            file_sha256: media.file_sha256.clone(),
+            file_enc_sha256: None,
+            file_length: media.file_length,
+            media_type,
+        };
+        return client.download_from_params(&params).await;
+    }
     let params = DownloadParams::encrypted(
         media.direct_path.clone(),
         &media.media_key,

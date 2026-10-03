@@ -103,6 +103,9 @@ public sealed class Message : Observable
         set { _reactions = value; Raise(nameof(Reactions)); Raise(nameof(Reaction)); }
     }
 
+    /// <summary>A channel post's reactions as WhatsApp counts them: the most used emoji and the total ("😢❤️🙏 430").</summary>
+    public string ReactionSummary { get; init; } = "";
+
     /// <summary>Your reaction, or "".</summary>
     public string MyReaction { get => _myReaction; set => Set(ref _myReaction, value); }
 
@@ -111,6 +114,7 @@ public sealed class Message : Observable
     {
         get
         {
+            if (ReactionSummary.Length > 0) return ReactionSummary;
             if (_reactions.Count == 0) return "";
             var distinct = string.Concat(_reactions.Distinct().Take(3));
             return _reactions.Count > 1 ? $"{distinct} {_reactions.Count}" : distinct;
@@ -313,6 +317,8 @@ public sealed class Chat : Observable
     /// <summary>WhatsApp JID for live chats; empty for sample data.</summary>
     public string Id { get; init; } = "";
     public bool IsGroup { get; init; }
+    /// <summary>A channel shown in the conversation pane: read-only, its posts in place of messages.</summary>
+    public bool IsChannel { get; init; }
     private string _status = "", _typing = "";
 
     /// <summary>1:1: "online" or "last seen …" (when they share it). Groups: who's in it.</summary>
@@ -445,7 +451,10 @@ public sealed class Chat : Observable
     private bool _historyComplete;
 
     /// <summary>Nothing older exists on this device or the phone: the conversation's start is on screen.</summary>
-    public bool HistoryComplete { get => _historyComplete; set => Set(ref _historyComplete, value); }
+    public bool HistoryComplete { get => _historyComplete; set { if (Set(ref _historyComplete, value)) Raise(nameof(ShowEncryptionNote)); } }
+
+    /// <summary>The "end-to-end encrypted" note at the top of a chat's history (a channel isn't encrypted, and has none).</summary>
+    public bool ShowEncryptionNote => _historyComplete && !IsChannel;
 
     private Services.GroupInfoDto? _groupInfo;
 

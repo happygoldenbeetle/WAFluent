@@ -1079,6 +1079,16 @@
                                    Visibility="{x:Bind ViewModel.HasNewStatus, Mode=OneWay}" />
                     </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
+                <NavigationViewItem Content="Channels" Tag="Channels">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE789;" />
+                    </NavigationViewItem.Icon>
+                    <!-- Channels you follow with posts since you last opened them (MainWindow.Channels.cs). -->
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge Value="{x:Bind ViewModel.UnreadChannels, Mode=OneWay}" Background="{ThemeResource ChatAccentBrush}"
+                                   Visibility="{x:Bind helpers:Ui.Positive(ViewModel.UnreadChannels), Mode=OneWay}" />
+                    </NavigationViewItem.InfoBadge>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.FooterMenuItems>
@@ -1348,6 +1358,19 @@
                         <TextBlock x:Name="CallsEmpty" Grid.Row="1" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                                    Margin="24,0,24,140" TextWrapping="Wrap" TextAlignment="Center" IsHitTestVisible="False"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+
+                    <!-- ───── Channels (MainWindow.Channels.cs): search, the ones you follow, ones to follow ───── -->
+                    <Grid x:Name="ChannelsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <AutoSuggestBox x:Name="ChannelsSearch" Margin="16,0,16,8" PlaceholderText="Search channels" QueryIcon="Find"
+                                        AutomationProperties.Name="Search channels" TextChanged="ChannelsSearch_TextChanged" />
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ChannelRows" Margin="4,0,6,12" />
+                        </ScrollViewer>
                     </Grid>
 
                     <!-- ───── Status (MainWindow.Status.cs): My status, Recent, Viewed ───── -->
@@ -1755,6 +1778,20 @@
                         </Grid>
                     </Grid>
 
+                <!-- ───────────── Channels: the right side until one is opened (MainWindow.Channels.cs) ───────────── -->
+                <Grid x:Name="ChannelsPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
+                      Background="{ThemeResource ChatPaneBackgroundBrush}"
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
+                        <FontIcon Glyph="&#xE789;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="Discover channels" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
+                                   TextWrapping="Wrap" Margin="0,14,0,0" />
+                        <TextBlock Text="Entertainment, sports, news, lifestyle, people and more. Follow the channels that interest you."
+                                   HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="560"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+
                 <!-- ───────────── Status: the right side (MainWindow.Status.cs) ───────────── -->
                 <Grid x:Name="StatusPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
                       Background="{ThemeResource ChatPaneBackgroundBrush}"
@@ -1865,7 +1902,30 @@
                                        Foreground="{ThemeResource ChatAccentTextBrush}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         </controls:ClickArea>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <!-- A channel: Follow (until you do), mute, and a menu (MainWindow.Channels.cs). -->
+                        <StackPanel x:Name="ChannelHeaderButtons" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                            <Button x:Name="ChannelFollowButton" Content="Follow" Style="{StaticResource AccentButtonStyle}" Padding="16,5" CornerRadius="16"
+                                    Click="ChannelFollow_Click" />
+                            <Button x:Name="ChannelMuteButton" Style="{StaticResource IconButtonStyle}" AutomationProperties.Name="Mute"
+                                    Click="ChannelMute_Click">
+                                <FontIcon x:Name="ChannelMuteIcon" Glyph="&#xEA8F;" FontSize="16" />
+                            </Button>
+                            <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="More" AutomationProperties.Name="More">
+                                <FontIcon Glyph="&#xE712;" FontSize="16" />
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                        <MenuFlyoutItem Text="Close channel" Click="ChannelClose_Click">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE711;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem x:Name="ChannelUnfollowItem" Text="Unfollow" Click="ChannelUnfollow_Click">
+                                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xF3B1;" /></MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </StackPanel>
+                        <StackPanel x:Name="ChatHeaderButtons" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <Button Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Video call" AutomationProperties.Name="Video call"
                                     Click="VideoCall_Click">
                                 <FontIcon Glyph="&#xE714;" FontSize="16" />
@@ -1920,7 +1980,7 @@
                             <!-- The very start of the conversation (nothing older exists): WhatsApp's encryption
                                  notice, and for a group its card (MainWindow.GroupInfo.cs). -->
                             <StackPanel Spacing="10" Margin="0,12,0,10"
-                                        Visibility="{x:Bind ViewModel.SelectedChat.HistoryComplete, Mode=OneWay, FallbackValue=Collapsed}">
+                                        Visibility="{x:Bind ViewModel.SelectedChat.ShowEncryptionNote, Mode=OneWay, FallbackValue=Collapsed}">
                                 <Border HorizontalAlignment="Center" MaxWidth="560" Padding="14,6" CornerRadius="8" Background="{ThemeResource DatePillBrush}">
                                     <RichTextBlock FontSize="12.5" TextWrapping="Wrap" TextAlignment="Center" LineHeight="19"
                                                    Foreground="{ThemeResource EncryptionNoticeBrush}" IsTextSelectionEnabled="False">
@@ -2065,7 +2125,7 @@
                     <Grid Grid.Row="3" Padding="10,6" ColumnSpacing="2"
                           Background="{ThemeResource ComposerBrush}"
                           BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="0,1,0,0"
-                          Visibility="{x:Bind helpers:Ui.VisibleAndNot(ViewModel.HasSelection, ViewModel.IsSelecting), Mode=OneWay}">
+                          Visibility="{x:Bind helpers:Ui.VisibleAndNot(ViewModel.CanCompose, ViewModel.IsSelecting), Mode=OneWay}">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />

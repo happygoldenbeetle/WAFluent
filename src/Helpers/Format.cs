@@ -253,6 +253,25 @@ public static class Format
         return (video, result == "missed", detail);
     }
 
+    /// <summary>"430", "1.2k", "219k", "234.2m": counts the way WhatsApp shortens them.</summary>
+    public static string Compact(long n) => n switch
+    {
+        < 1000 => n.ToString(CultureInfo.InvariantCulture),
+        < 100_000 => (n / 1000.0).ToString("0.#", CultureInfo.InvariantCulture) + "k",
+        < 1_000_000 => (n / 1000).ToString(CultureInfo.InvariantCulture) + "k",
+        _ => (n / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "m",
+    };
+
+    /// <summary>A channel post's reactions from the core's {channel: {reactions: [[emoji, count]…]}}: the four most used and the total.</summary>
+    private static string ChannelReactions(MessageDto dto)
+    {
+        if (dto.Extra is not { ValueKind: JsonValueKind.Object } extra || !extra.TryGetProperty("channel", out var channel)
+            || !channel.TryGetProperty("reactions", out var list) || list.ValueKind != JsonValueKind.Array) return "";
+        var counts = list.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Array && r.GetArrayLength() == 2)
+            .Select(r => (Emoji: r[0].GetString() ?? "", Count: r[1].TryGetInt64(out var n) ? n : 0)).Where(r => r.Count > 0).OrderByDescending(r => r.Count).ToList();
+        return counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}";
+    }
+
     private static Message Build(MessageDto dto, bool isGroup)
     {
         var when = FromUnix(dto.Ts);
@@ -294,6 +313,7 @@ public static class Format
             Thumb = dto.Thumb,
             IsVoiceNote = dto.Kind != "audio",
             IsGif = dto.Kind == "gif",
+            ReactionSummary = ChannelReactions(dto),
             CallVideo = callCard.Video,
             CallMissed = callCard.Missed,
             CallDetail = callCard.Detail,

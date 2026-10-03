@@ -9,6 +9,7 @@ mod actions;
 mod avatars;
 mod call_log;
 mod calls;
+mod channels;
 mod media;
 mod extract;
 mod favorites;
@@ -370,7 +371,16 @@ pub(crate) fn ephemeral_changed(ctx: &Ctx, chat_id: &str, seconds: u32, who: &st
 }
 
 async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
+    // A channel isn't a chat: nobody is typing in it or online, and reading it tells no one.
+    if let Command::WatchPresence { chat_id } | Command::SendTyping { chat_id, .. } | Command::MarkRead { chat_id } = &cmd
+        && channels::is_channel(chat_id)
+    {
+        return;
+    }
     match cmd {
+        Command::LoadChannels => channels::load(ctx, client),
+        Command::SearchChannels { query } => channels::search(ctx, client, query),
+        Command::ChannelAction { chat_id, action } => channels::action(ctx, client, chat_id, action),
         Command::CallAudio { data } => calls::microphone(ctx, &data),
         Command::SetFavourites { ids } => favorites::set(ctx, client, ids),
         Command::JoinCallLink { url, video } => calls::join_link(ctx, client, url, video),
@@ -393,6 +403,14 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::MuteCall { muted } => calls::mute(ctx, muted),
         Command::LoadMessages { chat_id, limit } => {
             let messages = ctx.db().messages(&chat_id, limit.unwrap_or(300));
+            if channels::is_channel(&chat_id) {
+                // What's kept at once (when there is any), then the channel's newest posts from WhatsApp.
+                if !messages.is_empty() {
+                    ctx.send(Out::Messages { chat_id: chat_id.clone(), messages });
+                }
+                channels::posts(ctx, client, chat_id, false);
+                return;
+            }
             ctx.send(Out::Messages { chat_id, messages });
         }
         Command::LoadOlderUntil { chat_id, before_ts, before_id, until_ts } => {
@@ -422,6 +440,7 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
                 ts: found.map_or(ts, |f| f.1),
             });
         }
+        Command::LoadOlder { chat_id, .. } if channels::is_channel(&chat_id) => channels::posts(ctx, client, chat_id, true),
         Command::LoadOlder { chat_id, before_ts, before_id, limit } => {
             load_older(ctx, client, chat_id, before_ts, before_id, limit.unwrap_or(100)).await;
         }
@@ -1130,6 +1149,10 @@ async fn set_pinned(ctx: &Ctx, client: &Arc<Client>, chat_id: String, pinned: bo
 /// Sends your reaction; the stored reactions go back to the UI either way
 /// (so a failed send puts the old state back).
 async fn react(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, emoji: String) {
+    if channels::is_channel(&chat_id) {
+        channels::react(ctx, client, chat_id, message_id, emoji);
+        return;
+    }
     let target = ctx.db().message(&chat_id, &message_id);
     let (Some(target), Ok(jid)) = (target, chat_id.parse::<Jid>()) else {
         send_reactions(ctx, chat_id, message_id);
@@ -1194,6 +1217,11 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         Event::MissedCall(missed) => calls::missed(ctx, client, &missed.from, &missed.call_id, missed.timestamp.timestamp()).await,
         Event::CallEndedElsewhere(ended) => calls::elsewhere(ctx, &ended.call_id),
         Event::LoggedOut(_) => forget_everything(ctx),
+        Event::NewsletterLiveUpdate(update) => {
+            let changes: Vec<(u64, Vec<(String, u64)>)> =
+                update.messages.iter().map(|m| (m.server_id, m.reactions.iter().map(|r| (r.code.clone(), r.count)).collect())).collect();
+            channels::counts(ctx, &update.newsletter_jid.to_string(), &changes);
+        }
         Event::ChatPresence(update) => {
             use whatsapp_rust::wacore::types::presence::{ChatPresence, ChatPresenceMedia};
             // Your own typing (in "Message yourself", or echoed from your other devices) isn't shown.
@@ -1397,6 +1425,10 @@ fn is_hidden_chat(jid: &str) -> bool {
 fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let source = &info.source;
     let raw_chat = source.chat.to_non_ad_string();
+    if channels::is_channel(&raw_chat) {
+        channels::live(ctx, &raw_chat);
+        return;
+    }
     if raw_chat == status::CHAT {
         status::on_message(ctx, message, info);
         return;

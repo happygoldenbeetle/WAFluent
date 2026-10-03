@@ -537,6 +537,31 @@ impl<'a> Newsletter<'a> {
         let response = self.client.send_iq(iq).await?;
         parse_newsletter_messages_response(response.get())
     }
+
+    /// WAFluent patch: a channel's posts asked the way a visitor's client does (addressed to
+    /// the server, naming the channel), which also answers for channels you don't follow.
+    pub async fn get_messages_as_guest(
+        &self,
+        jid: impl Into<Jid>,
+        count: u32,
+        before: Option<u64>,
+    ) -> Result<Vec<NewsletterMessage>, NewsletterError> {
+        let jid = jid.into();
+        let mut messages_node = NodeBuilder::new("messages")
+            .attr("type", "jid")
+            .attr("jid", jid.to_string())
+            .attr("count", count);
+        if let Some(before_id) = before {
+            messages_node = messages_node.attr("before", before_id);
+        }
+        let iq = InfoQuery::get(
+            NEWSLETTER_XMLNS,
+            Jid::new("", wacore_binary::Server::Pn),
+            Some(NodeContent::Nodes(vec![messages_node.build()])),
+        );
+        let response = self.client.send_iq(iq).await?;
+        parse_newsletter_messages_response(response.get())
+    }
 }
 
 impl Client {

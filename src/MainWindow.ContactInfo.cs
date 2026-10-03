@@ -21,6 +21,7 @@ public sealed partial class MainWindow
 
     private void Header_Tapped(object sender, TappedRoutedEventArgs e)
     {
+        if (ViewModel.SelectedChat is { IsChannel: true }) return;   // a channel has no contact card
         if (InfoPanel.Visibility == Visibility.Visible && ContactInfoView.Visibility == Visibility.Visible) CloseInfo();
         else OpenInfo();
     }
