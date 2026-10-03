@@ -12,3 +12,6 @@ src/Assets/Fonts/AppleColorEmoji.ttf
 src/giphy.key
 
 __pycache__/
+
+# Built installers and zips.
+dist/
