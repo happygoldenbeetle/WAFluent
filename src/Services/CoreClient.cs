@@ -130,7 +130,8 @@ public sealed class CoreClient : IDisposable
     public event Action<string, bool, long?>? Presence;                      // chat, online, last seen (Unix s)
     public event Action<bool, string>? Notice;                               // ok, text for a toast   // chat, message ids, 2 delivered / 3 read
 
-    public static string DataDirectory { get; } =
+    // WAFLUENT_DATA_DIR: another folder, so an unlinked start (the link screen) leaves your login alone.
+    public static string DataDirectory { get; } = Environment.GetEnvironmentVariable("WAFLUENT_DATA_DIR") ??
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WAFluent");
 
     public static string ExecutablePath { get; } = Path.Combine(AppContext.BaseDirectory, "core", "wafluent-core.exe");
@@ -608,12 +609,17 @@ public sealed class CoreClient : IDisposable
         }
     }
 
-    /// <summary>Core logs (stderr) go to %LOCALAPPDATA%\WAFluent\core.log, replaced each run.</summary>
+    /// <summary>
+    /// Core logs (stderr) go to %LOCALAPPDATA%\WAFluent\core.log, replaced each run; the run
+    /// before is kept as core.previous.log (what went wrong is usually looked for after a restart).
+    /// </summary>
     private static async Task CopyLog(StreamReader stderr)
     {
         try
         {
-            await using var log = new StreamWriter(Path.Combine(DataDirectory, "core.log"), append: false) { AutoFlush = true };
+            var path = Path.Combine(DataDirectory, "core.log");
+            if (File.Exists(path)) File.Move(path, Path.Combine(DataDirectory, "core.previous.log"), overwrite: true);
+            await using var log = new StreamWriter(path, append: false) { AutoFlush = true };
             while (await stderr.ReadLineAsync() is { } line) await log.WriteLineAsync(line);
         }
         catch (IOException) { }

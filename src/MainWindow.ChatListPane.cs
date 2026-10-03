@@ -28,18 +28,19 @@ public sealed partial class MainWindow
         {
             StopWidthAnimation();
             _dragStartWidth = ChatListColumn.ActualWidth;
+            _dragCollapsed = _dragStartWidth < 1;
+            _dragWanted = null;
+            CompositionTarget.Rendering += DragFrame;
         };
-        ChatListSplitter.DragDelta += dx =>
-        {
-            var wanted = _dragStartWidth + dx;
-            _dragCollapsed = wanted < CollapseBelow;
-            // Follows the pointer down to the minimum, then snaps shut past the collapse point.
-            ApplyChatListWidth(_dragCollapsed ? 0 : Clamp(wanted));
-        };
+        // The mouse reports far more often than the screen draws, and every width lays the whole
+        // conversation out again: the newest position is taken once a frame (DragFrame).
+        ChatListSplitter.DragDelta += dx => _dragWanted = _dragStartWidth + dx;
         ChatListSplitter.DragCompleted += () =>
         {
+            CompositionTarget.Rendering -= DragFrame;
+            DragFrame(null, null!);
             _ui.ChatListCollapsed = _dragCollapsed;
-            if (!_dragCollapsed) _ui.ChatListWidth = ChatListColumn.ActualWidth;
+            if (!_dragCollapsed) _ui.ChatListWidth = _widthAnimation is null ? _chatListWidth : _slideTo;
             _ui.Save();
         };
         ChatListSplitter.DoubleTapped += (_, e) =>
@@ -72,8 +73,31 @@ public sealed partial class MainWindow
         return Math.Clamp(width, ChatListMin, max);
     }
 
+    private double? _dragWanted;      // where the drag has got to, until the next frame takes it
+    private double _chatListWidth;    // the width last set (ActualWidth is a layout behind)
+
+    /// <summary>
+    /// One step of a drag: the pane follows the pointer down to its minimum, on whole pixels;
+    /// past the collapse point it slides shut, and slides back out when dragged back.
+    /// </summary>
+    private void DragFrame(object? sender, object e)
+    {
+        if (_dragWanted is not { } wanted) return;
+        _dragWanted = null;
+        var collapsed = wanted < CollapseBelow;
+        var width = collapsed ? 0 : Math.Round(Clamp(wanted));
+        if (collapsed != _dragCollapsed)
+        {
+            _dragCollapsed = collapsed;
+            AnimateChatListWidth(width);
+        }
+        else if (_widthAnimation is not null) _slideTo = width;   // still sliding: towards where the pointer is now
+        else if (width != _chatListWidth) ApplyChatListWidth(width);
+    }
+
     private void ApplyChatListWidth(double width)
     {
+        _chatListWidth = width;
         ChatListColumn.Width = new GridLength(width);
         ChatListPane.Visibility = width < 1 ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -81,6 +105,7 @@ public sealed partial class MainWindow
     // ───── Slide (double-click / reopen) ─────
 
     private EventHandler<object>? _widthAnimation;
+    private double _slideTo;   // where the slide ends (a drag can move it while it runs)
 
     private void AnimateChatListWidth(double to)
     {
@@ -89,17 +114,18 @@ public sealed partial class MainWindow
         if (Math.Abs(from - to) < 1) { ApplyChatListWidth(to); return; }
         if (to > 0) ChatListPane.Visibility = Visibility.Visible;
 
+        _slideTo = to;
         var start = DateTime.UtcNow;
         const double duration = 220;
         _widthAnimation = (_, _) =>
         {
             var t = Math.Min(1, (DateTime.UtcNow - start).TotalMilliseconds / duration);
             var eased = 1 - Math.Pow(1 - t, 3);   // ease-out cubic
-            ChatListColumn.Width = new GridLength(from + (to - from) * eased);
+            ChatListColumn.Width = new GridLength(Math.Round(from + (_slideTo - from) * eased));
             if (t >= 1)
             {
                 StopWidthAnimation();
-                ApplyChatListWidth(to);
+                ApplyChatListWidth(_slideTo);
             }
         };
         CompositionTarget.Rendering += _widthAnimation;

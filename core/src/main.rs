@@ -39,6 +39,8 @@ struct Pending {
     ts: i64,
     id: String,
     request: Option<String>,
+    /// The phone had nothing under the chat's address here, and was asked under its other one.
+    other_tried: bool,
 }
 
 /// Everything the event handlers share.
@@ -1319,7 +1321,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                         send_message_update(ctx, chat_id, message_id);
                     }
                     if on_demand {
-                        answer_pending_history(ctx, &chats, session.as_deref());
+                        answer_pending_history(ctx, client, &chats, session.as_deref());
                     } else {
                         avatars::queue_stale(ctx);   // new chats from the sync
                         ctx.calls_dirty.notify_one();   // and its calls
@@ -1601,10 +1603,11 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
         return;
     }
 
-    let pending = Pending { ts, id: oldest_id.clone(), request: None };
+    let pending = Pending { ts, id: oldest_id.clone(), request: None, other_tried: false };
     ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).insert(chat_id.clone(), pending);
     match client.fetch_message_history(&jid, &oldest_id, from_me, ts * 1000, 50).await {
         Ok(request) => {
+            info!("older messages for {chat_id}: asked the phone (request {request}, before a message of {ts})");
             if let Some(p) = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).get_mut(&chat_id) {
                 p.request = Some(request);
             }
@@ -1622,6 +1625,7 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
                     same
                 };
                 if still {
+                    warn!("older messages for {waiting}: the phone didn't answer in 25 s");
                     ctx.send(Out::OlderMessages { chat_id: waiting, messages: Vec::new(), complete: false });
                 }
             });
@@ -1636,8 +1640,45 @@ async fn load_older(ctx: &Ctx, client: &Arc<Client>, chat_id: String, before_ts:
 }
 
 /// Set once the phone has nothing older than this message: the chat starts here.
+/// (`history_start:` flags were set after asking under one address only; they're not read any more.)
 fn start_flag(chat_id: &str, oldest_id: &str) -> String {
-    format!("history_start:{chat_id}:{oldest_id}")
+    format!("history_begins:{chat_id}:{oldest_id}")
+}
+
+/// The phone keeps a 1:1 chat under the person's number or their LID, and answers a request
+/// made under the other with nothing. Before taking "nothing older" as the chat's start, the
+/// same request goes out once more under the chat's other address. True when it was sent.
+fn ask_under_other_address(ctx: &Ctx, client: &Arc<Client>, chat_id: &str, p: &Pending) -> bool {
+    if p.other_tried {
+        return false;
+    }
+    let (other, from_me) = {
+        let db = ctx.db();
+        (db.other_address(chat_id), db.message(chat_id, &p.id).map(|m| m.from_me))
+    };
+    let (Some(other), Some(from_me)) = (other, from_me) else { return false };
+    let Ok(jid) = other.parse::<Jid>() else { return false };
+    if let Some(waiting) = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).get_mut(chat_id) {
+        waiting.other_tried = true;
+        waiting.request = None;
+    }
+    let (ctx, client, chat_id, p) = (ctx.clone(), Arc::clone(client), chat_id.to_string(), p.clone());
+    tokio::spawn(async move {
+        match client.fetch_message_history(&jid, &p.id, from_me, p.ts * 1000, 50).await {
+            Ok(request) => {
+                info!("older messages for {chat_id}: nothing under that address; asked under its other one (request {request})");
+                if let Some(waiting) = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).get_mut(&chat_id) {
+                    waiting.request = Some(request);
+                }
+            }
+            Err(e) => {
+                warn!("on-demand history request (other address) failed for {chat_id}: {e}");
+                ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner()).remove(&chat_id);
+                ctx.send(Out::OlderMessages { chat_id, messages: Vec::new(), complete: false });
+            }
+        }
+    });
+    true
 }
 
 /// An ON_DEMAND chunk arrived: hand each waiting chat whatever is now older than its anchor.
@@ -1646,7 +1687,7 @@ fn start_flag(chat_id: &str, oldest_id: &str) -> String {
 /// means the chat starts there (remembered, so it isn't asked again). A chunk without a
 /// matching id may answer a media backfill for the same chat instead, so it only passes on
 /// what it brought.
-fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>, session: Option<&str>) {
+fn answer_pending_history(ctx: &Ctx, client: &Arc<Client>, chats_in_chunk: &HashMap<String, usize>, session: Option<&str>) {
     let waiting: Vec<(String, Pending, bool)> = {
         let pending = ctx.pending_history.lock().unwrap_or_else(|p| p.into_inner());
         pending
@@ -1662,11 +1703,15 @@ fn answer_pending_history(ctx: &Ctx, chats_in_chunk: &HashMap<String, usize>, se
         let refilling = ctx.backfill_sent.lock().unwrap_or_else(|p| p.into_inner()).get(&chat_id).is_some_and(|t| t.elapsed() < Duration::from_secs(20));
         let complete = messages.is_empty() && (answers || chats_in_chunk.get(&chat_id) == Some(&0) || !refilling);
         info!(
-            "older messages for {chat_id}: {} found, request {:?}, answers it: {answers}, refill in flight: {refilling} -> complete: {complete}",
+            "older messages for {chat_id}: {} found ({:?} in the chunk), request {:?}, answers it: {answers}, refill in flight: {refilling} -> complete: {complete}",
             messages.len(),
+            chats_in_chunk.get(&chat_id),
             p.request
         );
         if messages.is_empty() && !complete {
+            continue;
+        }
+        if complete && answers && ask_under_other_address(ctx, client, &chat_id, &p) {
             continue;
         }
         if complete {

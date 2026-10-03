@@ -24,6 +24,9 @@ public sealed class UiSettings
     public int WindowHeight { get; set; }
     public bool WindowMaximized { get; set; }
 
+    /// <summary>This PC is linked to a phone: the app starts on the chats, not the link screen.</summary>
+    public bool Linked { get; set; }
+
     /// <summary>System (follows Windows), Light or Dark.</summary>
     public string Theme { get; set; } = "System";
 

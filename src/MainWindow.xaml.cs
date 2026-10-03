@@ -25,7 +25,12 @@ public sealed partial class MainWindow : Window
         // never a silent switch to sample data (that looked like a lost login).
         var sample = Environment.GetCommandLineArgs().Contains("--sample");
         if (!sample) _core = new CoreClient(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
-        ViewModel = new MainViewModel(_core);
+        ViewModel = new MainViewModel(_core) { Linked = _ui.Linked };
+        ViewModel.LinkedChanged += () =>
+        {
+            _ui.Linked = ViewModel.Linked;
+            _ui.Save();
+        };
         Helpers.Ui.IMessage = true;   // the round bubbles (classic ones were a setting once)
         Helpers.Format.Use24Hour = _ui.Use24Hour;   // before any bubble is drawn
 #if DEBUG

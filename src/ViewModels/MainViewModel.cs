@@ -262,10 +262,18 @@ public sealed partial class MainViewModel : Observable
     public string? StatusDetail => _statusDetail;
     public ImageSource? QrImage { get => _qrImage; private set => Set(ref _qrImage, value); }
 
-    /// <summary>Full-window "link your phone" screen.</summary>
+    /// <summary>This PC was linked when the app last ran (kept in ui.json by the window).</summary>
+    public bool Linked { get; set; }
+    public event Action? LinkedChanged;
+
+    /// <summary>
+    /// Full-window "link your phone" screen. Not while a linked PC is starting up: its chats are
+    /// a moment away, and the screen would flash by.
+    /// </summary>
     public bool ShowLinkScreen =>
         IsLive && (_state is ConnectionState.Qr or ConnectionState.LoggedOut
-                   || (_allChats.Count == 0 && _state != ConnectionState.Connected));
+                   || (_allChats.Count == 0 && _state != ConnectionState.Connected
+                       && !(Linked && _state is ConnectionState.Starting or ConnectionState.Connecting)));
 
     public bool ShowQr => _state == ConnectionState.Qr && _qrImage is not null;
     public bool ShowLinkProgress => !ShowQr && _state != ConnectionState.Error;
@@ -307,6 +315,17 @@ public sealed partial class MainViewModel : Observable
         };
         _statusDetail = detail;
         if (_state != ConnectionState.Qr) QrImage = null;
+        var linked = _state switch
+        {
+            ConnectionState.Syncing or ConnectionState.Connected => true,
+            ConnectionState.Qr or ConnectionState.LoggedOut => false,
+            _ => Linked,
+        };
+        if (linked != Linked)
+        {
+            Linked = linked;
+            LinkedChanged?.Invoke();
+        }
         // (Re)connected: WhatsApp forgot whether you're online; tell it again.
         if (_state == ConnectionState.Connected) _core?.SetPresence(_available);
         RaiseConnection();
@@ -382,7 +401,9 @@ public sealed partial class MainViewModel : Observable
         if (chat.MessagesLoaded || _core is null) PlaceUnreadDivider(chat);
         if (_core is not null && chat.Id.Length > 0)
         {
+            chat.OlderRetries = 0;
             if (!chat.MessagesLoaded) _core.LoadMessages(chat.Id);
+            else if (IsShort(chat)) LoadOlder(chat);   // the phone didn't answer last time: ask again
             if (chat.Unread > 0 || chat.MarkedUnread) _core.MarkRead(chat.Id);
             if (!chat.IsGroup) _core.WatchPresence(chat.Id);   // online / last seen / typing
             else _core.GroupMembers(chat.Id);                  // its members and details (the intro card, Group info)
@@ -524,13 +545,31 @@ public sealed partial class MainViewModel : Observable
         chat.LoadingOlder = true;
         _core.LoadOlder(chat.Id, oldest.UnixTs, oldest.Id);
 
-        await Task.Delay(TimeSpan.FromSeconds(20));
+        await Task.Delay(TimeSpan.FromSeconds(30));   // the core gives the phone 25 s
         if (chat.LoadingOlder && chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider) == oldest)
         {
             // No answer (phone offline?): stop the spinner, and don't ask again on every scroll.
             chat.LoadingOlder = false;
-            chat.RetryOlderAfter = DateTime.Now.AddMinutes(1);
+            RetryOlderLater(chat);
         }
+    }
+
+    /// <summary>Too few messages to scroll: scrolling up can't ask for more, so the app has to.</summary>
+    private static bool IsShort(Chat chat) => chat.Messages.Count(m => m.Kind != MessageKind.DateDivider) < 25;
+
+    /// <summary>
+    /// The phone didn't answer (asleep, offline): not again for a minute, and for a short chat
+    /// that's still open, once more by itself then (three times at most per opening).
+    /// </summary>
+    private async void RetryOlderLater(Chat chat)
+    {
+        chat.RetryOlderAfter = DateTime.Now.AddMinutes(1);
+        if (chat.OlderRetryQueued || chat.OlderRetries >= 3 || !IsShort(chat)) return;
+        chat.OlderRetryQueued = true;
+        chat.OlderRetries++;
+        await Task.Delay(TimeSpan.FromSeconds(62));
+        chat.OlderRetryQueued = false;
+        if (chat == _selectedChat && IsShort(chat)) LoadOlder(chat);
     }
 
     /// <summary>A message to show once it's loaded (search result, date): its id and chat.</summary>
@@ -575,7 +614,11 @@ public sealed partial class MainViewModel : Observable
 
         var known = chat.Messages.Select(m => m.Id).ToHashSet();
         var fresh = messages.Where(d => !known.Contains(d.Id)).ToList();
-        if (fresh.Count == 0) return;
+        if (fresh.Count == 0)
+        {
+            if (!complete) RetryOlderLater(chat);   // the phone didn't answer
+            return;
+        }
         var after = chat.Messages.FirstOrDefault(m => m.Kind != MessageKind.DateDivider)?.Id;
         var older = fresh.Select(d => Format.ToMessage(d, chat.IsGroup)).ToList();
         Prepend(chat, older);

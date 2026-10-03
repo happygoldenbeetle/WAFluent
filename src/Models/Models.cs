@@ -511,6 +511,10 @@ public sealed class Chat : Observable
     /// <summary>After an unanswered request for older messages, wait before asking the phone again.</summary>
     public DateTime RetryOlderAfter { get; set; }
 
+    /// <summary>Times the request was repeated by itself since the chat was opened, and whether one is waiting its turn.</summary>
+    public int OlderRetries { get; set; }
+    public bool OlderRetryQueued { get; set; }
+
     private bool _loadingOlder;
     /// <summary>Waiting for older messages (spinner at the top of the conversation).</summary>
     public bool LoadingOlder { get => _loadingOlder; set => Set(ref _loadingOlder, value); }

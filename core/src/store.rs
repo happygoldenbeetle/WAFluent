@@ -340,6 +340,21 @@ impl Store {
             .unwrap_or_else(|| jid.to_string())
     }
 
+    /// A 1:1 chat's other address (its LID when it's kept by number, or the reverse), when known.
+    pub fn other_address(&self, chat_id: &str) -> Option<String> {
+        self.db
+            .query_row(
+                "SELECT alt FROM aliases WHERE chat_id = ?1
+                   AND substr(alt, instr(alt, '@')) != substr(?1, instr(?1, '@'))
+                   AND (alt LIKE '%@lid' OR alt LIKE '%@s.whatsapp.net') LIMIT 1",
+                [chat_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
     pub fn upsert_chat(&self, meta: &ChatMeta) {
         let _ = self.db.execute(
             "INSERT INTO chats(id, name, is_group, unread, pinned, archived, mute_end)

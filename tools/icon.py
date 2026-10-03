@@ -191,8 +191,13 @@ big = icon((24.6, 22.8, 14.0, (10.6, 40.0)), [(17.0, 32.4, 19.4, 3.0), (17.0, 27
 small = icon((24.6, 22.6, 15.4, (9.6, 41.0)), [(16.0, 33.2, 18.6, 4.0), (16.0, 27.4, 26.2, 4.0)], corner=10.5)
 
 
+# The square nearly fills the image, as WhatsApp's and Chrome's do on the taskbar (drawn at the
+# keyline it would look a size smaller beside them); a sliver more room below, for its shadow.
+FRAME = (2.4 * S, 2.6 * S, 45.6 * S, 45.8 * S)
+
+
 def at(size):
-    return (small if size <= 32 else big).resize((size, size), Image.LANCZOS)
+    return (small if size <= 32 else big).resize((size, size), Image.LANCZOS, box=FRAME)
 
 
 at(1024).save(f"{OUT}/AppIcon-1024.png")

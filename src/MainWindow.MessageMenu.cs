@@ -19,6 +19,12 @@ public sealed partial class MainWindow
     private void Message_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
     {
         if (sender is not FrameworkElement { Tag: Message message } bubble) return;
+        // Beside the bubble (the row is as wide as the conversation): the conversation's menu.
+        if (ReferenceEquals(e.OriginalSource, bubble) && ReferenceEquals(VisualTreeHelper.GetParent(bubble), Messages))
+        {
+            Conversation_ContextRequested(bubble, e);
+            return;
+        }
         e.Handled = true;
 
         // Right-click on an email address or link: its own menu, not the message's.
@@ -48,6 +54,20 @@ public sealed partial class MainWindow
             menu.ShowAt(bubble, new FlyoutShowOptions { Position = point });
         else
             menu.ShowAt(bubble);   // keyboard (menu key / Shift+F10)
+    }
+
+    /// <summary>Right-click on the conversation's empty space: Select messages and Close chat, like WhatsApp.</summary>
+    private void Conversation_ContextRequested(UIElement sender, ContextRequestedEventArgs e)
+    {
+        if (ViewModel.SelectedChat is null || sender is not FrameworkElement target) return;
+        e.Handled = true;
+        var menu = new MenuFlyout();
+        menu.Items.Add(Item("Select messages", Glyphs.Select, () => ViewModel.BeginSelect()));
+        menu.Items.Add(Item("Close chat", Glyphs.CloseCircle, () => { ViewModel.CloseChat(); ChatList.SelectedItem = null; }));
+        if (e.TryGetPosition(target, out var point))
+            menu.ShowAt(target, new FlyoutShowOptions { Position = point });
+        else
+            menu.ShowAt(target);
     }
 
     /// <summary>The email address or link the right-click landed on, if any (in the text or a caption).</summary>

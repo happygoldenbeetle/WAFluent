@@ -478,7 +478,7 @@ public sealed partial class MainViewModel
     public int SelectionCount => SelectedMessages.Count();
     public string SelectionText => SelectionCount == 1 ? "1 selected" : $"{SelectionCount} selected";
 
-    public void BeginSelect(Message first)
+    public void BeginSelect(Message? first = null)
     {
         if (_selectedChat is not { } chat) return;
         foreach (var m in chat.Messages)

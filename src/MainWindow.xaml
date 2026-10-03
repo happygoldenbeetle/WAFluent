@@ -2096,6 +2096,7 @@
                     <!-- Anchored to the bottom: older messages arriving above, or rows measuring
                          taller than guessed, don't move what you're reading. -->
                     <ScrollViewer x:Name="MessagesScroller" Grid.Row="2" Padding="28,8,28,12" VerticalAnchorRatio="1"
+                                  Background="Transparent" ContextRequested="Conversation_ContextRequested"
                                   Visibility="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                                   ViewChanged="MessagesScroller_ViewChanged">
                         <StackPanel>
