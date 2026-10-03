@@ -1193,7 +1193,7 @@
                 <NavigationViewItem Content="Channels" Tag="Channels">
                     <NavigationViewItem.Icon>
                         <!-- A speech bubble with a broadcast mark in it, drawn as an outline: the icon font has no channels glyph. -->
-                        <PathIcon Margin="-1" Data="F0 M1.82,10.89 A7.0,7.0 0 1 1 4.93,13.89 Q3.3,14.5 1.5,14.8 Q2.3,13.3 1.82,10.89 Z M3.23,10.82 A5.75,5.75 0 1 1 4.95,12.48 Q3.9,13.2 3.1,13.5 Q3.3,12.4 3.23,10.82 Z M9.05,7.60 A1.05,1.05 0 1 1 6.95,7.60 A1.05,1.05 0 1 1 9.05,7.60 Z M10.28,4.68 A3.7,3.7 0 0 1 10.28,10.52 L9.60,9.65 A2.6,2.6 0 0 0 9.60,5.55 Z M5.72,10.52 A3.7,3.7 0 0 1 5.72,4.68 L6.40,5.55 A2.6,2.6 0 0 0 6.40,9.65 Z" />
+                        <PathIcon Margin="-1" Data="F0 M2.26,11.11 A7.0,7.0 0 1 1 4.91,13.58 Q3.7,14.8 2.1,15.2 Q1.5,15.3 1.6,14.7 Q2.0,13.0 2.26,11.11 Z M3.67,10.94 A5.75,5.75 0 1 1 4.90,12.11 Q4.0,13.4 3.1,13.8 Q3.2,12.7 3.67,10.94 Z M9.25,7.40 A1.05,1.05 0 1 1 7.15,7.40 A1.05,1.05 0 1 1 9.25,7.40 Z M10.48,4.48 A3.7,3.7 0 0 1 10.48,10.32 L9.80,9.45 A2.6,2.6 0 0 0 9.80,5.35 Z M5.92,10.32 A3.7,3.7 0 0 1 5.92,4.48 L6.60,5.35 A2.6,2.6 0 0 0 6.60,9.45 Z" />
                     </NavigationViewItem.Icon>
                     <!-- Channels you follow with posts since you last opened them (MainWindow.Channels.cs). -->
                     <NavigationViewItem.InfoBadge>
@@ -1896,7 +1896,7 @@
                       BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
                         <Viewbox Width="64" Height="64">
-                            <PathIcon Foreground="{ThemeResource TextFillColorTertiaryBrush}" Data="F0 M1.82,10.89 A7.0,7.0 0 1 1 4.93,13.89 Q3.3,14.5 1.5,14.8 Q2.3,13.3 1.82,10.89 Z M3.23,10.82 A5.75,5.75 0 1 1 4.95,12.48 Q3.9,13.2 3.1,13.5 Q3.3,12.4 3.23,10.82 Z M9.05,7.60 A1.05,1.05 0 1 1 6.95,7.60 A1.05,1.05 0 1 1 9.05,7.60 Z M10.28,4.68 A3.7,3.7 0 0 1 10.28,10.52 L9.60,9.65 A2.6,2.6 0 0 0 9.60,5.55 Z M5.72,10.52 A3.7,3.7 0 0 1 5.72,4.68 L6.40,5.55 A2.6,2.6 0 0 0 6.40,9.65 Z" />
+                            <PathIcon Foreground="{ThemeResource TextFillColorTertiaryBrush}" Data="F0 M2.26,11.11 A7.0,7.0 0 1 1 4.91,13.58 Q3.7,14.8 2.1,15.2 Q1.5,15.3 1.6,14.7 Q2.0,13.0 2.26,11.11 Z M3.67,10.94 A5.75,5.75 0 1 1 4.90,12.11 Q4.0,13.4 3.1,13.8 Q3.2,12.7 3.67,10.94 Z M9.25,7.40 A1.05,1.05 0 1 1 7.15,7.40 A1.05,1.05 0 1 1 9.25,7.40 Z M10.48,4.48 A3.7,3.7 0 0 1 10.48,10.32 L9.80,9.45 A2.6,2.6 0 0 0 9.80,5.35 Z M5.92,10.32 A3.7,3.7 0 0 1 5.92,4.48 L6.60,5.35 A2.6,2.6 0 0 0 6.60,9.45 Z" />
                         </Viewbox>
                         <TextBlock Text="Discover channels" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
                                    TextWrapping="Wrap" Margin="0,14,0,0" />
