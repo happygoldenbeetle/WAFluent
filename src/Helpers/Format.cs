@@ -262,6 +262,16 @@ public static class Format
         _ => (n / 1_000_000.0).ToString("0.#", CultureInfo.InvariantCulture) + "m",
     };
 
+    /// <summary>
+    /// What makes two spellings the same emoji. An emoji's spellings differ only in the invisible
+    /// marks that say "draw as a picture" (U+FE0F) or "as text" (U+FE0E), which senders include
+    /// or leave out (a heart, a keycap, inside joined ones like the rainbow flag too): without
+    /// them, and in one Unicode form, the same emoji is the same string. Skin tones stay apart:
+    /// those are different emoji.
+    /// </summary>
+    public static string EmojiKey(string emoji) =>
+        emoji.Trim().Normalize(System.Text.NormalizationForm.FormC).Replace("\uFE0F", "").Replace("\uFE0E", "");
+
     /// <summary>A channel post's reactions from the core's {channel: {reactions: [[emoji, count]…]}}: the four most used and the total.</summary>
     private static (string Summary, List<(string Emoji, long Count)> All, string Forwards, string Mine) ChannelCounts(MessageDto dto)
     {
@@ -272,8 +282,9 @@ public static class Format
         var counts = list.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Array && r.GetArrayLength() == 2)
             .Select(r => (Emoji: r[0].GetString() ?? "", Count: r[1].TryGetInt64(out var n) ? n : 0)).Where(r => r.Count > 0)
             // The same emoji arrives written two ways (with and without its "as a picture" mark): one entry, counted together.
-            .GroupBy(r => r.Emoji.Replace("\uFE0F", ""))
-            .Select(g => (Emoji: g.OrderByDescending(r => r.Count).First().Emoji, Count: g.Sum(r => r.Count)))
+            .GroupBy(r => EmojiKey(r.Emoji))
+            // Shown in its full spelling when one of them has it (that's the one every font draws as a picture).
+            .Select(g => (Emoji: g.OrderByDescending(r => r.Emoji.Contains('\uFE0F')).ThenByDescending(r => r.Count).First().Emoji, Count: g.Sum(r => r.Count)))
             .OrderByDescending(r => r.Count).ToList();
         return (counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}", counts, forwards, mine);
     }

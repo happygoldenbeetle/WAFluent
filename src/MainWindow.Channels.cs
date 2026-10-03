@@ -143,7 +143,7 @@ public sealed partial class MainWindow
             chip.Children.Add(new TextBlock { Text = emoji, FontSize = 18, FontFamily = (FontFamily)Application.Current.Resources["EmojiFontFamily"] });
             chip.Children.Add(new TextBlock { Text = Format.Compact(count), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
             // Yours is marked. A click reacts with that one (it replaces yours: one per post); on yours, takes it back.
-            var mine = post.MyReaction.Length > 0 && post.MyReaction.Replace("\uFE0F", "") == emoji.Replace("\uFE0F", "");
+            var mine = post.MyReaction.Length > 0 && Format.EmojiKey(post.MyReaction) == Format.EmojiKey(emoji);
             var button = new Button
             {
                 Content = chip,
