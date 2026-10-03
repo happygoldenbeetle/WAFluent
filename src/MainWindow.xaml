@@ -836,7 +836,10 @@
                         <StackPanel HorizontalAlignment="{x:Bind helpers:Ui.Align(IsOutgoing)}">
                             <controls:Bubble IsOutgoing="{x:Bind IsOutgoing}" Tail="{x:Bind HasTail, Mode=OneWay}" Padding="5">
                                 <StackPanel Width="270">
-                                    <Grid ColumnSpacing="12" Padding="12,10" CornerRadius="8" Background="{ThemeResource QuoteBrush}">
+                                    <!-- Clicking it makes the same kind of call again. -->
+                                    <Grid ColumnSpacing="12" Padding="12,10" CornerRadius="8" Background="{ThemeResource QuoteBrush}"
+                                          Tag="{x:Bind}" Tapped="CallCard_Tapped" helpers:HandCursor.On="True"
+                                          ToolTipService.ToolTip="{x:Bind helpers:Ui.CallAgainTip(CallVideo)}">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
@@ -1780,7 +1783,7 @@
                     <!-- Nothing picked. -->
                     <Grid x:Name="CallsIntro">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
-                            <FontIcon Glyph="&#xE714;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <FontIcon Glyph="&#xE717;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
                             <TextBlock Text="Voice and video calling" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
                                        TextWrapping="Wrap" Margin="0,14,0,0" />
                             <TextBlock Text="Call anyone on WhatsApp from this PC, with voice or video." HorizontalAlignment="Center"

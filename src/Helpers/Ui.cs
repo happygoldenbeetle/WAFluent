@@ -59,6 +59,8 @@ public static class Ui
     /// <summary>The icon on a call's card in a chat: red for one you missed.</summary>
     public static Brush CallCardBrush(bool missed) => Themed.Brush(missed ? "DangerBrush" : "BubbleTextBrush");
 
+    public static string CallAgainTip(bool video) => video ? "Video call" : "Voice call";
+
     public static Brush CallBrush(bool missed) => Themed.Brush(missed ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush");
 
     public static Brush BubbleBrush(bool isOutgoing) => Themed.Brush(isOutgoing ? "OutgoingBubbleBrush" : "IncomingBubbleBrush");

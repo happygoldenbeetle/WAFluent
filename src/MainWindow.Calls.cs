@@ -56,6 +56,14 @@ public sealed partial class MainWindow
         if (ViewModel.SelectedChat is { } chat) StartCallWith(chat, video);
     }
 
+    /// <summary>A call's card in the chat was clicked: the same kind of call again (video for video, voice for voice).</summary>
+    private void CallCard_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (ViewModel.IsSelecting || (sender as FrameworkElement)?.Tag is not Message card) return;
+        e.Handled = true;
+        StartCall(card.CallVideo);
+    }
+
     /// <summary>Calls <paramref name="chat"/> (the open chat's buttons, or someone picked on the Calls page).</summary>
     private void StartCallWith(Chat chat, bool video)
     {
