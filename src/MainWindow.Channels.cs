@@ -45,6 +45,40 @@ public sealed partial class MainWindow
                 Nav.SelectedItem = Nav.MenuItems[3];
                 await Task.Delay(600);
                 if (test == "channels-open" && ViewModel.Channels.FirstOrDefault() is { } first) ViewModel.OpenChannel(first);
+                if (test == "channels-rail") Nav.IsPaneOpen = true;   // the rail opened: it pushes the page aside
+                if (test == "channels-poll-live")
+                {
+                    // On the linked account: a poll in a channel is voted on twice (it can't be: no vote is sent),
+                    // then the app is given half a minute to fall over. What happened goes to the file.
+                    var said = new List<string>();
+                    void Say(string line)
+                    {
+                        said.Add($"{DateTime.Now:HH:mm:ss} {line}");
+                        File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), said);
+                    }
+                    for (var i = 0; i < 25 && ViewModel.Channels.Count + ViewModel.SuggestedChannels.Count == 0; i++) await Task.Delay(1000);
+                    await Task.Delay(3000);
+                    foreach (var pick in ViewModel.Channels.Concat(ViewModel.SuggestedChannels).Take(8).ToList())
+                    {
+                        ViewModel.OpenChannel(pick);
+                        await Task.Delay(8000);
+                        if (ViewModel.SelectedChat?.Messages.LastOrDefault(m => m.Kind == Models.MessageKind.Poll && m.PollOptions.Count > 1) is not { } poll) continue;
+                        Say($"a poll with {poll.PollOptions.Count} options");
+                        ScrollToMessage(poll.Id);
+                        await Task.Delay(1500);
+                        ViewModel.VotePoll(poll.PollOptions[0]);
+                        ViewModel.VotePoll(poll.PollOptions[1]);
+                        Say("voted twice");
+                        for (var i = 1; i <= 6; i++)
+                        {
+                            await Task.Delay(5000);
+                            Say($"alive after {i * 5} s");
+                        }
+                        return;
+                    }
+                    Say("no poll found");
+                    return;
+                }
                 if (test != "channels-live") return;
                 // On the linked account: the lists from WhatsApp, then a channel opened (one you follow, else a suggested
                 // one). Counts only go to the file: no names, no text.
@@ -230,6 +264,9 @@ public sealed partial class MainWindow
     {
         var rows = new List<UIElement>();
         BuildChannelRows(rows);
+        // A row can be in the list once (WinUI stops the app otherwise): a channel that's in two of
+        // the lists for a moment, just followed on the phone and still among the suggestions, is shown once.
+        rows = rows.Distinct().ToList();
         // Only what differs is touched: a row that hasn't moved or changed stays where it is.
         var shown = ChannelRows.Children;
         for (var i = 0; i < rows.Count; i++)
@@ -261,7 +298,7 @@ public sealed partial class MainWindow
                 Margin = new Thickness(14, 18, 0, 6),
                 Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
             });
-            foreach (var channel in ViewModel.SuggestedChannels) ChannelRows.Add(CachedChannelRow(channel));
+            foreach (var channel in ViewModel.SuggestedChannels.Where(s => ViewModel.Channels.All(f => f.Id != s.Id))) ChannelRows.Add(CachedChannelRow(channel));
         }
         else if (ViewModel.Channels.Count == 0)
         {

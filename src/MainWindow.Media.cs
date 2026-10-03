@@ -275,6 +275,12 @@ public sealed partial class MainWindow
     {
         if (ViewModel.IsSelecting || sender is not FrameworkElement { Tag: PollOption option }) return;
         e.Handled = true;
+        if (option.Owner.IsPost)
+        {
+            // A channel's poll is voted on differently from a chat's, and that isn't built here.
+            ShowToast(false, "Voting in a channel's poll isn't available here yet. Vote on your phone.");
+            return;
+        }
         ViewModel.VotePoll(option);
     }
 
