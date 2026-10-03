@@ -129,8 +129,13 @@ public sealed partial class MainWindow : Window
                     }
                     var seen = new List<double>();
                     var trace = new List<string>();
+                    var frames = new List<double>();
+                    long lastFrame = 0;
                     EventHandler<object> read = (_, _) =>
                     {
+                        var tick = System.Diagnostics.Stopwatch.GetTimestamp();
+                        if (lastFrame != 0) frames.Add(System.Diagnostics.Stopwatch.GetElapsedTime(lastFrame, tick).TotalMilliseconds);
+                        lastFrame = tick;
                         var top = Top(watched);
                         if (seen.Count > 0 && Math.Abs(top - seen[^1]) > 60 && trace.Count < 6)
                             trace.Add($"frame {seen.Count}: bubble {seen[^1]:0}->{top:0}, offset {MessagesScroller.VerticalOffset:0} of {MessagesScroller.ScrollableHeight:0}, in tree {watched.Parent is not null}, height {watched.ActualHeight:0}");
@@ -143,6 +148,7 @@ public sealed partial class MainWindow : Window
                         SmoothScroll.Nudge(MessagesScroller, direction * 110);
                         await Task.Delay(45);
                     }
+                    var gliding = frames.Count;
                     var stopped = seen.Count;   // the wheel has stopped: what moves from here is the coast
                     await Task.Delay(1800);
                     Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
@@ -151,7 +157,7 @@ public sealed partial class MainWindow : Window
                     var moving = steps.Where(s => Math.Abs(s) > 0.01).ToList();
                     lines.Add($"{(direction < 0 ? "up" : "down")}: a bubble moved {(start - Top(watched)) * direction:0} px on screen (asked for {5 * 110}); "
                               + $"{moving.Count} frames moved, {moving.Count(s => s < 0)} the wrong way, biggest step {(moving.Count > 0 ? moving.Max() : 0):0.0}, most backwards {(moving.Count > 0 ? Math.Min(0, moving.Min()) : 0):0.0}; "
-                              + $"TRACE {string.Join(" | ", trace)}; after the last notch it coasted {Math.Abs(seen[^1] - seen[Math.Min(stopped, seen.Count - 1)]):0} px over {steps.Skip(stopped).Count(s => Math.Abs(s) > 0.01)} frames");
+                              + $"FRAMES longest {frames.Take(Math.Max(gliding + 40, 1)).DefaultIfEmpty().Max():0} ms, over 20 ms: {frames.Take(gliding + 40).Count(f => f > 20)}, over 33 ms: {frames.Take(gliding + 40).Count(f => f > 33)} of {Math.Min(frames.Count, gliding + 40)}; after the last notch it coasted {Math.Abs(seen[^1] - seen[Math.Min(stopped, seen.Count - 1)]):0} px over {steps.Skip(stopped).Count(s => Math.Abs(s) > 0.01)} frames");
                 }
                 lines.Add($"scrolling areas that glide: {SmoothScroll.Count}; real wheel turns during the test: {SmoothScroll.Wheels}; list shifts followed: {SmoothScroll.Shifts} ({SmoothScroll.Shifted:0} px); "
                           + $"window in front: {_windowActive}; chat open: {ViewModel.SelectedChat?.Messages.Count} messages");

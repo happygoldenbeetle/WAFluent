@@ -2142,7 +2142,7 @@
                             </StackPanel>
                             <Grid>
                                 <!-- Drag a message to the right to reply (MainWindow.Swipe.cs). -->
-                                <ItemsRepeater x:Name="Messages"
+                                <ItemsRepeater x:Name="Messages" VerticalCacheLength="8"
                                                ItemsSource="{x:Bind ViewModel.SelectedChat.Messages, Mode=OneWay}"
                                                ItemTemplate="{StaticResource MessageTemplates}">
                                     <ItemsRepeater.Layout>
