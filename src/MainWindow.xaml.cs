@@ -128,7 +128,14 @@ public sealed partial class MainWindow : Window
                         continue;
                     }
                     var seen = new List<double>();
-                    EventHandler<object> read = (_, _) => seen.Add(Top(watched));
+                    var trace = new List<string>();
+                    EventHandler<object> read = (_, _) =>
+                    {
+                        var top = Top(watched);
+                        if (seen.Count > 0 && Math.Abs(top - seen[^1]) > 60 && trace.Count < 6)
+                            trace.Add($"frame {seen.Count}: bubble {seen[^1]:0}->{top:0}, offset {MessagesScroller.VerticalOffset:0} of {MessagesScroller.ScrollableHeight:0}, in tree {watched.Parent is not null}, height {watched.ActualHeight:0}");
+                        seen.Add(top);
+                    };
                     var start = Top(watched);
                     Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += read;
                     for (var notch = 0; notch < 5; notch++)
@@ -136,14 +143,18 @@ public sealed partial class MainWindow : Window
                         SmoothScroll.Nudge(MessagesScroller, direction * 110);
                         await Task.Delay(45);
                     }
-                    await Task.Delay(1300);
+                    var stopped = seen.Count;   // the wheel has stopped: what moves from here is the coast
+                    await Task.Delay(1800);
                     Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= read;
                     // Scrolling up moves a bubble down the screen, and the other way round.
                     var steps = seen.Zip(seen.Skip(1), (a, b) => (a - b) * direction).ToList();
                     var moving = steps.Where(s => Math.Abs(s) > 0.01).ToList();
                     lines.Add($"{(direction < 0 ? "up" : "down")}: a bubble moved {(start - Top(watched)) * direction:0} px on screen (asked for {5 * 110}); "
-                              + $"{moving.Count} frames moved, {moving.Count(s => s < 0)} the wrong way, biggest step {(moving.Count > 0 ? moving.Max() : 0):0.0}, most backwards {(moving.Count > 0 ? Math.Min(0, moving.Min()) : 0):0.0}");
+                              + $"{moving.Count} frames moved, {moving.Count(s => s < 0)} the wrong way, biggest step {(moving.Count > 0 ? moving.Max() : 0):0.0}, most backwards {(moving.Count > 0 ? Math.Min(0, moving.Min()) : 0):0.0}; "
+                              + $"TRACE {string.Join(" | ", trace)}; after the last notch it coasted {Math.Abs(seen[^1] - seen[Math.Min(stopped, seen.Count - 1)]):0} px over {steps.Skip(stopped).Count(s => Math.Abs(s) > 0.01)} frames");
                 }
+                lines.Add($"scrolling areas that glide: {SmoothScroll.Count}; real wheel turns during the test: {SmoothScroll.Wheels}; list shifts followed: {SmoothScroll.Shifts} ({SmoothScroll.Shifted:0} px); "
+                          + $"window in front: {_windowActive}; chat open: {ViewModel.SelectedChat?.Messages.Count} messages");
                 File.WriteAllLines(Path.Combine(Path.GetTempPath(), "wafluent-selftest.txt"), lines);
             };
 #endif
