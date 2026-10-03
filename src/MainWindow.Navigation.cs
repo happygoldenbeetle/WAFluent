@@ -113,7 +113,8 @@ public sealed partial class MainWindow
     /// <summary>Closes the topmost thing over the conversation; false when there's nothing to close.</summary>
     private bool CloseTopLayer()
     {
-        if (VideoViewer.Visibility == Visibility.Visible) CloseVideo();
+        if (StatusViewer.Visibility == Visibility.Visible) CloseStatusViewer();
+        else if (VideoViewer.Visibility == Visibility.Visible) CloseVideo();
         else if (Lightbox.Visibility == Visibility.Visible) CloseViewer();
         else if (AlbumView.Visibility == Visibility.Visible) CloseAlbum();
         else if (MediaComposer.Visibility == Visibility.Visible) _ = DiscardComposerAsync();

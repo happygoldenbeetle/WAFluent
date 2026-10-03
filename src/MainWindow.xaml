@@ -1040,6 +1040,11 @@
                         <!-- Double ring, drawn: the icon font has no status glyph. -->
                         <PathIcon Data="F0 M8,0.75 A7.25,7.25 0 1 1 7.99,0.75 Z M8,2.1 A5.9,5.9 0 1 1 7.99,2.1 Z M8,4.6 A3.4,3.4 0 1 1 7.99,4.6 Z M8,5.95 A2.05,2.05 0 1 1 7.99,5.95 Z" />
                     </NavigationViewItem.Icon>
+                    <!-- A dot: someone posted a status you haven't looked at. -->
+                    <NavigationViewItem.InfoBadge>
+                        <InfoBadge Background="{ThemeResource ChatAccentBrush}"
+                                   Visibility="{x:Bind ViewModel.HasNewStatus, Mode=OneWay}" />
+                    </NavigationViewItem.InfoBadge>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
@@ -1311,6 +1316,11 @@
                                    Margin="24,0,24,140" TextWrapping="Wrap" TextAlignment="Center" IsHitTestVisible="False"
                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </Grid>
+
+                    <!-- ───── Status (MainWindow.Status.cs): My status, Recent, Viewed ───── -->
+                    <ScrollViewer x:Name="StatusPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="StatusRows" Margin="4,0,6,12" />
+                    </ScrollViewer>
 
                     <!-- ───── Calls: pages over the list (a number to call, someone to call, favourites) ───── -->
                     <Grid x:Name="CallsSubPane" Grid.RowSpan="4" Visibility="Collapsed">
@@ -1711,6 +1721,27 @@
                                     IsEnabled="False" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send poll" Click="PollSend_Click" />
                         </Grid>
                     </Grid>
+
+                <!-- ───────────── Status: the right side (MainWindow.Status.cs) ───────────── -->
+                <Grid x:Name="StatusPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
+                      Background="{ThemeResource ChatPaneBackgroundBrush}"
+                      BorderBrush="{ThemeResource PaneDividerBrush}" BorderThickness="1,0,0,0">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
+                        <Viewbox Width="64" Height="64">
+                            <PathIcon Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                      Data="F0 M8,0.75 A7.25,7.25 0 1 1 7.99,0.75 Z M8,2.1 A5.9,5.9 0 1 1 7.99,2.1 Z M8,4.6 A3.4,3.4 0 1 1 7.99,4.6 Z" />
+                        </Viewbox>
+                        <TextBlock Text="Status updates" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
+                                   TextWrapping="Wrap" Margin="0,14,0,0" />
+                        <TextBlock Text="Photos, videos and text from your contacts that disappear after 24 hours." HorizontalAlignment="Center"
+                                   TextAlignment="Center" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28">
+                        <FontIcon Glyph="&#xE72E;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="Status updates are end-to-end encrypted" FontSize="13"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
 
                 <!-- ───────────── Calls: the right side (MainWindow.CallsPage.cs) ───────────── -->
                 <Grid x:Name="CallsPane" Grid.Column="1" Canvas.ZIndex="1" Visibility="Collapsed"
@@ -2761,6 +2792,120 @@
 
 
         <!-- Confirmations and errors ("Forwarded", "Couldn't block this chat"). -->
+        <!-- ═════════════ Status viewer (MainWindow.Status.cs) ═════════════
+             One person's updates play one after another (a bar each along the top), then the next
+             person's. Hold the picture to pause; click its left or right side to step. -->
+        <Grid x:Name="StatusViewer" Grid.Row="1" Visibility="Collapsed" Background="#FF0C0C0C" RequestedTheme="Dark"
+              KeyDown="StatusViewer_KeyDown" SizeChanged="StatusViewer_SizeChanged">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <!-- The update's small preview, stretched: a soft backdrop in its colours. -->
+            <Image x:Name="StatusBackdrop" Grid.RowSpan="2" Stretch="UniformToFill" Opacity="0.4" />
+            <Border Grid.RowSpan="2" Background="#99000000" />
+
+            <Grid x:Name="StatusStage" HorizontalAlignment="Center">
+                <Grid x:Name="StatusCard" Background="Black" PointerPressed="StatusCard_PointerPressed"
+                      PointerReleased="StatusCard_PointerReleased" PointerCanceled="StatusCard_PointerLost" PointerCaptureLost="StatusCard_PointerLost">
+                    <Image x:Name="StatusBlur" Stretch="UniformToFill" />
+                    <Image x:Name="StatusImage" Stretch="Uniform" />
+                    <MediaPlayerElement x:Name="StatusVideo" Stretch="Uniform" AreTransportControlsEnabled="False" Visibility="Collapsed"
+                                        IsHitTestVisible="False" />
+                    <Border x:Name="StatusTextCard" Visibility="Collapsed" Padding="28,96,28,64">
+                        <TextBlock x:Name="StatusTextBody" Foreground="White" TextWrapping="Wrap" TextAlignment="Center" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ProgressRing x:Name="StatusLoading" Width="56" Height="56" IsActive="False" Foreground="White" />
+                    <TextBlock x:Name="StatusFailed" Visibility="Collapsed" Text="This update couldn't be loaded" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border VerticalAlignment="Top" Height="130" IsHitTestVisible="False">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#B0000000" Offset="0" />
+                                <GradientStop Color="#00000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Border x:Name="StatusCaptionBar" VerticalAlignment="Bottom" Background="#99000000" Padding="20,12" Visibility="Collapsed"
+                            IsHitTestVisible="False">
+                        <TextBlock x:Name="StatusCaption" Foreground="White" FontSize="15" TextWrapping="Wrap" TextAlignment="Center"
+                                   MaxLines="6" TextTrimming="CharacterEllipsis" />
+                    </Border>
+                </Grid>
+                <!-- A bar per update, then who and when. A little wider than the picture, like WhatsApp's. -->
+                <StackPanel VerticalAlignment="Top" Margin="-20,14,-20,0">
+                    <Grid x:Name="StatusBars" Height="3" ColumnSpacing="4" />
+                    <Grid Margin="20,12,12,0" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <controls:Redact VeilRadius="20" VerticalAlignment="Center">
+                            <controls:Avatar x:Name="StatusAvatar" Size="40" />
+                        </controls:Redact>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <controls:Redact HorizontalAlignment="Left">
+                                <TextBlock x:Name="StatusName" Foreground="White" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                            </controls:Redact>
+                            <TextBlock x:Name="StatusTime" Foreground="#CCFFFFFF" FontSize="13" />
+                        </StackPanel>
+                        <Button x:Name="StatusPause" Grid.Column="2" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Pause"
+                                AutomationProperties.Name="Pause" UseSystemFocusVisuals="False" Click="StatusPause_Click">
+                            <FontIcon x:Name="StatusPauseIcon" Glyph="&#xE769;" FontSize="16" Foreground="White" />
+                        </Button>
+                        <Button x:Name="StatusMute" Grid.Column="3" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Mute"
+                                AutomationProperties.Name="Mute" Click="StatusMute_Click">
+                            <FontIcon x:Name="StatusMuteIcon" Glyph="&#xE767;" FontSize="16" Foreground="White" />
+                        </Button>
+                    </Grid>
+                </StackPanel>
+                <!-- Shown while you're typing a reply: one click sends the emoji as the reply. -->
+                <StackPanel x:Name="StatusQuick" Visibility="Collapsed" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,14" Spacing="8">
+                    <TextBlock Text="Click to send" Foreground="White" FontSize="15" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                    <StackPanel x:Name="StatusEmojis" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <Button HorizontalAlignment="Left" VerticalAlignment="Top" Margin="20,16" Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Back" AutomationProperties.Name="Back" Click="StatusClose_Click">
+                <FontIcon Glyph="&#xE72B;" FontSize="16" Foreground="White" />
+            </Button>
+            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20,16" Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Close" AutomationProperties.Name="Close" Click="StatusClose_Click">
+                <FontIcon Glyph="&#xE711;" FontSize="16" Foreground="White" />
+            </Button>
+            <Button x:Name="StatusPrev" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="48,0" Width="48" Height="48" Padding="0"
+                    CornerRadius="24" Background="#33FFFFFF" BorderThickness="0" AutomationProperties.Name="Previous" Click="StatusPrev_Click">
+                <FontIcon Glyph="&#xE76B;" FontSize="16" Foreground="White" />
+            </Button>
+            <Button x:Name="StatusNext" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="48,0" Width="48" Height="48" Padding="0"
+                    CornerRadius="24" Background="#33FFFFFF" BorderThickness="0" AutomationProperties.Name="Next" Click="StatusNext_Click">
+                <FontIcon Glyph="&#xE76C;" FontSize="16" Foreground="White" />
+            </Button>
+
+            <Grid x:Name="StatusReplyBar" Grid.Row="1" MaxWidth="1100" Margin="24,12,24,18" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="StatusReply" PlaceholderText="Type a reply…" MaxLength="4096" Height="40" VerticalContentAlignment="Center"
+                         AutomationProperties.Name="Reply" GotFocus="StatusReply_GotFocus" KeyDown="StatusReply_KeyDown" />
+                <Button Grid.Column="1" Style="{StaticResource IconButtonStyle}" ToolTipService.ToolTip="Send" AutomationProperties.Name="Send"
+                        Click="StatusSend_Click">
+                    <FontIcon Glyph="&#xE724;" FontSize="18" Foreground="White" />
+                </Button>
+            </Grid>
+            <!-- Your own update: how many people have looked at it. -->
+            <StackPanel x:Name="StatusViews" Grid.Row="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,14,0,22"
+                        Visibility="Collapsed">
+                <FontIcon Glyph="&#xE7B3;" FontSize="16" Foreground="White" VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusViewsText" Foreground="White" VerticalAlignment="Center" />
+            </StackPanel>
+        </Grid>
+
         <Border x:Name="Toast" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,84"
                 Padding="14,8" CornerRadius="8" Opacity="0" IsHitTestVisible="False" Translation="0,0,24"
                 Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"

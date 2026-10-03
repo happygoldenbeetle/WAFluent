@@ -238,6 +238,8 @@ impl Store {
             "CREATE TABLE IF NOT EXISTS favorite_chats(jid TEXT PRIMARY KEY, pos INTEGER NOT NULL)",
             // Calls taken out of the Calls page that live on as messages in a chat.
             "CREATE TABLE IF NOT EXISTS call_log_hidden(id TEXT PRIMARY KEY)",
+            // Status updates you've looked at (status.rs).
+            "CREATE TABLE IF NOT EXISTS status_seen(id TEXT PRIMARY KEY)",
             // Group receipts once saved under the group instead of the person.
             "DELETE FROM receipts WHERE chat_id LIKE '%@g.us' AND user = chat_id",
         ] {
@@ -1001,6 +1003,67 @@ impl Store {
             .collect()
     }
 
+    // ───────────── Status updates ─────────────
+
+    /// Status updates newer than `since`, oldest first (see status.rs).
+    pub fn statuses(&self, since: i64) -> Vec<crate::protocol::StatusDto> {
+        let chat = crate::status::CHAT;
+        let rows: Vec<StoredMessage> = self
+            .db
+            .prepare(
+                "SELECT id, from_me, sender, push_name, ts, kind, text, file_name, status FROM messages
+                 WHERE chat_id = ?1 AND ts > ?2 AND kind != 'deleted' ORDER BY ts ASC, rowid ASC",
+            )
+            .and_then(|mut stmt| {
+                stmt.query_map(params![chat, since], |r| {
+                    Ok(StoredMessage {
+                        id: r.get(0)?,
+                        from_me: r.get(1)?,
+                        sender: r.get(2)?,
+                        push_name: r.get(3)?,
+                        ts: r.get(4)?,
+                        kind: r.get(5)?,
+                        text: r.get(6)?,
+                        file_name: r.get(7)?,
+                        status: r.get(8)?,
+                    })
+                })?
+                .collect()
+            })
+            .unwrap_or_default();
+        let mut people: std::collections::HashMap<String, (String, Option<String>)> = Default::default();
+        rows.into_iter()
+            .map(|m| {
+                let author = if m.from_me { String::new() } else { self.canonical(&m.sender) };
+                let (name, avatar) = people
+                    .entry(author.clone())
+                    .or_insert_with(|| {
+                        let key = if author.is_empty() { crate::avatars::SELF_ID } else { author.as_str() };
+                        let avatar = self.avatar(key).map(|(_, path, _)| path).filter(|p| !p.is_empty());
+                        let name = if author.is_empty() { "My status".to_string() } else { self.person_name(&author, &m.push_name) };
+                        (name, avatar)
+                    })
+                    .clone();
+                let seen = self.db.query_row("SELECT 1 FROM status_seen WHERE id = ?1", [&m.id], |_| Ok(())).is_ok();
+                let views = if m.from_me {
+                    self.receipts(chat, &m.id).iter().filter(|r| r.status >= 3 && !self.is_me(&r.user)).count() as u32
+                } else {
+                    0
+                };
+                crate::protocol::StatusDto { author, name, avatar, seen, views, message: self.to_dto(chat, m) }
+            })
+            .collect()
+    }
+
+    /// True when it hadn't been looked at before.
+    pub fn set_status_seen(&self, id: &str) -> bool {
+        self.db.execute("INSERT OR IGNORE INTO status_seen(id) VALUES(?1)", [id]).unwrap_or(0) > 0
+    }
+
+    pub fn forget_status_seen(&self, id: &str) {
+        let _ = self.db.execute("DELETE FROM status_seen WHERE id = ?1", [id]);
+    }
+
     pub fn phone_jid(&self, jid: &str) -> Option<String> {
         self.phone_number(jid).map(|n| format!("{n}@s.whatsapp.net"))
     }
@@ -1121,7 +1184,7 @@ impl Store {
     /// Forget everything (after logging out).
     pub fn clear(&self) {
         let _ = self.db.execute_batch(
-            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras; DELETE FROM polls; DELETE FROM poll_votes;",
+            "DELETE FROM messages; DELETE FROM chats; DELETE FROM names; DELETE FROM aliases; DELETE FROM avatars; DELETE FROM media; DELETE FROM quotes; DELETE FROM reactions; DELETE FROM numbers; DELETE FROM extras; DELETE FROM polls; DELETE FROM poll_votes; DELETE FROM status_seen;",
         );
     }
 

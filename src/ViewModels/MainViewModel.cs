@@ -60,6 +60,7 @@ public sealed partial class MainViewModel : Observable
         core.MediaReceived += (chatId, messageId, path) => { if (Find(chatId, messageId) is { } m) m.MediaPath = path; };
         core.MediaFailed += (chatId, messageId, _) => { if (Find(chatId, messageId) is { } m) m.MediaFailed = true; };
         core.ChatMediaReceived += OnChatMedia;
+        WireStatuses(core);
         core.ContactsReceived += contacts => ContactsLoaded?.Invoke(contacts);
         core.CallChanged += call => CallChanged?.Invoke(call);
         core.CallsReceived += calls => { CallLog = calls; CountMissedCalls(); CallsChanged?.Invoke(); };

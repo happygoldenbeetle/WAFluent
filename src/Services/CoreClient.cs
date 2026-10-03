@@ -37,6 +37,9 @@ public sealed record CallDto(string CallId, string ChatId, string State, bool Vi
 public sealed record CallLogDto(string Id, long Ts, long Duration, bool Incoming, bool Video, string Result, string ChatId, string Name,
                                 string Phone, string? Avatar = null, bool Group = false);
 
+/// <summary>One status update: whose (their chat's id, "" for yours), whether you've looked at it, how many looked at yours, what it shows.</summary>
+public sealed record StatusDto(string Author, string Name, string? Avatar, bool Seen, int Views, MessageDto Message);
+
 public sealed record StarredDto(string ChatId, string ChatName, MessageDto Message);
 
 public sealed record MessageDto(
@@ -103,6 +106,7 @@ public sealed class CoreClient : IDisposable
     public event Action<string>? Opened;                                     // chat to show (openNumber)
     public event Action<CallDto>? CallChanged;
     public event Action<IReadOnlyList<string>, int>? CallPeople;            // a group call: who's in it besides you, how many more were rung
+    public event Action<IReadOnlyList<StatusDto>>? StatusesReceived;        // status updates, oldest first
     public event Action<IReadOnlyList<CallLogDto>>? CallsReceived;          // the call history, newest first
     public event Action<IReadOnlyList<string>, bool>? FavouritesReceived;   // the phone's favourite chats; whether it's been heard yet
     public event Action<string, bool>? CallLinkReceived;                    // link, video
@@ -305,6 +309,10 @@ public sealed class CoreClient : IDisposable
 
     /// <summary>The call history; answered by <see cref="CallsReceived"/> (and again whenever it changes).</summary>
     public void LoadCalls() => Send(new { cmd = "loadCalls" });
+    /// <summary>Status updates; answered by <see cref="StatusesReceived"/> (and again whenever they change).</summary>
+    public void LoadStatuses() => Send(new { cmd = "loadStatuses" });
+    public void StatusSeen(IReadOnlyList<string> ids) => Send(new { cmd = "statusSeen", ids });
+    public void ReplyStatus(string id, string text) => Send(new { cmd = "replyStatus", id, text });
     public void DeleteCall(string id) => Send(new { cmd = "deleteCall", id });
     /// <summary>A link anyone with WhatsApp can join a call with; answered by <see cref="CallLinkReceived"/>.</summary>
     public void CreateCallLink(bool video) => Send(new { cmd = "createCallLink", video });
@@ -509,6 +517,10 @@ public sealed class CoreClient : IDisposable
                 var favouriteIds = root.GetProperty("ids").Deserialize<List<string>>(Json) ?? [];
                 var favouritesSynced = root.GetProperty("synced").GetBoolean();
                 Post(() => FavouritesReceived?.Invoke(favouriteIds, favouritesSynced));
+                break;
+            case "statuses":
+                var statuses = root.GetProperty("statuses").Deserialize<List<StatusDto>>(Json) ?? [];
+                Post(() => StatusesReceived?.Invoke(statuses));
                 break;
             case "calls":
                 var callLog = root.GetProperty("calls").Deserialize<List<CallLogDto>>(Json) ?? [];

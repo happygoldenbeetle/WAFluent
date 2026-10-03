@@ -123,6 +123,9 @@ pub enum Event {
     Calls { calls: Vec<CallLogDto> },
     /// The call link asked for with `createCallLink`.
     CallLink { url: String, video: bool },
+    /// Status updates of the last 24 hours, oldest first (reply to `loadStatuses`, and again
+    /// whenever they change).
+    Statuses { statuses: Vec<StatusDto> },
     /// Something you asked for worked (`ok`) or didn't; `text` is for a toast.
     Notice { ok: bool, text: String },
     /// Your messages were delivered to / read by the other side. Status: 2 delivered, 3 read.
@@ -236,6 +239,24 @@ pub struct CallLogDto {
     pub avatar: Option<String>,
     /// More than one other person.
     pub group: bool,
+}
+
+/// One status update.
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusDto {
+    /// Whose it is: their chat's id ("" for your own).
+    pub author: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    /// You've looked at it.
+    pub seen: bool,
+    /// Your own: how many people have looked at it.
+    pub views: u32,
+    /// What it shows; a text status has extra {status: {background (ARGB), font}}. Its
+    /// picture or video downloads with `downloadMedia` under the chat id "status@broadcast".
+    pub message: MessageDto,
 }
 
 /// A saved contact, for New chat and Add group members.
@@ -487,6 +508,12 @@ pub enum Command {
     SetFavourites { ids: Vec<String> },
     /// Join the call behind a call link (`video`: it's a video link). Answered by `call` events.
     JoinCallLink { url: String, #[serde(default)] video: bool },
+    /// Status updates; answered by `statuses`.
+    LoadStatuses,
+    /// You looked at these status updates: remembered, and their authors are told.
+    StatusSeen { ids: Vec<String> },
+    /// Reply to someone's status: a message in your chat with them that quotes it.
+    ReplyStatus { id: String, text: String },
     /// The call history; answered by `calls`.
     LoadCalls,
     /// Take one call out of the history (on this PC).

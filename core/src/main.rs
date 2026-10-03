@@ -13,6 +13,7 @@ mod media;
 mod extract;
 mod favorites;
 mod protocol;
+mod status;
 mod store;
 
 use std::collections::{HashMap, HashSet};
@@ -61,6 +62,8 @@ pub(crate) struct Ctx {
     backfill_sent: Arc<Mutex<HashMap<String, std::time::Instant>>>,
     /// Pinged whenever the call history changed; a debounced task sends the list (call_log.rs).
     pub(crate) calls_dirty: Arc<Notify>,
+    /// Pinged whenever the status updates changed; a debounced task sends the list (status.rs).
+    pub(crate) statuses_dirty: Arc<Notify>,
     /// The call that's ringing or in progress (see calls.rs).
     pub(crate) calls: Arc<Mutex<calls::Calls>>,
 }
@@ -149,6 +152,7 @@ async fn run(dir: PathBuf) {
         backfill_sent: Arc::default(),
         calls: Arc::default(),
         calls_dirty: Arc::new(Notify::new()),
+        statuses_dirty: Arc::new(Notify::new()),
     };
     ctx.status("starting", None);
     whatsapp_rust::wafluent_hooks::on_sticker_mutation({
@@ -177,9 +181,11 @@ async fn run(dir: PathBuf) {
         ctx.send(Out::Avatar { chat_id: avatars::SELF_ID.into(), path: Some(path) });
     }
 
+    status::send(&ctx);   // the rail's dot: status updates kept from before
     spawn_snapshot_debouncer(ctx.clone());
     spawn_expiry(ctx.clone());
     call_log::spawn_debouncer(ctx.clone());
+    status::spawn_debouncer(ctx.clone());
     call_log::backfill_notices_once(&ctx);
     avatars::retry_missing_once(&ctx);
 
@@ -279,6 +285,11 @@ fn spawn_expiry(ctx: Ctx) {
             let expired = ctx.db().expired(store::unix_now());
             let mut chats = std::collections::BTreeSet::new();
             for (chat_id, id) in expired {
+                if chat_id == status::CHAT {
+                    status::remove(&ctx, &id);   // a status update is 24 hours old
+                    ctx.statuses_dirty.notify_one();
+                    continue;
+                }
                 if ctx.db().delete_message(&chat_id, &id) {
                     ctx.send(Out::MessageRemoved { chat_id: chat_id.clone(), message_id: id });
                     chats.insert(chat_id);
@@ -337,6 +348,9 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
         Command::SetFavourites { ids } => favorites::set(ctx, client, ids),
         Command::JoinCallLink { url, video } => calls::join_link(ctx, client, url, video),
         Command::LoadCalls => call_log::send(ctx),
+        Command::LoadStatuses => status::send(ctx),
+        Command::StatusSeen { ids } => status::seen(ctx, client, ids),
+        Command::ReplyStatus { id, text } => status::reply(ctx, client, id, text).await,
         Command::DeleteCall { id } => {
             if ctx.db().remove_call(&id) {
                 call_log::send(ctx);
@@ -1298,8 +1312,10 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 let db = ctx.db();
                 // Per person, for Message info (in 1:1 chats the sender is the chat).
                 // Groups: the person who read it (the receipt's participant); 1:1: the chat.
-                let who = if chat_id.ends_with("@g.us") { db.canonical(&receipt.source.sender.to_non_ad_string()) } else { chat_id.clone() };
-                if who == chat_id && chat_id.ends_with("@g.us") {
+                // A status update: the person who looked at it.
+                let several = chat_id.ends_with("@g.us") || chat_id == status::CHAT;
+                let who = if several { db.canonical(&receipt.source.sender.to_non_ad_string()) } else { chat_id.clone() };
+                if who == chat_id && several {
                     // No participant: nothing to say who.
                 } else {
                 for id in &receipt.message_ids {
@@ -1311,6 +1327,9 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
                 let chat = if changed.is_empty() { None } else { db.chat(&chat_id) };
                 (changed, chat)
             };
+            if recorded && chat_id == status::CHAT {
+                ctx.statuses_dirty.notify_one();   // one more view
+            }
             if recorded {
                 ctx.send(Out::ReceiptsChanged { chat_id: chat_id.clone(), message_ids: receipt.message_ids.clone() });
             }
@@ -1351,6 +1370,10 @@ fn is_hidden_chat(jid: &str) -> bool {
 fn on_message(ctx: &Ctx, message: &wa::Message, info: &MessageInfo) {
     let source = &info.source;
     let raw_chat = source.chat.to_non_ad_string();
+    if raw_chat == status::CHAT {
+        status::on_message(ctx, message, info);
+        return;
+    }
     if is_hidden_chat(&raw_chat) {
         return;
     }
