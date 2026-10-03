@@ -125,6 +125,9 @@ def render(layers):
             cast = over(shadow(mask, 1.0 * strength, 2.0 * strength, 0.32), shadow(mask, 0.25, 0.5, 0.20))
             below = art[..., 3] / 255.0
             cast[..., 3] *= np.where(below > 0.5, 1.0, 0.0) if layer.get("hard", True) else below
+            # A see-through layer's shadow falls around it, not under it (it would show through and grey the glass).
+            if layer.get("clear"):
+                cast[..., 3] *= 1 - np.asarray(mask, np.float32) / 255.0
             art = over(art, cast)
         if layer["kind"] == "solid":
             art = over(art, rgba(gradient(*layer["fill"], lo=0.12, hi=0.95), mask))
@@ -177,7 +180,7 @@ def icon(bubble_at, bars, corner=10.0):
         # The square: light green at the top left to mid green at the bottom right.
         solid(rrect(3.0, 3.0, 45.0, 45.0, corner), ((104, 238, 148), (24, 168, 96)), rim=0.5, rim_width=0.55),
         # The glass bubble: the square shows through it, frosted, under a pale body lit from the top left.
-        glass(bubble(cx, cy, r, tail, a=(114, 150)), ((248, 255, 251), (206, 247, 226)), see=0.3, blur=3.0, tint=(0.6, 0.22)),
+        glass(bubble(cx, cy, r, tail, a=(114, 150)), ((248, 255, 251), (206, 247, 226)), see=0.66, blur=3.0, tint=(0.40, 0.08), clear=True),
         mark(bar(*bars[0])),
         mark(bar(*bars[1])),
     ])
