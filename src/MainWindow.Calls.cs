@@ -84,7 +84,8 @@ public sealed partial class MainWindow
                 return;
             }
         }
-        if (chat.IsGroup) _ = CallGroupAsync(chat, video);
+        // Calls with a whole group are switched off for now (CallGroupAsync, below, is how they're asked for).
+        if (chat.IsGroup) ShowToast(false, "Group calls aren't supported yet.");
         else OpenCall(chat, null, video);
     }
 

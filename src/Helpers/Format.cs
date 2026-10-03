@@ -381,7 +381,9 @@ public static class Format
             "location" => Label("📍", "Location", dto.Text),
             "contact" => Label("👤", "Contact", dto.Text),
             "poll" => Label("📊", "Poll", dto.Text),
-            "viewonce" => $"📷 View once {dto.Text}. Open WhatsApp on your phone to see it.",
+            // WhatsApp never gives a view-once photo, video or voice message to a linked device: its own
+            // desktop app says the same in its place.
+            "viewonce" => $"① You {(dto.FromMe ? "sent" : "received")} a view once {dto.Text}. For added privacy, you can only open it on your phone.",
             "deleted" => dto.FromMe ? "You deleted this message" : "This message was deleted",
             _ => dto.Text.Length > 0 ? dto.Text : "Unsupported message",
         };

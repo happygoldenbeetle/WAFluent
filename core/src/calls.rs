@@ -166,6 +166,10 @@ pub(crate) fn start(ctx: &Ctx, client: &Arc<Client>, chat_id: String, video: boo
         let fail = |detail: &str| ctx.call("", &chat_id, true, video, "ended", Some("failed"), Some(detail.to_string()));
         let Ok(jid) = chat_id.parse::<Jid>() else { return fail("This chat can't be called.") };
         let group = chat_id.ends_with("@g.us");
+        // Calls with a whole group are switched off for now (the code for them stays below).
+        if group {
+            return fail("Group calls aren't supported yet.");
+        }
         {
             let mut calls = ctx.calls();
             if calls.active.is_some() || calls.starting {
@@ -517,6 +521,14 @@ pub(crate) async fn signal(ctx: &Ctx, client: &Arc<Client>, call: &IncomingCall)
             };
             if ctx.db().ensure_chat(&chat_id, chat_id.ends_with("@g.us")) {
                 send_chat(ctx, &chat_id);
+            }
+            // A group chat's call: switched off for now, so it doesn't ring here. It's left in the chat as a
+            // call that wasn't answered, so it isn't lost. (A call link's call, and a call a few people were
+            // added to, still ring.)
+            if group_jid.is_some() && chat_id.ends_with("@g.us") {
+                info!("call: {call_id} is a group's call: not rung (group calls are off)");
+                add_call_card(ctx, &chat_id, false, *is_video, "missed", 0, store::unix_now());
+                return;
             }
             info!(
                 "call: {call_id} ringing (video: {is_video}, group: {group}, of a group chat: {}, people in it: {})",
