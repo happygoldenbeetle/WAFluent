@@ -117,8 +117,11 @@ public sealed partial class MainWindow
         {
             menu.Items.Add(ReactionRow(menu, m, bubble));
             menu.Items.Add(new MenuFlyoutSeparator());
-            menu.Items.Add(Item("Reply", Glyphs.Reply, () => StartReply(m)));
-            menu.Items.Add(new MenuFlyoutSeparator());
+            if (!m.IsPost)   // a channel's post can't be replied to
+            {
+                menu.Items.Add(Item("Reply", Glyphs.Reply, () => StartReply(m)));
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
         }
 
         switch (m.Kind)
@@ -194,6 +197,13 @@ public sealed partial class MainWindow
             forward.Icon.RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5);
             forward.Icon.RenderTransform = new Microsoft.UI.Xaml.Media.ScaleTransform { ScaleX = -1 };   // Reply, pointing the other way
             menu.Items.Add(forward);
+            if (m.IsPost)
+            {
+                // A channel's post: copy, forward, select. It isn't yours to pin, star, report here or delete.
+                menu.Items.Add(new MenuFlyoutSeparator());
+                menu.Items.Add(Item("Select", Glyphs.Select, () => ViewModel.BeginSelect(m)));
+                return menu;
+            }
             var pinned = ViewModel.SelectedChat?.HasPin(m.Id) == true;
             menu.Items.Add(Item(pinned ? "Unpin" : "Pin", pinned ? Glyphs.Unpin : Glyphs.Pin,
                 () => { if (pinned) ViewModel.PinMessage(m, false); else _ = ChoosePinAsync(m); }));

@@ -69,7 +69,11 @@ public static class Ui
     public static HorizontalAlignment Align(bool isOutgoing, bool isPost) => isPost ? HorizontalAlignment.Center : Align(isOutgoing);
 
     /// <summary>A channel's posts are one column, all the same width (a message is as wide as what's in it).</summary>
-    public static double PostWidth(bool isPost) => isPost ? 560 : double.NaN;
+    /// (The widest a bubble gets, so a post's bubble starts where its column does.)
+    public static double PostWidth(bool isPost) => isPost ? 520 : double.NaN;
+
+    /// <summary>The forward pill: beside the reactions, or where they'd be when there are none.</summary>
+    public static Thickness ForwardPillMargin(string reaction) => new(reaction.Length > 0 ? 6 : 8, -6, 0, 0);
 
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;

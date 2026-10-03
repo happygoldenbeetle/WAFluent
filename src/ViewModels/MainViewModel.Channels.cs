@@ -158,7 +158,8 @@ public sealed partial class MainViewModel
                 "Fuel prices increased from midnight\n\npetrol increased by 2.10\ndiesel increased by 0.30",
             ];
             foreach (var (text, i) in posts.Select((t, i) => (t, i)))
-                chat.Messages.Add(new Message { Id = $"sample-post-{i}", IsPost = true, Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "😂❤️🙏👍 " + (430 - i * 190) : "" });
+                chat.Messages.Add(new Message { Id = $"sample-post-{i}", IsPost = true, Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "😂❤️🙏👍 " + (430 - i * 190) : "", ForwardCount = i < 2 ? (135 - i * 97).ToString() : "",
+                                                PostReactions = i < 2 ? [("😂", 311 - i * 150), ("❤️", 73), ("🙏", 33 - i * 20), ("👍", 13 - i * 10)] : [] });
             chat.MessagesLoaded = true;
         }
         if (Channels.Any(c => c.Id == channel.Id && c.Unread > 0)) SetChannels(Channels.Select(c => c.Id == channel.Id ? c with { Unread = 0 } : c).ToList());

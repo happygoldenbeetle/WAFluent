@@ -268,9 +268,20 @@
                                     </StackPanel>
                                 </Grid>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -356,9 +367,20 @@
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -393,9 +415,20 @@
                                     <controls:VoicePlayer Message="{x:Bind}" />
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -436,9 +469,20 @@
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                 </StackPanel>
                             </Border>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -476,9 +520,20 @@
                                     <controls:DeliveryTicks Delivery="{x:Bind Delivery, Mode=OneWay}" Visibility="{x:Bind helpers:Ui.Visible(IsOutgoing)}" />
                                 </StackPanel>
                             </Border>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -560,9 +615,20 @@
                                     </StackPanel>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -661,9 +727,20 @@
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -748,9 +825,20 @@
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -821,9 +909,20 @@
                                     </Grid>
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>
@@ -944,9 +1043,20 @@
                                             Tag="{x:Bind}" Click="PollVotes_Click" IsEnabled="{x:Bind HasVotes, Mode=OneWay}" />
                                 </StackPanel>
                             </controls:Bubble>
-                            <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}">
-                                <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
-                            </Border>
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="ReactionPill" Style="{StaticResource ReactionPillStyle}" Visibility="{x:Bind helpers:Ui.NotEmpty(Reaction), Mode=OneWay}"
+                                        Tag="{x:Bind}" Tapped="ReactionPill_Tapped">
+                                    <TextBlock Text="{x:Bind Reaction, Mode=OneWay}" FontSize="12" />
+                                </Border>
+                                <!-- A channel's post: forward it (and how often it has been). -->
+                                <Border Style="{StaticResource ReactionPillStyle}" Margin="{x:Bind helpers:Ui.ForwardPillMargin(Reaction), Mode=OneWay}" Visibility="{x:Bind IsPost}"
+                                        Tag="{x:Bind}" Tapped="ForwardPill_Tapped" helpers:HandCursor.On="True" ToolTipService.ToolTip="Forward">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <FontIcon Glyph="&#xE97A;" FontSize="11" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"><FontIcon.RenderTransform><ScaleTransform ScaleX="-1" /></FontIcon.RenderTransform></FontIcon>
+                                        <TextBlock Text="{x:Bind ForwardCount}" FontSize="12" Visibility="{x:Bind helpers:Ui.NotEmpty(ForwardCount)}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                         </Grid>
                     </DataTemplate>

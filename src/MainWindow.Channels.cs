@@ -84,12 +84,12 @@ public sealed partial class MainWindow
         FillChannels();
         ShowChannelChrome();
         ViewModel.LoadChannels();
-        // While the page is open the lists are read again every minute: what you follow or
-        // unfollow on the phone shows up here, and new posts are counted.
+        // While the page is open the lists are read again every half minute (and when the phone
+        // says something changed): what you follow, leave or mute there shows up here.
         if (_channelRefresh is null)
         {
             _channelRefresh = DispatcherQueue.CreateTimer();
-            _channelRefresh.Interval = TimeSpan.FromSeconds(60);
+            _channelRefresh.Interval = TimeSpan.FromSeconds(30);
             _channelRefresh.Tick += (_, _) => { if (_channelsOpen && ViewModel.IsLive) ViewModel.LoadChannels(); };
         }
         _channelRefresh.Start();
@@ -128,6 +128,41 @@ public sealed partial class MainWindow
     }
 
     private void ChannelClose_Click(object sender, RoutedEventArgs e) => ViewModel.CloseChannel();
+
+    /// <summary>A post's reactions, each with its count ("476 reactions": 😂 311, 😢 73…).</summary>
+    private void ReactionPill_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Models.Message { PostReactions.Count: > 0 } post } pill) return;
+        e.Handled = true;
+        var chips = new WrapPanel { HorizontalSpacing = 8, VerticalSpacing = 8 };
+        foreach (var (emoji, count) in post.PostReactions)
+        {
+            var chip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            chip.Children.Add(new TextBlock { Text = emoji, FontSize = 18, FontFamily = (FontFamily)Application.Current.Resources["EmojiFontFamily"] });
+            chip.Children.Add(new TextBlock { Text = Format.Compact(count), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
+            chips.Children.Add(new Border
+            {
+                Child = chip,
+                Padding = new Thickness(12, 5, 12, 6),
+                CornerRadius = new CornerRadius(16),
+                BorderThickness = new Thickness(1),
+                BorderBrush = Themed.Brush("ControlStrokeColorDefaultBrush"),
+            });
+        }
+        var total = post.PostReactions.Sum(r => r.Count);
+        var content = new StackPanel { Spacing = 12, Width = 380 };
+        content.Children.Add(new TextBlock { Text = total == 1 ? "1 reaction" : $"{total:N0} reactions", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
+        content.Children.Add(chips);
+        new Flyout { Content = content, Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft }.ShowAt(pill);
+    }
+
+    /// <summary>A post's forward pill: the chats to forward it to.</summary>
+    private void ForwardPill_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: Models.Message post }) return;
+        e.Handled = true;
+        _ = ForwardAsync([post]);
+    }
 
     /// <summary>Searching waits until you stop typing for a moment.</summary>
     private void ChannelsSearch_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
@@ -270,6 +305,25 @@ public sealed partial class MainWindow
             Background = ViewModel.SelectedChat?.Id == channel.Id ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
         };
         row.Click += (_, _) => ViewModel.OpenChannel(channel);
+        // Right-click: put it away, or stop (or start) following it.
+        var menu = new MenuFlyout();
+        var close = new MenuFlyoutItem { Text = "Close channel", Icon = new FontIcon { Glyph = char.ConvertFromUtf32(0xE711) }, IsEnabled = ViewModel.SelectedChat?.Id == channel.Id };
+        close.Click += (_, _) => ViewModel.CloseChannel();
+        menu.Items.Add(close);
+        if (channel.Followed)
+        {
+            var mute = new MenuFlyoutItem { Text = channel.Muted ? "Unmute" : "Mute", Icon = new FontIcon { Glyph = channel.Muted ? BellGlyph : BellOffGlyph } };
+            mute.Click += (_, _) => ViewModel.ChannelAction(channel, channel.Muted ? "unmute" : "mute");
+            menu.Items.Add(mute);
+        }
+        var toggle = new MenuFlyoutItem { Text = channel.Followed ? "Unfollow" : "Follow", Icon = new FontIcon { Glyph = char.ConvertFromUtf32(channel.Followed ? 0xF3B1 : 0xE710) } };
+        toggle.Click += (_, _) =>
+        {
+            if (channel.Followed && ViewModel.SelectedChat?.Id == channel.Id) ViewModel.CloseChannel();
+            ViewModel.ChannelAction(channel, channel.Followed ? "unfollow" : "follow");
+        };
+        menu.Items.Add(toggle);
+        row.ContextFlyout = menu;
         return row;
     }
 }

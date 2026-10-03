@@ -1218,6 +1218,11 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         Event::MissedCall(missed) => calls::missed(ctx, client, &missed.from, &missed.call_id, missed.timestamp.timestamp()).await,
         Event::CallEndedElsewhere(ended) => calls::elsewhere(ctx, &ended.call_id),
         Event::LoggedOut(_) => forget_everything(ctx),
+        // Something about your channels changed on another device (followed, left, muted): the lists are read again.
+        Event::MexNotification(note) if note.op_name.contains("Newsletter") => {
+            info!("channels: the phone says {}", note.op_name);
+            channels::load(ctx, client);
+        }
         Event::NewsletterLiveUpdate(update) => {
             let changes: Vec<(u64, Vec<(String, u64)>)> =
                 update.messages.iter().map(|m| (m.server_id, m.reactions.iter().map(|r| (r.code.clone(), r.count)).collect())).collect();

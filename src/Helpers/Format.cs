@@ -263,13 +263,14 @@ public static class Format
     };
 
     /// <summary>A channel post's reactions from the core's {channel: {reactions: [[emoji, count]…]}}: the four most used and the total.</summary>
-    private static string ChannelReactions(MessageDto dto)
+    private static (string Summary, List<(string Emoji, long Count)> All, string Forwards) ChannelCounts(MessageDto dto)
     {
-        if (dto.Extra is not { ValueKind: JsonValueKind.Object } extra || !extra.TryGetProperty("channel", out var channel)
-            || !channel.TryGetProperty("reactions", out var list) || list.ValueKind != JsonValueKind.Array) return "";
+        if (dto.Extra is not { ValueKind: JsonValueKind.Object } extra || !extra.TryGetProperty("channel", out var channel)) return ("", [], "");
+        var forwards = channel.TryGetProperty("forwards", out var f) && f.TryGetInt64(out var times) && times > 0 ? Compact(times) : "";
+        if (!channel.TryGetProperty("reactions", out var list) || list.ValueKind != JsonValueKind.Array) return ("", [], forwards);
         var counts = list.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Array && r.GetArrayLength() == 2)
             .Select(r => (Emoji: r[0].GetString() ?? "", Count: r[1].TryGetInt64(out var n) ? n : 0)).Where(r => r.Count > 0).OrderByDescending(r => r.Count).ToList();
-        return counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}";
+        return (counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}", counts, forwards);
     }
 
     private static Message Build(MessageDto dto, bool isGroup)
@@ -277,6 +278,7 @@ public static class Format
         var when = FromUnix(dto.Ts);
         var media = dto.Media;
         var callCard = CallCard(dto);
+        var channel = ChannelCounts(dto);
 
         Message Make(MessageKind kind, string text = "", string fileName = "", string fileDetails = "",
                      double width = 300, double height = 200) => new()
@@ -313,7 +315,9 @@ public static class Format
             Thumb = dto.Thumb,
             IsVoiceNote = dto.Kind != "audio",
             IsGif = dto.Kind == "gif",
-            ReactionSummary = ChannelReactions(dto),
+            ReactionSummary = channel.Summary,
+            PostReactions = channel.All,
+            ForwardCount = channel.Forwards,
             IsPost = dto.Extra is { ValueKind: JsonValueKind.Object } post && post.TryGetProperty("channel", out _),
             CallVideo = callCard.Video,
             CallMissed = callCard.Missed,

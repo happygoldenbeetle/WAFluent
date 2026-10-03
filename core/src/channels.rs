@@ -24,6 +24,10 @@ use crate::protocol::{ChannelDto, Event as Out};
 use crate::store::{self, StoredMessage};
 use crate::{Ctx, extract};
 
+/// The setting behind a channel's bell: whether its posts notify you (ON: they don't). WhatsApp
+/// has it on for a channel until you turn it off.
+const MUTE: &str = "MUTE_ADMIN_ACTIVITY";
+
 /// Posts fetched at a time.
 const PAGE: u32 = 30;
 
@@ -53,8 +57,19 @@ pub(crate) fn load(ctx: &Ctx, client: &Arc<Client>) {
             }
         };
         let mut list = Vec::new();
+        if let Some(first) = mine.first() {
+            info!("channels: {} followed, as WhatsApp lists them", mine.len());
+            let _ = first;
+        }
         for value in &mine {
             let Some(mut channel) = parse(&ctx, value, true).await else { continue };
+            // The followed list leaves the follower count out: the channel is asked for it.
+            if channel.followers == 0 {
+                channel.followers = match followers(&client, &channel.id).await {
+                    Some(count) => count,
+                    None => ctx.db().channel(&channel.id).map_or(0, |kept| kept.followers),
+                };
+            }
             // Its newest posts: the line under its name, and how many are new since you looked.
             if let Ok(jid) = channel.id.parse::<Jid>()
                 && let Ok(posts) = fetch(&client, &jid, 10, None).await
@@ -64,9 +79,7 @@ pub(crate) fn load(ctx: &Ctx, client: &Arc<Client>) {
                 for post in &posts {
                     keep(&db, &channel.id, post);
                 }
-                if !channel.muted {
-                    channel.unread = posts.iter().filter(|p| p.timestamp as i64 > seen && p.message.is_some()).count() as u32;
-                }
+                channel.unread = posts.iter().filter(|p| p.timestamp as i64 > seen && p.message.is_some()).count() as u32;
                 if let Some(last) = db.last_message(&channel.id) {
                     channel.last_ts = last.ts;
                     channel.preview = store::preview(&last.kind, &last.text, &last.file_name);
@@ -117,6 +130,26 @@ pub(crate) fn search(ctx: &Ctx, client: &Arc<Client>, query: String) {
     });
 }
 
+/// How many follow a channel (the one-channel query, with every switch named: WhatsApp rejects it otherwise).
+async fn followers(client: &Client, id: &str) -> Option<u64> {
+    use whatsapp_rust::wacore::iq::mex_operations::fetch_newsletter as one;
+    let variables = json!({
+        "fetch_creation_time": false, "fetch_full_image": false, "fetch_pinned_messages": false, "fetch_status_metadata": false,
+        "fetch_viewer_metadata": false, "fetch_wamo_sub": false,
+        "input": { "key": id, "type": "JID", "view_role": "GUEST" },
+    });
+    match client.mex().query(whatsapp_rust::MexRequest::new(one::NAME, one::DOC_ID, variables)).await {
+        Ok(answer) => {
+            let count = &answer.data?["xwa2_newsletter"]["thread_metadata"]["subscribers_count"];
+            count.as_u64().or_else(|| count.as_str().and_then(|s| s.parse().ok()))
+        }
+        Err(e) => {
+            warn!("channels: the follower count failed: {e:?}");
+            None
+        }
+    }
+}
+
 /// The two-letter country of your own number ("PK"), for the directory.
 fn country(client: &Client) -> String {
     let digits = client.persistence_manager().get_device_snapshot().pn.as_ref().map(|j| j.user.to_string()).unwrap_or_default();
@@ -153,7 +186,11 @@ async fn parse(ctx: &Ctx, value: &Value, is_followed: bool) -> Option<ChannelDto
         verified: thread["verification"].as_str() == Some("VERIFIED"),
         avatar,
         followed: is_followed,
-        muted: kept.as_ref().is_some_and(|k| k.muted),
+        // As the phone has it (a channel is muted until you unmute it); what's kept when WhatsApp doesn't say.
+        muted: match value["viewer_metadata"]["settings"].as_array().and_then(|all| all.iter().find(|one| one["type"].as_str() == Some(MUTE))) {
+            Some(setting) => setting["value"].as_str() != Some("OFF"),
+            None => kept.as_ref().is_none_or(|k| k.muted),
+        },
         last_ts: kept.as_ref().map_or(0, |k| k.last_ts),
         preview: kept.as_ref().map(|k| k.preview.clone()).unwrap_or_default(),
         unread: 0,
@@ -174,7 +211,13 @@ fn keep(db: &store::Store, chat_id: &str, post: &NewsletterMessage) -> bool {
     let Some(content) = post.message.as_ref().and_then(extract::content) else { return false };
     let id = post_id(post);
     let mut extra = content.extra.clone().unwrap_or_else(|| json!({}));
-    extra["channel"] = json!({ "serverId": post.server_id, "reactions": post.reactions.iter().map(|r| json!([r.code, r.count])).collect::<Vec<_>>() });
+    // How often it was forwarded (the server names the node; anything with "forward" in it).
+    let forwards = post.counts.iter().find(|(tag, _)| tag.contains("forward")).map_or(0, |(_, n)| *n);
+    extra["channel"] = json!({
+        "serverId": post.server_id,
+        "forwards": forwards,
+        "reactions": post.reactions.iter().map(|r| json!([r.code, r.count])).collect::<Vec<_>>(),
+    });
     let stored = StoredMessage {
         id: id.clone(),
         from_me: false,
@@ -220,7 +263,8 @@ pub(crate) fn posts(ctx: &Ctx, client: &Arc<Client>, chat_id: String, older: boo
                 return;
             }
         };
-        info!("channels: {} posts ({})", fetched.len(), if older { "older" } else { "newest" });
+        let counted: std::collections::BTreeSet<&str> = fetched.iter().flat_map(|p| p.counts.iter().map(|(tag, _)| tag.as_str())).collect();
+        info!("channels: {} posts ({}); counts on them: {counted:?}", fetched.len(), if older { "older" } else { "newest" });
         let messages = {
             let db = ctx.db();
             let ids: Vec<String> = fetched.iter().filter(|post| keep(&db, &chat_id, post)).map(post_id).collect();
@@ -261,8 +305,12 @@ pub(crate) fn action(ctx: &Ctx, client: &Arc<Client>, chat_id: String, action: S
         let done = match action.as_str() {
             "follow" => client.newsletter().join(&jid).await.map(|_| "Following"),
             "unfollow" => client.newsletter().leave(&jid).await.map(|_| "Unfollowed"),
-            // Kept on this PC: it only decides whether the channel's new updates are counted.
             "mute" | "unmute" => {
+                // WhatsApp's own setting, so the phone follows; kept here either way.
+                match client.newsletter().set_admin_mute(&jid, action == "mute").await {
+                    Ok(()) => info!("channels: {action} synced"),
+                    Err(e) => warn!("channels: {action} wasn't synced (kept on this PC): {e:?}"),
+                }
                 ctx.db().set_channel_muted(&chat_id, action == "mute");
                 Ok(if action == "mute" { "Channel muted" } else { "Channel unmuted" })
             }

@@ -106,6 +106,12 @@ public sealed class Message : Observable
     /// <summary>A channel post's reactions as WhatsApp counts them: the most used emoji and the total ("😢❤️🙏 430").</summary>
     public string ReactionSummary { get; init; } = "";
 
+    /// <summary>A channel post's reactions, most used first: each emoji and how many.</summary>
+    public IReadOnlyList<(string Emoji, long Count)> PostReactions { get; init; } = [];
+
+    /// <summary>How often a channel's post has been forwarded ("35", "1.2k"; "" when never, or not known).</summary>
+    public string ForwardCount { get; init; } = "";
+
     /// <summary>A channel's post: centred in the pane, in one column with the others.</summary>
     public bool IsPost { get; init; }
 

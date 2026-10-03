@@ -152,6 +152,9 @@ pub struct NewsletterMessage {
     pub message: Option<wa::Message>,
     /// Reaction counts on this message.
     pub reactions: Vec<NewsletterReactionCount>,
+    /// WAFluent patch: the other counts the server puts on a post, by the name of their node
+    /// (how often it was forwarded, how often seen).
+    pub counts: Vec<(String, u64)>,
 }
 
 /// Feature handle for newsletter (channel) operations.
@@ -746,6 +749,19 @@ fn parse_newsletter_messages_response(
                 });
 
         let reactions = parse_reaction_counts(msg_node);
+        // WAFluent patch: every child that carries a count, by its tag.
+        let counts: Vec<(String, u64)> = msg_node
+            .children()
+            .map(|children| {
+                children
+                    .iter()
+                    .filter_map(|n| {
+                        let count = n.get_attr("count").map(|v| v.as_str()).and_then(|s| s.parse::<u64>().ok())?;
+                        Some((n.tag.as_ref().to_string(), count))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
 
         result.push(NewsletterMessage {
             message_id,
@@ -755,6 +771,7 @@ fn parse_newsletter_messages_response(
             is_sender,
             message,
             reactions,
+            counts,
         });
     }
 
