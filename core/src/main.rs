@@ -1978,6 +1978,8 @@ async fn resolve_number(ctx: &Ctx, client: &Arc<Client>, phone: &str) -> Option<
     let pn = format!("{digits}@s.whatsapp.net");
     let existing = ctx.db().canonical(&pn);
     if ctx.db().chat(&existing).is_some() {
+        // A chat with no messages isn't in the app's list yet: it gets it before it's told to open it.
+        send_chat(ctx, &existing);
         return Some(existing);
     }
     let jid = pn.parse::<Jid>().ok()?;
