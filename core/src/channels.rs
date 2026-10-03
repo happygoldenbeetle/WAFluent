@@ -243,17 +243,9 @@ pub(crate) fn posts(ctx: &Ctx, client: &Arc<Client>, chat_id: String, older: boo
     });
 }
 
-/// A page of posts. The channel is asked directly first (how a follower's client asks); when
-/// that isn't answered in a few seconds or fails, as it does for a channel you don't follow,
-/// the server is asked for it the way a visitor's client does.
+/// A page of posts, asked the way a visitor's client does (the server is asked, naming the
+/// channel): the direct form the library has goes unanswered, for channels you follow too.
 async fn fetch(client: &Client, jid: &Jid, count: u32, before: Option<u64>) -> Result<Vec<NewsletterMessage>, String> {
-    let direct = tokio::time::timeout(std::time::Duration::from_secs(6), client.newsletter().get_messages(jid.clone(), count, before)).await;
-    match direct {
-        Ok(Ok(posts)) if !posts.is_empty() => return Ok(posts),
-        Ok(Ok(_)) => info!("channels: asked directly: no posts"),
-        Ok(Err(e)) => info!("channels: asked directly: {e:?}"),
-        Err(_) => info!("channels: asked directly: no answer"),
-    }
     match tokio::time::timeout(std::time::Duration::from_secs(20), client.newsletter().get_messages_as_guest(jid.clone(), count, before)).await {
         Ok(Ok(posts)) => Ok(posts),
         Ok(Err(e)) => Err(format!("{e:?}")),

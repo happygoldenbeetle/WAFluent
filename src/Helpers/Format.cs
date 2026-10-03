@@ -314,6 +314,7 @@ public static class Format
             IsVoiceNote = dto.Kind != "audio",
             IsGif = dto.Kind == "gif",
             ReactionSummary = ChannelReactions(dto),
+            IsPost = dto.Extra is { ValueKind: JsonValueKind.Object } post && post.TryGetProperty("channel", out _),
             CallVideo = callCard.Video,
             CallMissed = callCard.Missed,
             CallDetail = callCard.Detail,

@@ -106,6 +106,9 @@ public sealed class Message : Observable
     /// <summary>A channel post's reactions as WhatsApp counts them: the most used emoji and the total ("😢❤️🙏 430").</summary>
     public string ReactionSummary { get; init; } = "";
 
+    /// <summary>A channel's post: centred in the pane, in one column with the others.</summary>
+    public bool IsPost { get; init; }
+
     /// <summary>Your reaction, or "".</summary>
     public string MyReaction { get => _myReaction; set => Set(ref _myReaction, value); }
 

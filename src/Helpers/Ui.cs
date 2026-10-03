@@ -65,6 +65,12 @@ public static class Ui
 
     public static Brush BubbleBrush(bool isOutgoing) => Themed.Brush(isOutgoing ? "OutgoingBubbleBrush" : "IncomingBubbleBrush");
 
+    /// <summary>A channel's post sits in the middle of the pane.</summary>
+    public static HorizontalAlignment Align(bool isOutgoing, bool isPost) => isPost ? HorizontalAlignment.Center : Align(isOutgoing);
+
+    /// <summary>A channel's posts are one column, all the same width (a message is as wide as what's in it).</summary>
+    public static double PostWidth(bool isPost) => isPost ? 560 : double.NaN;
+
     public static HorizontalAlignment Align(bool isOutgoing) =>
         isOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
 

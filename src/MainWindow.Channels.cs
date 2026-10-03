@@ -23,7 +23,7 @@ public sealed partial class MainWindow
                                    VerifiedGlyph = char.ConvertFromUtf32(0xEC61);
 
     private bool _channelsOpen;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _channelSearchTimer;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _channelSearchTimer, _channelRefresh;
 
     private void SetupChannels()
     {
@@ -75,6 +75,7 @@ public sealed partial class MainWindow
         ChannelsPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (!show)
         {
+            _channelRefresh?.Stop();
             ViewModel.CloseChannel();   // a channel isn't a chat: it doesn't stay open on the other pages
             ShowChannelChrome();
             return;
@@ -83,6 +84,15 @@ public sealed partial class MainWindow
         FillChannels();
         ShowChannelChrome();
         ViewModel.LoadChannels();
+        // While the page is open the lists are read again every minute: what you follow or
+        // unfollow on the phone shows up here, and new posts are counted.
+        if (_channelRefresh is null)
+        {
+            _channelRefresh = DispatcherQueue.CreateTimer();
+            _channelRefresh.Interval = TimeSpan.FromSeconds(60);
+            _channelRefresh.Tick += (_, _) => { if (_channelsOpen && ViewModel.IsLive) ViewModel.LoadChannels(); };
+        }
+        _channelRefresh.Start();
     }
 
     /// <summary>What a channel changes around the conversation: the header's buttons, and "Discover channels" until one is open.</summary>

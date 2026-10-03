@@ -1206,6 +1206,7 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             call_log::resync_once(ctx, client);
             call_log::request_history_once(ctx, client);
             favorites::resync_once(ctx, client);
+            channels::load(ctx, client);   // the rail's count of channels with new posts
             ctx.calls_dirty.notify_one();   // the call list's pictures are asked for now that there's a connection
             resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);

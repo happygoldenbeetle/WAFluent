@@ -41,6 +41,12 @@ public sealed partial class Bubble : ContentControl
 
     public bool IsOutgoing { get => (bool)GetValue(IsOutgoingProperty); set => SetValue(IsOutgoingProperty, value); }
 
+    public static readonly DependencyProperty FillProperty = DependencyProperty.Register(
+        nameof(Fill), typeof(bool), typeof(Bubble), new PropertyMetadata(false, (d, _) => ((Bubble)d).UpdateState()));
+
+    /// <summary>As wide as the space it's given (a channel's post, one column with the others) instead of as wide as its words.</summary>
+    public bool Fill { get => (bool)GetValue(FillProperty); set => SetValue(FillProperty, value); }
+
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
@@ -49,7 +55,7 @@ public sealed partial class Bubble : ContentControl
 
     private void UpdateState()
     {
-        HorizontalAlignment = IsOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+        HorizontalAlignment = Fill ? HorizontalAlignment.Stretch : IsOutgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
         VisualStateManager.GoToState(this, IsOutgoing ? "Outgoing" : "Incoming", false);
         if (GetTemplateChild("Chrome") is not Border chrome || GetTemplateChild("TailShape") is not Microsoft.UI.Xaml.Shapes.Path tail) return;
 

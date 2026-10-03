@@ -122,9 +122,8 @@ public sealed partial class MainViewModel
         if (_core is not null)
         {
             _core.ChannelAction(channel.Id, action);
-            if (action is "follow" or "unfollow") return;   // the lists come back with it moved
         }
-        // Shown at once (and all there is to it on the sample data).
+        // Shown at once (WhatsApp's answer follows; on the sample data this is all there is to it).
         var now = action switch
         {
             "follow" => channel with { Followed = true },
@@ -159,7 +158,7 @@ public sealed partial class MainViewModel
                 "Fuel prices increased from midnight\n\npetrol increased by 2.10\ndiesel increased by 0.30",
             ];
             foreach (var (text, i) in posts.Select((t, i) => (t, i)))
-                chat.Messages.Add(new Message { Id = $"sample-post-{i}", Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "😂❤️🙏👍 " + (430 - i * 190) : "" });
+                chat.Messages.Add(new Message { Id = $"sample-post-{i}", IsPost = true, Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "😂❤️🙏👍 " + (430 - i * 190) : "" });
             chat.MessagesLoaded = true;
         }
         if (Channels.Any(c => c.Id == channel.Id && c.Unread > 0)) SetChannels(Channels.Select(c => c.Id == channel.Id ? c with { Unread = 0 } : c).ToList());
