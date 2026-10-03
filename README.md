@@ -40,6 +40,11 @@ dotnet build -p:Platform=x64
 
 Add `--sample` to open the app on placeholder chats without linking a phone.
 
+Two optional files are not in the repo. The app builds and runs without them:
+
+- `src/giphy.key`: your own [GIPHY API key](https://developers.giphy.com/) on one line. Without it, GIF search is empty.
+- `src/Assets/Fonts/AppleColorEmoji.ttf`: an emoji font of your choice saved under that name. Without it, Windows' emoji are used.
+
 To make the installer (`dist\WAFluent-<version>-setup.exe`) you also need [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 
 ```powershell

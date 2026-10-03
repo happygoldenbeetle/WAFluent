@@ -14,6 +14,10 @@
 #ifndef Source
   #define Source "..\src\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64"
 #endif
+; /DSuffix=-name adds to the file name (a second build beside the first).
+#ifndef Suffix
+  #define Suffix ""
+#endif
 #ifndef Output
   #define Output "..\dist"
 #endif
@@ -35,7 +39,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19041
 OutputDir={#Output}
-OutputBaseFilename=WAFluent-{#Version}-setup
+OutputBaseFilename=WAFluent-{#Version}-setup{#Suffix}
 SetupIconFile=..\src\Assets\AppIcon.ico
 UninstallDisplayIcon={app}\WAFluent.exe
 UninstallDisplayName=WAFluent
