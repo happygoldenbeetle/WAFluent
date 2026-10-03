@@ -1381,6 +1381,37 @@
                         <TextBlock x:Name="SectionPlaceholderText" HorizontalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
 
+                    <!-- Profile: your photo, name and number, and Log out. -->
+                    <StackPanel x:Name="ProfilePanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" Padding="16,20,16,16" Spacing="6">
+                        <controls:Redact VeilRadius="60" HorizontalAlignment="Center">
+                            <controls:Avatar x:Name="ProfileAvatar" Size="120" />
+                        </controls:Redact>
+                        <controls:Redact HorizontalAlignment="Center" Margin="0,12,0,0">
+                            <TextBlock x:Name="ProfileName" FontSize="20" FontWeight="SemiBold" TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        </controls:Redact>
+                        <controls:Redact HorizontalAlignment="Center">
+                            <TextBlock x:Name="ProfilePhone" TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </controls:Redact>
+                        <Button x:Name="LogoutButton" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" Margin="0,24,0,0"
+                                Click="Logout_Click">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="AccentButtonBackground" Color="#E81123" />
+                                <SolidColorBrush x:Key="AccentButtonBackgroundPointerOver" Color="#F12B3C" />
+                                <SolidColorBrush x:Key="AccentButtonBackgroundPressed" Color="#C50F1F" />
+                                <SolidColorBrush x:Key="AccentButtonForeground" Color="White" />
+                                <SolidColorBrush x:Key="AccentButtonForegroundPointerOver" Color="White" />
+                                <SolidColorBrush x:Key="AccentButtonForegroundPressed" Color="#F2D0CC" />
+                                <SolidColorBrush x:Key="AccentButtonBorderBrush" Color="#E81123" />
+                                <SolidColorBrush x:Key="AccentButtonBorderBrushPointerOver" Color="#F12B3C" />
+                                <SolidColorBrush x:Key="AccentButtonBorderBrushPressed" Color="#C50F1F" />
+                            </Button.Resources>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xF3B1;" FontSize="14" />
+                                <TextBlock Text="Log out" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
                     <!-- Settings (MainWindow.Settings.cs) -->
                     <ScrollViewer x:Name="SettingsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" Padding="16,4,16,16">
                         <StackPanel Spacing="20">
@@ -1411,7 +1442,6 @@
                             <ToggleSwitch x:Name="NotificationsSwitch" Header="Notifications" OffContent="Off" OnContent="On" Toggled="Notifications_Toggled" />
                             <ToggleSwitch x:Name="HdMediaSwitch" Header="Send photos and videos in HD by default" OffContent="Off" OnContent="On" Toggled="HdMedia_Toggled" />
                             <ToggleSwitch x:Name="SystemAccentSwitch" Header="Use Windows accent colour" OffContent="Off" OnContent="On" Toggled="SystemAccent_Toggled" />
-                            <Button x:Name="LogoutButton" Content="Log out" Visibility="Collapsed" Click="Logout_Click" />
                         </StackPanel>
                     </ScrollViewer>
                     <!-- ───── Calls (MainWindow.CallsPage.cs): search, Favourites, Recent ───── -->

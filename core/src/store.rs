@@ -358,6 +358,20 @@ impl Store {
         let _ = self.db.execute("UPDATE chats SET name = ?2 WHERE id = ?1", params![chat_id, name]);
     }
 
+    /// Groups stored without a name: ones first seen through a message, not the phone's history.
+    pub fn nameless_groups(&self) -> Vec<String> {
+        let Ok(mut q) = self.db.prepare("SELECT id FROM chats WHERE id LIKE '%@g.us' AND (name IS NULL OR name = '')") else { return Vec::new() };
+        q.query_map([], |r| r.get(0)).map(|rows| rows.flatten().collect()).unwrap_or_default()
+    }
+
+    pub fn group_is_nameless(&self, chat_id: &str) -> bool {
+        chat_id.ends_with("@g.us")
+            && self
+                .db
+                .query_row("SELECT name IS NULL OR name = '' FROM chats WHERE id = ?1", [chat_id], |r| r.get(0))
+                .unwrap_or(false)
+    }
+
     /// Returns true if the chat is new.
     pub fn ensure_chat(&self, id: &str, is_group: bool) -> bool {
         self.db

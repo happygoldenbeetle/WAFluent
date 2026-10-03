@@ -247,13 +247,18 @@ public sealed partial class MainWindow : Window
                     .Select(g => $"slow with {g.Key}: {g.Count()} frames, {g.Average(x => double.Parse(x[..x.IndexOf(' ')])):0} ms on average"));
                 Save();
             };
-        // WAFLUENT_SELFTEST=settings: the Settings page.
-        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "settings")
+        // WAFLUENT_SELFTEST=settings / profile: that page.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") is "settings" or "profile")
             Root.Loaded += async (_, _) =>
             {
                 await Task.Delay(2000);
                 Nav.SelectedItem = Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>()
-                    .First(item => item.Tag as string == "Settings");
+                    .First(item => item.Tag as string == (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "profile" ? "Profile" : "Settings"));
+                // The sample copy isn't linked: show the page with a made-up name.
+                if (ProfilePanel.Visibility == Visibility.Visible || Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") != "profile") return;
+                SectionPlaceholder.Visibility = Visibility.Collapsed;
+                ProfilePanel.Visibility = LogoutButton.Visibility = Visibility.Visible;
+                (ProfileAvatar.DisplayName, ProfileName.Text, ProfilePhone.Text) = ("Sample User", "Sample User", "+00 000 0000000");
             };
         // WAFLUENT_SELFTEST=chats-idle: the Chats page with no chat open.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "chats-idle")
@@ -1101,7 +1106,16 @@ public sealed partial class MainWindow : Window
         ChatList.Visibility = isList ? Visibility.Visible : Visibility.Collapsed;
         StarredList.Visibility = isStarred ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanel.Visibility = isSettings ? Visibility.Visible : Visibility.Collapsed;
-        LogoutButton.Visibility = ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
+        var isProfile = section == "Profile" && (ViewModel.IsLive || ViewModel.SelfName.Length > 0);
+        ProfilePanel.Visibility = isProfile ? Visibility.Visible : Visibility.Collapsed;
+        if (isProfile)
+        {
+            ProfileAvatar.DisplayName = ViewModel.SelfName;
+            ProfileAvatar.Source = ViewModel.SelfAvatarPath;
+            ProfileName.Text = ViewModel.SelfName.Length > 0 ? ViewModel.SelfName : "You";
+            ProfilePhone.Text = ViewModel.SelfPhone.Length > 0 ? "+" + ViewModel.SelfPhone.TrimStart('+') : "";
+            LogoutButton.Visibility = ViewModel.IsLive ? Visibility.Visible : Visibility.Collapsed;
+        }
         UpdateSectionPlaceholder(section);
     }
 
@@ -1111,6 +1125,7 @@ public sealed partial class MainWindow : Window
         var empty = section switch
         {
             "Chats" or "Settings" or "Calls" or "Status" or "Channels" => false,
+            "Profile" => ProfilePanel.Visibility != Visibility.Visible,
             "Archived" => ViewModel.ArchivedCount == 0,
             "Starred" => !ViewModel.HasStarred,
             _ => true,

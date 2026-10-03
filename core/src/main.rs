@@ -225,6 +225,11 @@ async fn run(dir: PathBuf) {
                         poll_vote(&ctx, &m.client, &m.info, vote).await;
                     } else {
                         on_message(&ctx, &m.message, &m.info);
+                        // A group this PC hasn't a name for (it wasn't in the phone's history): ask for it.
+                        let chat_id = m.info.source.chat.to_non_ad_string();
+                        if ctx.db().group_is_nameless(&chat_id) {
+                            name_group(&ctx, &m.client, chat_id);
+                        }
                     }
                 }
             }
@@ -682,6 +687,23 @@ async fn on_command(ctx: &Ctx, client: &Arc<Client>, cmd: Command) {
     }
 }
 
+/// A group's name, asked from WhatsApp and kept: for a group stored without one, which would
+/// otherwise show as its number.
+pub(crate) fn name_group(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
+    let (ctx, client) = (ctx.clone(), client.clone());
+    tokio::spawn(async move {
+        let Ok(jid) = chat_id.parse::<Jid>() else { return };
+        match client.groups().get_metadata(&jid).await {
+            Ok(meta) if !meta.subject.is_empty() => {
+                ctx.db().set_chat_name(&chat_id, &meta.subject);
+                send_chat(&ctx, &chat_id);
+            }
+            Ok(_) => {}
+            Err(e) => warn!("name of a group: {e}"),
+        }
+    });
+}
+
 /// A group's members for the @mention list (you left out), named as the chat list names them.
 /// A group changed here: its members and details are read again and sent.
 pub(crate) async fn refresh_group(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
@@ -722,6 +744,10 @@ async fn group_members(ctx: &Ctx, client: &Arc<Client>, chat_id: String) {
         }
     };
     ctx.send(Out::GroupInfo { chat_id: chat_id.clone(), info });
+    if !meta.subject.is_empty() && ctx.db().group_is_nameless(&chat_id) {
+        ctx.db().set_chat_name(&chat_id, &meta.subject);
+        send_chat(ctx, &chat_id);
+    }
     let members = {
         let db = ctx.db();
         meta.participants
@@ -1211,6 +1237,9 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
             call_log::request_history_once(ctx, client);
             favorites::resync_once(ctx, client);
             channels::load(ctx, client);   // the rail's count of channels with new posts
+            for group in ctx.db().nameless_groups() {
+                name_group(ctx, client, group);
+            }
             ctx.calls_dirty.notify_one();   // the call list's pictures are asked for now that there's a connection
             resync_stickers_once(ctx, client);
             refresh_blocklist(ctx, client);
@@ -1354,6 +1383,13 @@ async fn on_event(ctx: &Ctx, client: &Arc<Client>, event: Arc<Event>) {
         }
         Event::GroupUpdate(update) => {
             use whatsapp_rust::wacore::stanza::groups::GroupNotificationAction;
+            if let GroupNotificationAction::Subject { subject, .. } = &update.action
+                && !subject.is_empty()
+            {
+                let chat_id = ctx.db().canonical(&update.group_jid.to_non_ad_string());
+                ctx.db().set_chat_name(&chat_id, subject);
+                send_chat(ctx, &chat_id);
+            }
             if let GroupNotificationAction::Ephemeral { expiration, .. } = update.action {
                 let chat_id = ctx.db().canonical(&update.group_jid.to_non_ad_string());
                 let who = match &update.participant {
