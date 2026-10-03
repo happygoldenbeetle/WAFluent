@@ -47,7 +47,7 @@ pub(crate) struct Ctx {
     pub(crate) db: Db,
     pub(crate) data_dir: PathBuf,
     /// Pinged whenever the chat list changed in bulk; a debounced task sends one snapshot.
-    chats_dirty: Arc<Notify>,
+    pub(crate) chats_dirty: Arc<Notify>,
     /// Chats waiting for an on-demand history reply from the phone -> anchor (ts, message id).
     pending_history: Arc<Mutex<HashMap<String, Pending>>>,
     /// Profile-picture fetch queue (see avatars.rs).

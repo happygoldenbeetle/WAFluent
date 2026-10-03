@@ -17,13 +17,61 @@ use crate::{Ctx, wa};
 /// Set once the phone's list has had its chance to arrive: from then on the app may write.
 const SYNCED: &str = "favorites_synced_v1";
 
+/// The connection, once there is one: ids that match no chat are looked up with it.
+static CLIENT: std::sync::OnceLock<Arc<Client>> = std::sync::OnceLock::new();
+
 /// The list as the app knows chats (and whether the phone's has been heard yet).
 pub(crate) fn send(ctx: &Ctx) {
+    let unmatched = send_now(ctx);
+    if unmatched.is_empty() {
+        return;
+    }
+    // The phone may name a person by the other form of their id (number or LID) than their
+    // chat is kept under: WhatsApp is asked which chat it is, and the list sent again.
+    let Some(client) = CLIENT.get().cloned() else { return };
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        let mut found = 0;
+        for jid in &unmatched {
+            let Ok(parsed) = jid.parse::<Jid>() else { continue };
+            let chat = crate::chat_for(&ctx, &client, &parsed).await;
+            let db = ctx.db();
+            if db.chat(&chat).is_some() {
+                found += 1;
+            } else if db.is_saved(&chat) && (chat.ends_with("@lid") || chat.ends_with("@s.whatsapp.net")) {
+                // A saved contact you've never written to: they get an (empty) chat, so they can be listed.
+                db.ensure_chat(&chat, false);
+                found += 1;
+            }
+        }
+        info!("favourites: {} of {} that matched no chat were found", found, unmatched.len());
+        if found > 0 {
+            ctx.chats_dirty.notify_one();
+            tokio::time::sleep(Duration::from_millis(900)).await;   // after the chat list
+            send_now(&ctx);
+        }
+    });
+}
+
+/// Sends the list; returns the phone's ids that match no chat here.
+fn send_now(ctx: &Ctx) -> Vec<String> {
+    let mut unmatched = Vec::new();
     let (ids, synced) = {
         let db = ctx.db();
         let mut ids: Vec<String> = Vec::new();
         for jid in db.favorite_chats() {
-            let chat = db.canonical(&jid);
+            let mut chat = db.canonical(&jid);
+            if db.chat(&chat).is_none() {
+                // Kept under their number while the phone names their LID.
+                match db.phone_jid(&jid).map(|pn| db.canonical(&pn)).filter(|pn| db.chat(pn).is_some()) {
+                    Some(pn) => chat = pn,
+                    None => {
+                        let kind = jid.rsplit('@').next().unwrap_or("");
+                        info!("favourites: one from the phone matches no chat (an @{kind} id)");
+                        unmatched.push(jid.clone());
+                    }
+                }
+            }
             if !ids.contains(&chat) {
                 ids.push(chat);
             }
@@ -31,6 +79,7 @@ pub(crate) fn send(ctx: &Ctx) {
         (ids, db.flag(SYNCED))
     };
     ctx.send(Out::Favourites { ids, synced });
+    unmatched
 }
 
 /// The phone's list (or another device's change to it).
@@ -82,6 +131,7 @@ pub(crate) fn set(ctx: &Ctx, client: &Arc<Client>, chats: Vec<String>) {
 /// Favourites set on the phone before this PC listened for them: its app state is read once
 /// more (the one collection they're in), then the app is told it may merge and write.
 pub(crate) fn resync_once(ctx: &Ctx, client: &Arc<Client>) {
+    let _ = CLIENT.set(Arc::clone(client));
     if ctx.db().flag(SYNCED) {
         send(ctx);
         return;
