@@ -63,10 +63,11 @@ public sealed partial class MainWindow
         Root.RequestedTheme = requested;
     }
 
-    private void DeveloperMode_Toggled(object sender, RoutedEventArgs e)
+    /// <summary>Developer mode (names, numbers and photos blurred) is switched from the tray icon's menu.</summary>
+    private void SetDeveloperMode(bool on)
     {
-        if (_ui.DeveloperMode == DeveloperModeSwitch.IsOn) return;
-        _ui.DeveloperMode = DeveloperModeSwitch.IsOn;
+        if (_ui.DeveloperMode == on) return;
+        _ui.DeveloperMode = on;
         _ui.Save();
         ApplyDeveloperMode();
     }

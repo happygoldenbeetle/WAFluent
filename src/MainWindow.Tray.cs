@@ -129,8 +129,7 @@ public sealed partial class MainWindow
         menu.Items.Add(new MenuFlyoutSeparator());
 
         _trayDeveloperMode = new ToggleMenuFlyoutItem { Text = "Developer mode (blur names)", IsChecked = _ui.DeveloperMode };
-        _trayDeveloperMode.Click += (_, _) => DeveloperModeSwitch.IsOn = _trayDeveloperMode.IsChecked;   // the switch saves and applies
-        DeveloperModeSwitch.Toggled += (_, _) => _trayDeveloperMode.IsChecked = DeveloperModeSwitch.IsOn;
+        _trayDeveloperMode.Click += (_, _) => SetDeveloperMode(_trayDeveloperMode.IsChecked);
         menu.Items.Add(_trayDeveloperMode);
 
         var theme = new MenuFlyoutSubItem { Text = "Theme", Icon = new FontIcon { Glyph = "\uE790" } };

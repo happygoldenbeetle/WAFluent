@@ -45,7 +45,6 @@ public sealed partial class MainWindow : Window
         SetupTray();
         SetupBubbleMotion();
         SetupStickers();
-        DeveloperModeSwitch.IsOn = _ui.DeveloperMode;
         SystemAccentSwitch.IsOn = _ui.UseSystemAccent;
         Helpers.AppColors.Changed += RefreshTheme;
         ApplyDeveloperMode();
