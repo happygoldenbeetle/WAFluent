@@ -749,6 +749,20 @@ fn parse_newsletter_messages_response(
                 });
 
         let reactions = parse_reaction_counts(msg_node);
+        // WAFluent patch: what a post's node is made of (tags and attribute names, no values), once per
+        // distinct make-up, for working out what else WhatsApp says about a post.
+        {
+            static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+            let mut made = crate::wafluent_hooks::shape(msg_node);
+            while made.contains("reaction(code,count) reaction(code,count)") {
+                made = made.replace("reaction(code,count) reaction(code,count)", "reaction(code,count)");
+            }
+            let mut seen = SEEN.lock().unwrap_or_else(|p| p.into_inner());
+            if seen.len() < 12 && !seen.contains(&made) {
+                log::info!(target: "wafluent_core::shape", "a post: {made}");
+                seen.push(made);
+            }
+        }
         // WAFluent patch: every child that carries a count, by its tag.
         let counts: Vec<(String, u64)> = msg_node
             .children()

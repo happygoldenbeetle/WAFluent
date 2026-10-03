@@ -49,6 +49,30 @@ type FavoritesSink = Box<dyn Fn(FavoritesMutation) + Send + Sync>;
 static FAVORITES: OnceLock<FavoritesSink> = OnceLock::new();
 
 /// Receive the favourite-chats list (set once, at startup).
+/// Something a channel sent that isn't a post: so far, a reaction of yours made on another device.
+pub struct ChannelNote {
+    pub chat: String,
+    /// The post it's about (0: not said).
+    pub server_id: u64,
+    /// The reaction in it ("" taken back), when there is one.
+    pub reaction: Option<String>,
+    /// What the stanza is made of: tags and attribute names, no values.
+    pub made: String,
+}
+
+static CHANNEL_NOTE: OnceLock<Box<dyn Fn(ChannelNote) + Send + Sync>> = OnceLock::new();
+
+pub fn on_channel_note(sink: impl Fn(ChannelNote) + Send + Sync + 'static) {
+    let _ = CHANNEL_NOTE.set(Box::new(sink));
+}
+
+pub(crate) fn channel_note(node: &wacore_binary::NodeRef<'_>, chat: String) {
+    let Some(sink) = CHANNEL_NOTE.get() else { return };
+    let server_id = node.get_attr("server_id").map(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let reaction = node.get_optional_child("reaction").map(|r| r.get_attr("code").map(|v| v.as_str().into_owned()).unwrap_or_default());
+    sink(ChannelNote { chat, server_id, reaction, made: shape(node) });
+}
+
 pub fn on_favorites(sink: impl Fn(FavoritesMutation) + Send + Sync + 'static) {
     let _ = FAVORITES.set(Box::new(sink));
 }

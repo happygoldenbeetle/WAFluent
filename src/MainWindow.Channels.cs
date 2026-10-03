@@ -196,26 +196,50 @@ public sealed partial class MainWindow
     // ───── The list ─────
 
     /// <summary>The rows on screen, by channel: one is made again only when what it shows changed.</summary>
-    private readonly Dictionary<string, (ChannelDto Channel, bool Open, Button Row)> _channelRowCache = new();
+    private readonly Dictionary<string, (ChannelDto Channel, Button Row)> _channelRowCache = new();
+    /// <summary>Each channel's picture, kept across remakes of its row (a new one would blink while its file loads).</summary>
+    private readonly Dictionary<string, (string? Path, Avatar Picture)> _channelPictures = new();
     private TextBlock? _channelsFindTitle;
 
     private Button CachedChannelRow(ChannelDto channel)
     {
-        var open = ViewModel.SelectedChat?.Id == channel.Id;
-        if (_channelRowCache.TryGetValue(channel.Id, out var kept) && kept.Channel == channel && kept.Open == open) return kept.Row;
-        var row = ChannelRow(channel);
-        _channelRowCache[channel.Id] = (channel, open, row);
-        return row;
+        if (!_channelRowCache.TryGetValue(channel.Id, out var kept) || kept.Channel != channel)
+        {
+            kept = (channel, ChannelRow(channel));
+            _channelRowCache[channel.Id] = kept;
+        }
+        // Which one is open is only a tint: the row stays.
+        kept.Row.Background = ViewModel.SelectedChat?.Id == channel.Id ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        return kept.Row;
+    }
+
+    private Avatar ChannelPicture(ChannelDto channel)
+    {
+        if (_channelPictures.TryGetValue(channel.Id, out var kept) && kept.Path == channel.Avatar)
+        {
+            (kept.Picture.Parent as Panel)?.Children.Remove(kept.Picture);   // out of the row it was in
+            kept.Picture.DisplayName = channel.Name;
+            return kept.Picture;
+        }
+        var picture = new Avatar { DisplayName = channel.Name, Source = channel.Avatar, Size = 48, IsGroup = true };
+        _channelPictures[channel.Id] = (channel.Avatar, picture);
+        return picture;
     }
 
     private void FillChannels()
     {
         var rows = new List<UIElement>();
         BuildChannelRows(rows);
-        // Nothing moved: the list is left alone (pictures don't blink).
-        if (rows.SequenceEqual(ChannelRows.Children)) return;
-        ChannelRows.Children.Clear();
-        foreach (var row in rows) ChannelRows.Children.Add(row);
+        // Only what differs is touched: a row that hasn't moved or changed stays where it is.
+        var shown = ChannelRows.Children;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (i < shown.Count && ReferenceEquals(shown[i], rows[i])) continue;
+            var at = shown.IndexOf(rows[i]);
+            if (at >= 0) shown.RemoveAt(at);   // it moved: taken from where it was
+            shown.Insert(Math.Min(i, shown.Count), rows[i]);
+        }
+        while (shown.Count > rows.Count) shown.RemoveAt(shown.Count - 1);
     }
 
     private void BuildChannelRows(List<UIElement> ChannelRows)
@@ -265,7 +289,7 @@ public sealed partial class MainWindow
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var picture = new Redact { VeilRadius = new CornerRadius(24), VerticalAlignment = VerticalAlignment.Center };
-        picture.Children.Add(new Avatar { DisplayName = channel.Name, Source = channel.Avatar, Size = 48, IsGroup = true });
+        picture.Children.Add(ChannelPicture(channel));
         grid.Children.Add(picture);
 
         var name = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
@@ -339,12 +363,12 @@ public sealed partial class MainWindow
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(10, 9, 8, 9),
             BorderThickness = new Thickness(0),
-            Background = ViewModel.SelectedChat?.Id == channel.Id ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
         };
         row.Click += (_, _) => ViewModel.OpenChannel(channel);
         // Right-click: put it away, or stop (or start) following it.
         var menu = new MenuFlyout();
-        var close = new MenuFlyoutItem { Text = "Close channel", Icon = new FontIcon { Glyph = char.ConvertFromUtf32(0xE711) }, IsEnabled = ViewModel.SelectedChat?.Id == channel.Id };
+        var close = new MenuFlyoutItem { Text = "Close channel", Icon = new FontIcon { Glyph = char.ConvertFromUtf32(0xE711) } };
+        menu.Opening += (_, _) => close.IsEnabled = ViewModel.SelectedChat?.Id == channel.Id;
         close.Click += (_, _) => ViewModel.CloseChannel();
         menu.Items.Add(close);
         if (channel.Followed)

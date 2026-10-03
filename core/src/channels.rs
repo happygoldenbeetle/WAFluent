@@ -363,6 +363,25 @@ pub(crate) fn react(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id
     });
 }
 
+/// A channel sent something that isn't a post. A reaction in it is yours, made on another
+/// device (other people's only arrive as counts): the post shows it as yours here too.
+pub(crate) fn note(ctx: &Ctx, note: whatsapp_rust::wafluent_hooks::ChannelNote) {
+    info!("channels: a note: {}", note.made);
+    let Some(emoji) = note.reaction else { return };
+    let dto = {
+        let db = ctx.db();
+        let Some(id) = db.post_by_server_id(&note.chat, note.server_id) else { return };
+        if db.post_mine(&note.chat, &id).unwrap_or_default() == emoji {
+            return; // the one made here, coming back
+        }
+        db.set_post_mine(&note.chat, &id, &emoji);
+        db.message(&note.chat, &id).map(|m| db.to_dto(&note.chat, m))
+    };
+    if let Some(message) = dto {
+        ctx.send(Out::MessageUpdated { chat_id: note.chat, message });
+    }
+}
+
 /// A post arrived live (a channel you follow): the app is told to read the channel again.
 pub(crate) fn live(ctx: &Ctx, chat_id: &str) {
     ctx.send(Out::ChannelChanged { chat_id: chat_id.to_string() });

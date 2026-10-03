@@ -116,6 +116,7 @@ public sealed partial class MainWindow
     private void Messages_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         if (ViewModel.IsSelecting || Lightbox.Visibility == Visibility.Visible || RowOf(e.OriginalSource as DependencyObject) is not { Tag: Message message } row) return;
+        if (message.IsPost) return;   // a channel's post: reacting is the pill's and the menu's, not a double-click's
         if (DateTime.Now - _sideButtonAt < TimeSpan.FromSeconds(1)) return;   // back/forward pressed twice, not a double-click
         if (message.Kind == MessageKind.DateDivider || message.Delivery is Delivery.Pending or Delivery.Failed) return;
         if (IsInside<Button>(e.OriginalSource as DependencyObject, row)) return;   // play button, file buttons...

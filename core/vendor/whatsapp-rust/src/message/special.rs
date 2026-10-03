@@ -23,11 +23,8 @@ impl Client {
         info: &Arc<MessageInfo>,
     ) {
         let Some(plaintext_node) = node.get_optional_child_by_tag(&["plaintext"]) else {
-            log::warn!(
-                "[msg:{}] Received newsletter message without <plaintext> child: {}",
-                info.id,
-                node.tag
-            );
+            // WAFluent patch: not a post, but it may say something about one (your reaction made on the phone).
+            crate::wafluent_hooks::channel_note(node, info.source.chat.to_string());
             return;
         };
 

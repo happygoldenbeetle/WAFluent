@@ -1171,6 +1171,17 @@ impl Store {
         let _ = self.db.execute("UPDATE extras SET data = ?3 WHERE chat_id = ?1 AND message_id = ?2", params![chat_id, id, extra.to_string()]);
     }
 
+    /// The kept post with this server id.
+    pub fn post_by_server_id(&self, chat_id: &str, server_id: u64) -> Option<String> {
+        self.db
+            .query_row(
+                "SELECT message_id FROM extras WHERE chat_id = ?1 AND data != '' AND json_extract(data, '$.channel.serverId') = ?2",
+                params![chat_id, server_id as i64],
+                |r| r.get(0),
+            )
+            .ok()
+    }
+
     /// New reaction counts for the post with this server id; its message id when it's kept.
     pub fn set_post_reactions(&self, chat_id: &str, server_id: u64, reactions: &[(String, u64)]) -> Option<String> {
         let (id, data): (String, String) = self

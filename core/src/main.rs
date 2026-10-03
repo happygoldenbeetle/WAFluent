@@ -168,6 +168,10 @@ async fn run(dir: PathBuf) {
         let ctx = ctx.clone();
         move |m| favorites::mutation(&ctx, m)
     });
+    whatsapp_rust::wafluent_hooks::on_channel_note({
+        let ctx = ctx.clone();
+        move |note| channels::note(&ctx, note)
+    });
     whatsapp_rust::wafluent_hooks::on_call_log({
         let ctx = ctx.clone();
         move |m| call_log::mutation(&ctx, m)
