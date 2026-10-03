@@ -3,10 +3,11 @@
 A native WhatsApp client for Windows 11, built with WinUI 3. Fluent design, light and dark themes, and no browser engine.
 
 > [!TIP]
-> **About a third of the memory.** WAFluent used **~115 MB** of RAM, app and backend together, where WhatsApp Desktop used
-> ~330 MB on the same PC. It also ran 3 processes instead of 9.
+> **A fraction of the memory.** In use, WAFluent stays around **250 MB** of RAM, app and backend together.
+> WhatsApp Desktop can take up to **1.2 GB**. WAFluent also runs 3 processes instead of 9.
 >
-> <sub>Private working set of each app's whole process tree, both idle, measured once on one Windows 11 PC. Your numbers will vary.</sub>
+> <sub>Idle on the same Windows 11 PC, each app's whole process tree: 114 MB against 327 MB private memory,
+> 298 MB against 1,029 MB working set. Your numbers will vary.</sub>
 
 ![WAFluent with a chat open, dark theme](docs/screenshots/chat-dark.jpg)
 
