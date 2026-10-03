@@ -1385,85 +1385,126 @@
                     <ScrollViewer x:Name="SettingsPanel" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed" Padding="16,4,16,16">
                         <StackPanel Spacing="20">
                             <ComboBox x:Name="ThemeBox" Header="Theme" MinWidth="200" />
-                            <!-- A setting that needs a word of explanation has an (i) beside its name; hover it to read it. -->
-                            <ToggleSwitch x:Name="MinimizeToTraySwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Minimize and close to tray">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Minimize and close to tray" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Closing or minimizing keeps WAFluent running in the notification area."
-                                                AutomationProperties.Name="Closing or minimizing keeps WAFluent running in the notification area.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
-                            <StackPanel Spacing="10">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Quick reactions" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Shown when you right-click a message. Double-click a message to use the first. Click one to change it."
-                                            AutomationProperties.Name="Shown when you right-click a message. Double-click a message to use the first. Click one to change it.">
-                                        <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    </Border>
-                                </StackPanel>
+                            <!-- A setting that needs a word of explanation has an (i) at the end of its line: hover or click it to read it. -->
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Minimize and close to tray" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Closing or minimizing keeps WAFluent running in the notification area."
+                                            AutomationProperties.Name="About Minimize and close to tray">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Closing or minimizing keeps WAFluent running in the notification area." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="MinimizeToTraySwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Minimize and close to tray" />
+                            </StackPanel>
+                            <StackPanel Spacing="8">
+                                <Grid>
+                                    <TextBlock Text="Quick reactions" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Shown when you right-click a message. Double-click a message to use the first. Click one to change it."
+                                            AutomationProperties.Name="About Quick reactions">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Shown when you right-click a message. Double-click a message to use the first. Click one to change it." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
                                 <StackPanel x:Name="QuickReactionSlots" Orientation="Horizontal" Spacing="6" />
                                 <HyperlinkButton Content="Reset to default" Padding="0" Click="ResetQuickReactions_Click" />
                             </StackPanel>
-                            <ToggleSwitch x:Name="Use24HourSwitch" Header="Use 24-hour time" OffContent="Off" OnContent="On" Toggled="Use24Hour_Toggled" />
-                            <ToggleSwitch x:Name="HandCursorSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Hand pointer" Toggled="HandCursor_Toggled">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Hand pointer" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Shows a hand over anything you can click."
-                                                AutomationProperties.Name="Shows a hand over anything you can click.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
-                            <ToggleSwitch x:Name="NotificationsSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Notifications" Toggled="Notifications_Toggled">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Notifications" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Windows notifications for new messages. Muted chats stay quiet."
-                                                AutomationProperties.Name="Windows notifications for new messages. Muted chats stay quiet.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
-                            <ToggleSwitch x:Name="HdMediaSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Send photos and videos in HD" Toggled="HdMedia_Toggled">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Send photos and videos in HD" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Photos up to 4096 px, videos 720p. Off: 1600 px and 480p."
-                                                AutomationProperties.Name="Photos up to 4096 px, videos 720p. Off: 1600 px and 480p.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
-                            <ToggleSwitch x:Name="SystemAccentSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Use Windows accent colour" Toggled="SystemAccent_Toggled">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Use Windows accent colour" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Buttons and switches use your Windows colour. Chats stay green."
-                                                AutomationProperties.Name="Buttons and switches use your Windows colour. Chats stay green.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
-                            <ToggleSwitch x:Name="DeveloperModeSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Developer mode" Toggled="DeveloperMode_Toggled">
-                                <ToggleSwitch.Header>
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="Developer mode" VerticalAlignment="Center" />
-                                        <Border Background="Transparent" VerticalAlignment="Center" ToolTipService.ToolTip="Blurs photos, names and numbers, for screenshots."
-                                                AutomationProperties.Name="Blurs photos, names and numbers, for screenshots.">
-                                            <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                </ToggleSwitch.Header>
-                            </ToggleSwitch>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Use 24-hour time" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                </Grid>
+                                <ToggleSwitch x:Name="Use24HourSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Use 24-hour time" Toggled="Use24Hour_Toggled" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Hand pointer" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Shows a hand over anything you can click."
+                                            AutomationProperties.Name="About Hand pointer">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Shows a hand over anything you can click." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="HandCursorSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Hand pointer" Toggled="HandCursor_Toggled" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Notifications" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Windows notifications for new messages. Muted chats stay quiet."
+                                            AutomationProperties.Name="About Notifications">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Windows notifications for new messages. Muted chats stay quiet." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="NotificationsSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Notifications" Toggled="Notifications_Toggled" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Send photos and videos in HD" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Photos up to 4096 px, videos 720p. Off: 1600 px and 480p."
+                                            AutomationProperties.Name="About Send photos and videos in HD">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Photos up to 4096 px, videos 720p. Off: 1600 px and 480p." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="HdMediaSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Send photos and videos in HD" Toggled="HdMedia_Toggled" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Use Windows accent colour" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Buttons and switches use your Windows colour. Chats stay green."
+                                            AutomationProperties.Name="About Use Windows accent colour">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Buttons and switches use your Windows colour. Chats stay green." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="SystemAccentSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Use Windows accent colour" Toggled="SystemAccent_Toggled" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid>
+                                    <TextBlock Text="Developer mode" VerticalAlignment="Center" Margin="0,0,36,0" TextWrapping="Wrap" />
+                                    <Button HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0"
+                                            Background="Transparent" BorderThickness="0" CornerRadius="14" ToolTipService.ToolTip="Blurs photos, names and numbers, for screenshots."
+                                            AutomationProperties.Name="About Developer mode">
+                                        <FontIcon Glyph="&#xE946;" FontSize="15" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="Bottom">
+                                                <TextBlock Text="Blurs photos, names and numbers, for screenshots." TextWrapping="Wrap" MaxWidth="280" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <ToggleSwitch x:Name="DeveloperModeSwitch" OffContent="Off" OnContent="On" AutomationProperties.Name="Developer mode" Toggled="DeveloperMode_Toggled" />
+                            </StackPanel>
                             <Button x:Name="LogoutButton" Content="Log out" Visibility="Collapsed" Click="Logout_Click" />
                         </StackPanel>
                     </ScrollViewer>
