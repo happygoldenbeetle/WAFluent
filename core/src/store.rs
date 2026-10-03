@@ -1134,6 +1134,43 @@ impl Store {
             .map(|n| n as u64)
     }
 
+    /// Your reaction to a post ("" none), as kept here.
+    pub fn post_mine(&self, chat_id: &str, id: &str) -> Option<String> {
+        self.db
+            .query_row("SELECT json_extract(data, '$.channel.mine') FROM extras WHERE chat_id = ?1 AND message_id = ?2 AND data != ''", [chat_id, id], |r| {
+                r.get::<_, Option<String>>(0)
+            })
+            .ok()
+            .flatten()
+            .filter(|mine| !mine.is_empty())
+    }
+
+    /// You reacted to a post ("" took it back): the one you had counts one less, the new one one more.
+    pub fn set_post_mine(&self, chat_id: &str, id: &str, emoji: &str) {
+        let Ok(data) = self.db.query_row("SELECT data FROM extras WHERE chat_id = ?1 AND message_id = ?2", [chat_id, id], |r| r.get::<_, String>(0)) else { return };
+        let Ok(mut extra) = serde_json::from_str::<serde_json::Value>(&data) else { return };
+        let before = extra["channel"]["mine"].as_str().unwrap_or("").to_string();
+        let mut counts: Vec<(String, u64)> = extra["channel"]["reactions"]
+            .as_array()
+            .map(|all| all.iter().filter_map(|one| Some((one[0].as_str()?.to_string(), one[1].as_u64()?))).collect())
+            .unwrap_or_default();
+        if !before.is_empty()
+            && let Some(old) = counts.iter_mut().find(|(code, _)| *code == before)
+        {
+            old.1 = old.1.saturating_sub(1);
+        }
+        if !emoji.is_empty() {
+            match counts.iter_mut().find(|(code, _)| code == emoji) {
+                Some(now) => now.1 += 1,
+                None => counts.push((emoji.to_string(), 1)),
+            }
+        }
+        counts.retain(|(_, n)| *n > 0);
+        extra["channel"]["reactions"] = counts.iter().map(|(code, n)| serde_json::json!([code, n])).collect();
+        extra["channel"]["mine"] = serde_json::json!(emoji);
+        let _ = self.db.execute("UPDATE extras SET data = ?3 WHERE chat_id = ?1 AND message_id = ?2", params![chat_id, id, extra.to_string()]);
+    }
+
     /// New reaction counts for the post with this server id; its message id when it's kept.
     pub fn set_post_reactions(&self, chat_id: &str, server_id: u64, reactions: &[(String, u64)]) -> Option<String> {
         let (id, data): (String, String) = self

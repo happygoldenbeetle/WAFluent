@@ -235,6 +235,10 @@ fn keep(db: &store::Store, chat_id: &str, post: &NewsletterMessage) -> bool {
         }
         db.insert_extra(chat_id, &id, &content.thumb, Some(&extra));
     } else {
+        // Your own reaction isn't in WhatsApp's answer: what's kept stays.
+        if let Some(mine) = db.post_mine(chat_id, &id) {
+            extra["channel"]["mine"] = json!(mine);
+        }
         db.update_post(chat_id, &id, &stored.text, &extra);
     }
     true
@@ -332,14 +336,25 @@ pub(crate) fn action(ctx: &Ctx, client: &Arc<Client>, chat_id: String, action: S
     });
 }
 
-/// Your reaction to a post ("" takes it back).
+/// Your reaction to a post ("" takes it back): one per post, so it replaces the one you had.
+/// The post's counts change here at once; WhatsApp's own follow while the channel is open.
 pub(crate) fn react(ctx: &Ctx, client: &Arc<Client>, chat_id: String, message_id: String, emoji: String) {
     let (ctx, client) = (ctx.clone(), Arc::clone(client));
     tokio::spawn(async move {
         let Ok(jid) = chat_id.parse::<Jid>() else { return };
         let Some(server_id) = ctx.db().post_server_id(&chat_id, &message_id) else { return };
         match client.newsletter().send_reaction(&jid, server_id, &emoji).await {
-            Ok(()) => posts(&ctx, &client, chat_id, false),   // the counts, with yours in them
+            Ok(()) => {
+                info!("channels: reaction sent");
+                let dto = {
+                    let db = ctx.db();
+                    db.set_post_mine(&chat_id, &message_id, &emoji);
+                    db.message(&chat_id, &message_id).map(|m| db.to_dto(&chat_id, m))
+                };
+                if let Some(message) = dto {
+                    ctx.send(Out::MessageUpdated { chat_id, message });
+                }
+            }
             Err(e) => {
                 warn!("channels: reaction failed: {e:?}");
                 ctx.send(Out::Notice { ok: false, text: "The reaction couldn't be sent.".into() });

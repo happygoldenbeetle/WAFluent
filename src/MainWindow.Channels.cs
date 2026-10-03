@@ -134,26 +134,41 @@ public sealed partial class MainWindow
     {
         if (sender is not FrameworkElement { Tag: Models.Message { PostReactions.Count: > 0 } post } pill) return;
         e.Handled = true;
+        var flyout = new Flyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
+        var row = RowOf(pill);
         var chips = new WrapPanel { HorizontalSpacing = 8, VerticalSpacing = 8 };
         foreach (var (emoji, count) in post.PostReactions)
         {
             var chip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             chip.Children.Add(new TextBlock { Text = emoji, FontSize = 18, FontFamily = (FontFamily)Application.Current.Resources["EmojiFontFamily"] });
             chip.Children.Add(new TextBlock { Text = Format.Compact(count), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
-            chips.Children.Add(new Border
+            // Yours is marked. A click reacts with that one (it replaces yours: one per post); on yours, takes it back.
+            var mine = post.MyReaction.Length > 0 && post.MyReaction.Replace("\uFE0F", "") == emoji.Replace("\uFE0F", "");
+            var button = new Button
             {
-                Child = chip,
+                Content = chip,
                 Padding = new Thickness(12, 5, 12, 6),
                 CornerRadius = new CornerRadius(16),
                 BorderThickness = new Thickness(1),
-                BorderBrush = Themed.Brush("ControlStrokeColorDefaultBrush"),
-            });
+                BorderBrush = Themed.Brush(mine ? "ChatAccentBrush" : "ControlStrokeColorDefaultBrush"),
+                Background = mine ? Themed.Brush("SubtleFillColorSecondaryBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            };
+            AutomationProperties.SetName(button, mine ? $"Take back {emoji}" : $"React with {emoji}");
+            var choice = mine ? post.MyReaction : emoji;
+            button.Click += (_, _) =>
+            {
+                flyout.Hide();
+                if (row is not null) React(post, row, choice, null);
+                else ViewModel.React(post, choice);
+            };
+            chips.Children.Add(button);
         }
         var total = post.PostReactions.Sum(r => r.Count);
         var content = new StackPanel { Spacing = 12, Width = 380 };
         content.Children.Add(new TextBlock { Text = total == 1 ? "1 reaction" : $"{total:N0} reactions", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = Themed.Brush("TextFillColorSecondaryBrush") });
         content.Children.Add(chips);
-        new Flyout { Content = content, Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft }.ShowAt(pill);
+        flyout.Content = content;
+        flyout.ShowAt(pill);
     }
 
     /// <summary>A post's forward pill: the chats to forward it to.</summary>
@@ -180,19 +195,41 @@ public sealed partial class MainWindow
 
     // ───── The list ─────
 
+    /// <summary>The rows on screen, by channel: one is made again only when what it shows changed.</summary>
+    private readonly Dictionary<string, (ChannelDto Channel, bool Open, Button Row)> _channelRowCache = new();
+    private TextBlock? _channelsFindTitle;
+
+    private Button CachedChannelRow(ChannelDto channel)
+    {
+        var open = ViewModel.SelectedChat?.Id == channel.Id;
+        if (_channelRowCache.TryGetValue(channel.Id, out var kept) && kept.Channel == channel && kept.Open == open) return kept.Row;
+        var row = ChannelRow(channel);
+        _channelRowCache[channel.Id] = (channel, open, row);
+        return row;
+    }
+
     private void FillChannels()
     {
+        var rows = new List<UIElement>();
+        BuildChannelRows(rows);
+        // Nothing moved: the list is left alone (pictures don't blink).
+        if (rows.SequenceEqual(ChannelRows.Children)) return;
         ChannelRows.Children.Clear();
+        foreach (var row in rows) ChannelRows.Children.Add(row);
+    }
+
+    private void BuildChannelRows(List<UIElement> ChannelRows)
+    {
         if (ViewModel.ChannelResults is { } results)
         {
-            foreach (var channel in results) ChannelRows.Children.Add(ChannelRow(channel));
-            if (results.Count == 0) ChannelRows.Children.Add(ChannelNote("No channels found."));
+            foreach (var channel in results) ChannelRows.Add(CachedChannelRow(channel));
+            if (results.Count == 0) ChannelRows.Add(ChannelNote("No channels found."));
             return;
         }
-        foreach (var channel in ViewModel.Channels) ChannelRows.Children.Add(ChannelRow(channel));
+        foreach (var channel in ViewModel.Channels) ChannelRows.Add(CachedChannelRow(channel));
         if (ViewModel.SuggestedChannels.Count > 0)
         {
-            ChannelRows.Children.Add(new TextBlock
+            ChannelRows.Add(_channelsFindTitle ??= new TextBlock
             {
                 Text = "Find channels to follow",
                 FontSize = 14,
@@ -200,11 +237,11 @@ public sealed partial class MainWindow
                 Margin = new Thickness(14, 18, 0, 6),
                 Foreground = Themed.Brush("TextFillColorSecondaryBrush"),
             });
-            foreach (var channel in ViewModel.SuggestedChannels) ChannelRows.Children.Add(ChannelRow(channel));
+            foreach (var channel in ViewModel.SuggestedChannels) ChannelRows.Add(CachedChannelRow(channel));
         }
         else if (ViewModel.Channels.Count == 0)
         {
-            ChannelRows.Children.Add(ChannelNote(ViewModel.IsLive ? "Loading channels…" : "No channels."));
+            ChannelRows.Add(ChannelNote(ViewModel.IsLive ? "Loading channels…" : "No channels."));
         }
     }
 

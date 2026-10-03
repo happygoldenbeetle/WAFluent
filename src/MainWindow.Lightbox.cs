@@ -366,6 +366,7 @@ public sealed partial class MainWindow
         if (Lightbox.Visibility != Visibility.Visible || _viewerClosing || next < 0 || next >= _viewerItems.Count) return;
         FlyImage.Visibility = Visibility.Collapsed;
         _viewerIndex = next;
+        _viewerSteppedAt = DateTime.UtcNow;
         // Only the picture that's out of its bubble leaves a gap there.
         if (_viewerSource is not null) _viewerSource.Opacity = _viewerItems[_viewerIndex] == _viewerOpenedFrom ? 0 : 1;
         ShowViewerItem();
@@ -429,7 +430,16 @@ public sealed partial class MainWindow
     private void LightboxScroller_SizeChanged(object sender, SizeChangedEventArgs e) => FitViewerImage();
 
     /// <summary>Clicks on the dimmed area close the viewer; the picture, arrows and caption swallow theirs.</summary>
-    private void Lightbox_BackgroundTapped(object sender, TappedRoutedEventArgs e) => CloseViewer();
+    /// <summary>When an arrow last stepped to another picture.</summary>
+    private DateTime _viewerSteppedAt;
+
+    private void Lightbox_BackgroundTapped(object sender, TappedRoutedEventArgs e)
+    {
+        // Stepping onto the first or last picture hides the arrow that was clicked, and the same
+        // click then lands on the background behind it: that isn't a click to close.
+        if ((DateTime.UtcNow - _viewerSteppedAt).TotalMilliseconds < 400) return;
+        CloseViewer();
+    }
 
     private void LightboxEat_Tapped(object sender, TappedRoutedEventArgs e) => e.Handled = true;
 

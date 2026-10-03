@@ -233,7 +233,7 @@
                                          wrapped lines overlap.) -->
                                     <!-- Link preview: the sender's card (picture, title, description, site). Click opens the link. -->
                                     <Border Grid.Row="2" Margin="-6,-6,-6,10" CornerRadius="{x:Bind LinkCardCorners}" Background="{ThemeResource FileCardBrush}"
-                                            Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" helpers:HandCursor.On="True" MaxWidth="420" HorizontalAlignment="Stretch">
+                                            Visibility="{x:Bind HasLink}" Tag="{x:Bind}" Tapped="Link_Tapped" helpers:HandCursor.On="True" MaxWidth="{x:Bind helpers:Ui.LinkCardWidth(IsPost)}" HorizontalAlignment="Stretch">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />

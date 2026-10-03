@@ -72,6 +72,9 @@ public static class Ui
     /// (The widest a bubble gets, so a post's bubble starts where its column does.)
     public static double PostWidth(bool isPost) => isPost ? 520 : double.NaN;
 
+    /// <summary>A link's card is at most this wide in a message; in a channel's post it's as wide as the post.</summary>
+    public static double LinkCardWidth(bool isPost) => isPost ? double.PositiveInfinity : 420;
+
     /// <summary>The forward pill: beside the reactions, or where they'd be when there are none.</summary>
     public static Thickness ForwardPillMargin(string reaction) => new(reaction.Length > 0 ? 6 : 8, -6, 0, 0);
 

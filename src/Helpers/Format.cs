@@ -263,14 +263,19 @@ public static class Format
     };
 
     /// <summary>A channel post's reactions from the core's {channel: {reactions: [[emoji, count]…]}}: the four most used and the total.</summary>
-    private static (string Summary, List<(string Emoji, long Count)> All, string Forwards) ChannelCounts(MessageDto dto)
+    private static (string Summary, List<(string Emoji, long Count)> All, string Forwards, string Mine) ChannelCounts(MessageDto dto)
     {
-        if (dto.Extra is not { ValueKind: JsonValueKind.Object } extra || !extra.TryGetProperty("channel", out var channel)) return ("", [], "");
+        if (dto.Extra is not { ValueKind: JsonValueKind.Object } extra || !extra.TryGetProperty("channel", out var channel)) return ("", [], "", "");
+        var mine = channel.TryGetProperty("mine", out var own) ? own.GetString() ?? "" : "";
         var forwards = channel.TryGetProperty("forwards", out var f) && f.TryGetInt64(out var times) && times > 0 ? Compact(times) : "";
-        if (!channel.TryGetProperty("reactions", out var list) || list.ValueKind != JsonValueKind.Array) return ("", [], forwards);
+        if (!channel.TryGetProperty("reactions", out var list) || list.ValueKind != JsonValueKind.Array) return ("", [], forwards, mine);
         var counts = list.EnumerateArray().Where(r => r.ValueKind == JsonValueKind.Array && r.GetArrayLength() == 2)
-            .Select(r => (Emoji: r[0].GetString() ?? "", Count: r[1].TryGetInt64(out var n) ? n : 0)).Where(r => r.Count > 0).OrderByDescending(r => r.Count).ToList();
-        return (counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}", counts, forwards);
+            .Select(r => (Emoji: r[0].GetString() ?? "", Count: r[1].TryGetInt64(out var n) ? n : 0)).Where(r => r.Count > 0)
+            // The same emoji arrives written two ways (with and without its "as a picture" mark): one entry, counted together.
+            .GroupBy(r => r.Emoji.Replace("\uFE0F", ""))
+            .Select(g => (Emoji: g.OrderByDescending(r => r.Count).First().Emoji, Count: g.Sum(r => r.Count)))
+            .OrderByDescending(r => r.Count).ToList();
+        return (counts.Count == 0 ? "" : $"{string.Concat(counts.Take(4).Select(r => r.Emoji))} {Compact(counts.Sum(r => r.Count))}", counts, forwards, mine);
     }
 
     private static Message Build(MessageDto dto, bool isGroup)
@@ -307,7 +312,7 @@ public static class Format
             ReplyFromMe = dto.Reply?.FromMe ?? false,
             ReplyThumb = dto.Reply?.Thumb,
             Reactions = dto.Reactions ?? [],
-            MyReaction = dto.MyReaction ?? "",
+            MyReaction = dto.MyReaction ?? channel.Mine,
             Starred = dto.Starred,
             Edited = dto.Edited,
             Forwarded = dto.Forwarded,
