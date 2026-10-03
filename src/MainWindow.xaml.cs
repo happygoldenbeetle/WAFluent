@@ -889,7 +889,7 @@ public sealed partial class MainWindow : Window
                 {
                     case "newchat-number":
                         NewChatDialpad_Click(this, new RoutedEventArgs());
-                        NumberBox.Text = "+92 300 1234567";
+                        NumberBox.Text = "+44 20 7946 0123";
                         break;
                     case "newchat-contact":
                         NewContact_Click(this, new RoutedEventArgs());

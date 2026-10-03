@@ -85,13 +85,13 @@ public sealed partial class MainViewModel
         if (Channels.Count == 0 && SuggestedChannels.Count == 0)
         {
             SetChannels([new ChannelDto("sample-1@newsletter", "City News", "", 219_000, false, null, true, false, DateTimeOffset.Now.AddHours(-20).ToUnixTimeSeconds(),
-                                        "Fuel prices increased from midnight", 2)]);
+                                        "Heavy rain expected tonight", 2)]);
             SuggestedChannels =
             [
-                new ChannelDto("sample-2@newsletter", "World Scholarship Opportunities", "", 171_000, false, null, false, false, 0, "", 0),
-                new ChannelDto("sample-3@newsletter", "Daad Scholarship", "", 172_000, true, null, false, false, 0, "", 0),
+                new ChannelDto("sample-2@newsletter", "Space Daily", "", 171_000, false, null, false, false, 0, "", 0),
+                new ChannelDto("sample-3@newsletter", "Design Weekly", "", 172_000, true, null, false, false, 0, "", 0),
                 new ChannelDto("sample-4@newsletter", "WhatsApp", "", 234_200_000, true, null, false, false, 0, "", 0),
-                new ChannelDto("sample-5@newsletter", "Scholarships Corner", "", 119_000, false, null, false, false, 0, "", 0),
+                new ChannelDto("sample-5@newsletter", "Recipe Corner", "", 119_000, false, null, false, false, 0, "", 0),
             ];
             foreach (var channel in Channels.Concat(SuggestedChannels)) _channelInfo[channel.Id] = channel;
         }
@@ -153,13 +153,13 @@ public sealed partial class MainViewModel
         {
             string[] posts =
             [
-                "The second round of talks will be held tomorrow at 2 PM. The discussions were held in a positive atmosphere.",
-                "Pakistan vs India T20 for the gold medal in the Asian Games cricket final is tomorrow at 9:30 AM",
-                "Fuel prices increased from midnight\n\npetrol increased by 2.10\ndiesel increased by 0.30",
+                "The new riverside park opens to the public this Saturday at 10 AM. Entry is free all weekend.",
+                "The city marathon is this Sunday: the main roads close from 6 AM to noon, so plan your route.",
+                "Heavy rain expected tonight\n\nAvoid the low roads near the river\nTrams run every 20 minutes",
             ];
             foreach (var (text, i) in posts.Select((t, i) => (t, i)))
-                chat.Messages.Add(new Message { Id = $"sample-post-{i}", IsPost = true, Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "😂❤️🙏👍 " + (430 - i * 190) : "", ForwardCount = i < 2 ? (135 - i * 97).ToString() : "",
-                                                PostReactions = i < 2 ? [("😂", 311 - i * 150), ("❤️", 73), ("🙏", 33 - i * 20), ("👍", 13 - i * 10)] : [] });
+                chat.Messages.Add(new Message { Id = $"sample-post-{i}", IsPost = true, Text = text, Time = $"{6 + i * 2}:1{i} pm", ReactionSummary = i < 2 ? "👍❤️🙏😮 " + (430 - i * 190) : "", ForwardCount = i < 2 ? (135 - i * 97).ToString() : "",
+                                                PostReactions = i < 2 ? [("👍", 311 - i * 150), ("❤️", 73), ("🙏", 33 - i * 20), ("😮", 13 - i * 10)] : [] });
             chat.MessagesLoaded = true;
         }
         if (Channels.Any(c => c.Id == channel.Id && c.Unread > 0)) SetChannels(Channels.Select(c => c.Id == channel.Id ? c with { Unread = 0 } : c).ToList());

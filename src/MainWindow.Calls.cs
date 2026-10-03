@@ -260,7 +260,7 @@ public sealed partial class MainWindow
                     switch (test)
                     {
                         case "calls-info": CallsList.SelectedIndex = 1; break;
-                        case "calls-number": ShowCallsPage(CallsPage.Number); CallNumberBox.Text = "+92 300 1234567"; break;
+                        case "calls-number": ShowCallsPage(CallsPage.Number); CallNumberBox.Text = "+44 20 7946 0123"; break;
                         case "calls-new": ShowCallsPage(CallsPage.NewCall); break;
                         case "calls-addfav": OpenAddFavourites(fromFavourites: false); await Task.Delay(300); CallsPickList.SelectRange(new Microsoft.UI.Xaml.Data.ItemIndexRange(0, 2)); break;
                         case "calls-fav": FavouritesEdit.IsChecked = true; ShowCallsPage(CallsPage.Favourites); break;

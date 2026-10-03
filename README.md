@@ -4,12 +4,11 @@ A native WinUI 3 WhatsApp client for Windows 11 — Fluent design, Mica, light/d
 
 ![WAFluent with a chat open, dark theme](docs/screenshots/chat-dark.jpg)
 
-| | |
+| Light theme | Calls |
 |---|---|
 | ![Light theme](docs/screenshots/chat-light.jpg) | ![Calls: favourites, recent calls and a contact's call history](docs/screenshots/calls.jpg) |
-| Light theme | Calls |
-| ![A channel's posts with reactions and forward counts](docs/screenshots/channels.jpg) | |
-| Channels | |
+| **Channels** | **Status** |
+| ![A channel's posts with reactions and forward counts](docs/screenshots/channels.jpg) | ![Status: your contacts' updates](docs/screenshots/status.jpg) |
 
 <sub>Screenshots show the app's built-in sample chats (`--sample`), not a real account.</sub>
 
