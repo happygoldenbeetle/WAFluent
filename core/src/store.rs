@@ -1274,7 +1274,12 @@ impl Store {
 
     /// Chats that have at least one message, pinned first, newest first.
     pub fn chats(&self) -> Vec<ChatDto> {
-        let sql = format!("{CHAT_SELECT} WHERE c.last_ts > 0 ORDER BY c.pinned DESC, c.last_ts DESC");
+        // Chats with something in them, and your favourites even when this PC has none of their messages.
+        let sql = format!(
+            "{CHAT_SELECT} WHERE c.last_ts > 0 OR c.id IN (SELECT jid FROM favorite_chats)
+             OR c.id IN (SELECT chat_id FROM aliases WHERE alt IN (SELECT jid FROM favorite_chats))
+             ORDER BY c.pinned DESC, c.last_ts DESC"
+        );
         self.query_chats(&sql, [])
     }
 

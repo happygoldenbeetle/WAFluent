@@ -86,6 +86,9 @@ fn send_now(ctx: &Ctx) -> Vec<String> {
 pub(crate) fn mutation(ctx: &Ctx, m: FavoritesMutation) {
     info!("favourites from the phone: {} (removed: {})", m.ids.len(), m.removed);
     ctx.db().set_favorite_chats(if m.removed { &[] } else { &m.ids });
+    // The chat list first: a favourite with no messages on this PC is only listed because it is one.
+    let chats = ctx.db().chats();
+    ctx.send(Out::Chats { chats });
     send(ctx);
 }
 
