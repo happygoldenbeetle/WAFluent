@@ -248,6 +248,13 @@ public sealed partial class MainWindow : Window
                     .Select(g => $"slow with {g.Key}: {g.Count()} frames, {g.Average(x => double.Parse(x[..x.IndexOf(' ')])):0} ms on average"));
                 Save();
             };
+        // WAFLUENT_SELFTEST=chats-idle: the Chats page with no chat open.
+        if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "chats-idle")
+            Root.Loaded += async (_, _) =>
+            {
+                await Task.Delay(2000);
+                ViewModel.CloseChat();
+            };
         // WAFLUENT_SELFTEST=bubble-cost: what one text bubble costs, piece by piece, away from the list: plain
         // TextBlocks in the app's font and in Segoe UI alone, then the message template itself.
         if (Environment.GetEnvironmentVariable("WAFLUENT_SELFTEST") == "bubble-cost")

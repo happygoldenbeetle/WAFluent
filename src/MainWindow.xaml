@@ -2415,13 +2415,23 @@
                         </Grid>
                     </Grid>
 
-                    <!-- Nothing selected -->
-                    <StackPanel Grid.RowSpan="4" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10"
-                                Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
-                        <Image Source="ms-appx:///Assets/AppIcon.png" Width="72" />
-                        <TextBlock Text="WAFluent" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center" />
-                        <TextBlock Text="Pick a chat to start messaging." Foreground="{ThemeResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
-                    </StackPanel>
+                    <!-- Nothing selected: the same card the Calls, Status and Channels pages show (a grey icon, a
+                         heading, a line under it), and the encryption note at the bottom. -->
+                    <Grid Grid.RowSpan="4" Background="{ThemeResource ChatPaneBackgroundBrush}" Visibility="{x:Bind helpers:Ui.Collapsed(ViewModel.HasSelection), Mode=OneWay}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="24,0">
+                            <FontIcon Glyph="&#xE8BD;" FontSize="64" Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="WAFluent for Windows" FontSize="28" HorizontalAlignment="Center" TextAlignment="Center"
+                                       TextWrapping="Wrap" Margin="0,14,0,0" />
+                            <TextBlock Text="Send and receive messages from your PC. Pick a chat to start."
+                                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="560"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,28">
+                            <FontIcon Glyph="&#xE72E;" FontSize="13" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="Your personal messages are end-to-end encrypted" FontSize="13"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
 
                     <!-- ───── Send preview (MainWindow.Attach.cs): WhatsApp Web's, over the conversation ───── -->
                     <Grid x:Name="MediaComposer" Grid.RowSpan="4" Visibility="Collapsed" Background="{ThemeResource ChatPaneBackgroundBrush}"
